@@ -371,7 +371,52 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
 
 ---
 
-## 8. 已知风险与决策点
+## 8. P7 — 发布为库（对外可用，预计 1–2 天）
+
+> **完整分析见 `docs/ARCHITECTURE.md`** —— 那一份有实测体检（`moon package --list` 的体积账、
+> 外部模块 check/build 的通过记录）、三种发布形态的对比与全部待拍板项。这里只放任务清单。
+
+**目标**：别人能 `moon add <ns>/moobile`，照文档接一个 30 行的宿主，就把界面跑起来。
+
+- [ ] **T7.1 发布卫生**（半天）
+  - `moon.mod` 补 `readme` / `repository`（`moon package` 现在会告警这两个字段）
+  - 模块根补 `LICENSE`（我们自己的）+ `THIRD-PARTY-NOTICE`（rabbita 的 Apache-2.0 版权与许可原文，
+    我们改了它，需按 Apache-2.0 §4 保留声明并说明修改 —— 改动清单就是 `FORK.md`）
+  - 加 `.moonignore`：现在会发布 **262 个文件 / 867 KB**，其中 `host/` 就占 **41%**（741 KB，
+    含 Expo 的 `package-lock.json` 与 6 张图标），还混进了 `_r1/`（测量证据）、`_tools/`、`docs/`、`demo/`、`_verify.js`
+  - **判据**：`moon package --list` 只剩库文件（vendor + `moobile/` + `style/`），
+    不再有 `readme`/`repository` 告警，zip 明显变小
+
+- [ ] **T7.2 形态 B：把库提到模块根**（半天）—— **推荐先做这个再发**
+  现在 `import { "<ns>/moobile" @moobile }` 拿到的是 **rabbita 的主包**（`App`/`run`），
+  调 `@moobile.mount` 会报 `Value mount not found in package 'moobile'`（实测踩过）。
+  做法：vendor 根包（`top.mbt incremental.mbt deprecated.mbt tea.mbt` + 根 `moon.pkg`）
+  挪进 `internal/rabbita/`；`moobile/*.mbt` 提到根；改 2 处引用
+  （`html/moon.pkg` 的 `for "test"`、`server/moon.pkg`）；同步 `FORK.md` §1 的重放步骤。
+  - **判据**：`moon check --target js` 0 错误；`node _verify.js` 26/26；
+    `_tools/ext_probe/app` 改成**裸模块名**导入后 `check_external.sh` 仍通过
+
+- [ ] **T7.3 对外契约写进 `README.md`**（半天）
+  宿主 4 件套（`react` / `components` / `scheduleTask` / `scheduleFrame`）+ **必须提供的 5 个组件**
+  （`View` `Text` `Pressable` `TextInput` `ScrollView`）+ 应用侧的链接导出四件套 +
+  **事件载荷在 RN 上是零值**这件事 + 只支持 `js` target。
+  - **判据**：README 里有可直接复制的 MoonBit/JS 两侧样板（`docs/ARCHITECTURE.md` §6 已拟好）
+
+- [ ] **T7.4 发布演练**：先发 `0.1.0`，再用**另一个临时模块** `moon add` 装回来编译
+  - **判据**：装回来的模块能 `moon check` 通过 —— 发布链路闭环（本地 `moon.work` 验证过的是编译面，
+    注册表的下载/解包还没验过）
+
+- [ ] **T7.5（可选）裁掉 vendor 死重**：`server/ http/ websocket/ nav/ url/ dialog/ clipboard/ svg/`
+  对 RN 使用者没用（`svg` 连标签表都排除了；`moonback` 依赖只被 `server/` 用）。
+  收益是体积与依赖，代价是 fork 的 diff 变大、跟版更麻烦。
+  - **判据**：发布体积与依赖树都下降，且 `moon check` / `_verify.js` / `check_external.sh` 三绿
+
+- [ ] **T7.6（可选）宿主脚手架**：`App.js` 模板或 `@<ns>/moobile-host` npm 包
+  - **判据**：新项目 5 分钟能从零跑起来
+
+---
+
+## 9. 已知风险与决策点
 
 | # | 风险 / 决策 | 说明 | 何时决定 |
 |---|---|---|---|
@@ -380,6 +425,7 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
 | Q3 | **上游化 vs 长期 fork** | 当前 diff 很小（`FORK.md` 有清单），越晚上游越贵 | P6 |
 | Q4 | **样式改写能否脚本化** | 198 条 CSS 手工改是几天的工作量；脚本化可能省一半，也可能更慢 | P5 的 T5.2 开始前 |
 | Q5 | **`Mouse` 载荷通道** | 见 T3.4。**不要试图"修好" `Mouse`** —— 那是在 RN 上模拟 DOM 事件，走反了 | P3 |
+| Q6 | **发布成库的形态与命名** | 见 `docs/ARCHITECTURE.md`：模块名第一段必须是 mooncakes 账号名（`moobile/moobile` 未必发得出去）；形态 A/B/B′/C 选哪个；要不要裁掉 10 个死重包 | **P7 动手前**（发文前定名，否则路径就被别人依赖住了） |
 
 ---
 
@@ -412,7 +458,11 @@ P3 罗盘 + 手势（3–5天）← 最难，放在样式层稳定之后
 P5 完整移植与验收（3–5天）
   ↓
 P6 工程化（1–2天）
+  ↓
+P7 发布为库（1–2天）❖     ← 别人能 moon add 用上；分析见 docs/ARCHITECTURE.md
 ```
+
+> ❖ P7 不依赖 P1–P6，**随时可以插队做**（它改的是元数据/目录名/契约文档，不碰渲染逻辑）。
 
 **粗估 2–3 周**（不含真机调试的意外）。其中 P3 的不确定性最大。
 
