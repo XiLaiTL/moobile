@@ -1,0 +1,26 @@
+import {
+  "moobile/moobile/style",
+  "moobile/moobile/internal/vdom",
+  "moobile/moobile/dom",
+  "moobile/moobile/common",
+  "moobile/moobile/cmd",
+  "moobile/moobile/variant",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/ref",
+  "moonbitlang/core/immut/vector",
+  "moonbitlang/core/list",
+}
+
+import {
+  "moobile/moobile" @rabbita,
+} for "test"
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"
+
+options(
+  targets: {
+    "event_decoders.mbt": [ "js" ],
+  },
+)

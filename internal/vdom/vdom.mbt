@@ -1,0 +1,247 @@
+///|
+using @cmd {trait Scheduler}
+
+///|
+#warnings("-unused_constructor")
+pub enum VNode {
+  Elem(String, Props, Children[VNode], namespace_uri~ : String?)
+  Text(String)
+  Frag(Array[VNode])
+  Thunk(Int, () -> VNode)
+}
+
+///|
+pub impl Eq for VNode with fn equal(a, b) {
+  physical_equal(a, b)
+}
+
+///|
+const CAPTURED_LINK_TAG : String = "RABBITA_CAPTURED_LINK"
+
+///|
+const FRAGMENT_START_MARKER : String = "["
+
+///|
+const FRAGMENT_END_MARKER : String = "]"
+
+///|
+fn rendered_tag(tag : String) -> String {
+  if tag == CAPTURED_LINK_TAG {
+    "a"
+  } else {
+    tag
+  }
+}
+
+///|
+#cfg(target="js")
+fn is_captured_link_tag(tag : String) -> Bool {
+  tag == CAPTURED_LINK_TAG
+}
+
+///|
+fn is_html_void_element(tag : String) -> Bool {
+  match tag {
+    "area"
+    | "base"
+    | "br"
+    | "col"
+    | "embed"
+    | "hr"
+    | "img"
+    | "input"
+    | "link"
+    | "meta"
+    | "param"
+    | "source"
+    | "track"
+    | "wbr" => true
+    _ => false
+  }
+}
+
+///|
+pub fn VNode::elem(
+  tag : String,
+  props : Props,
+  children : Children[VNode],
+  namespace_uri? : String,
+) -> VNode {
+  Elem(tag, props, children, namespace_uri~)
+}
+
+///|
+pub fn VNode::text(s : String) -> VNode {
+  Text(s)
+}
+
+///|
+pub fn VNode::link(
+  props : Props,
+  children : Children[VNode],
+  escape? : Bool = false,
+) -> VNode {
+  let tag = if escape { "a" } else { CAPTURED_LINK_TAG }
+  VNode::elem(tag, props, children)
+}
+
+///|
+pub fn VNode::fragment(childs : Array[VNode]) -> VNode {
+  Frag(childs)
+}
+
+///|
+pub fn VNode::document(props : Props, head : VNode, body : VNode) -> VNode {
+  Elem("html", props, Array([head, body]), namespace_uri=None)
+}
+
+///|
+pub(all) enum Children[T] {
+  Array(Array[T])
+  Map(Map[String, T])
+  RawHtml(String)
+}
+
+///|
+/// ★ moobile 改造：事件值是**后端无关的不透明类型**，不再别名为 `@dom.Event`。
+///
+/// 为什么必须改：原来的别名让 `Props.handlers` 的**公开签名**带着 `@dom`，
+/// 而 `@dom` 是 js-only 的 DOM 绑定包。后果是外部包既命名不了这个类型、
+/// 也换不掉它 —— 这正是当初不得不加 `Props::each_handler` 的原因。
+///
+/// 现在：DOM 后端在监听器边界处把 `@dom.Event` 强转进来（`dom_event`），
+/// React 后端直接把合成事件透传。语义上两边都是"一个事件值"，
+/// 谁也不需要认识对方的具体类型。
+#external
+pub type Event
+
+///|
+/// `@dom.Event` → `Event`。DOM 后端在监听器边界处使用。
+#cfg(target="js")
+fn dom_event(value : @dom.Event) -> Event = "%identity"
+
+///|
+/// `Event` → `@dom.Event`。DOM 侧的辅助函数（从事件里取值）使用。
+#cfg(target="js")
+pub fn as_dom_event(value : Event) -> @dom.Event = "%identity"
+
+///|
+pub struct Props {
+  handlers : Map[String, (Event, &Scheduler) -> Unit]
+  attrs : Map[String, String]
+  props : Map[String, @variant.Variant]
+  // ★ moobile 改造：样式值从一开始就是**类型化**的，不再是"待解析的字符串"。
+  // 旧的 `Map[String, String]` 通道已删除 —— 实测零调用点。
+  styles : Map[String, @style.StyleValue]
+}
+
+///|
+pub fn Props::new(
+  attrs : Map[String, String],
+  props : Map[String, @variant.Variant],
+  styles : Map[String, @style.StyleValue],
+  handlers : Map[String, (Event, &Scheduler) -> Unit],
+) -> Props {
+  { handlers, attrs, styles, props }
+}
+
+///|
+fn[K : Eq + Hash, V] copy_map(src : Map[K, V]) -> Map[K, V] {
+  let dst : Map[K, V] = Map([])
+  for k, v in src {
+    dst[k] = v
+  }
+  dst
+}
+
+///|
+pub fn Props::copy(self : Props) -> Props {
+  {
+    handlers: copy_map(self.handlers),
+    attrs: copy_map(self.attrs),
+    props: copy_map(self.props),
+    styles: copy_map(self.styles),
+  }
+}
+
+// ============================================================================
+// ★ moobile 扩展（fork 的一部分）
+//
+// 存在的理由：`Event` 在本包内**不是 pub**，`Attrs::handler` 也是私有的，
+// 所以外部包既没法给处理器标注类型、也没法注册处理器。
+// 这三个方法把 `Event` 藏在签名里，调用方靠类型推断即可使用：
+//
+//     props.on("click", _ => dispatch(Msg::Inc))
+//
+// 这正是 README 说的「fork 的第二档：改造 rabbita 的类型支持」。
+// ============================================================================
+
+///|
+/// 空属性集。
+pub fn Props::empty() -> Props {
+  { handlers: Map([]), attrs: Map([]), props: Map([]), styles: Map([]) }
+}
+
+///|
+/// 合并一份**类型化**样式。
+pub fn Props::styles(self : Props, s : @style.Style) -> Props {
+  for entry in s.entries() {
+    self.styles[entry.0] = entry.1
+  }
+  self
+}
+
+///|
+/// 注册事件处理器。`Event` 由签名提供，调用方不必命名它。
+pub fn Props::on(
+  self : Props,
+  event : String,
+  f : (Event, &Scheduler) -> Unit,
+) -> Props {
+  self.handlers[event] = f
+  self
+}
+
+///|
+/// 设置字符串属性（`placeholder` / `value` 这类）。
+pub fn Props::attr(self : Props, key : String, value : String) -> Props {
+  self.attrs[key] = value
+  self
+}
+
+///|
+/// 设置非字符串属性（bool / int / float）。
+pub fn Props::prop(self : Props, key : String, value : @variant.Variant) -> Props {
+  self.props[key] = value
+  self
+}
+
+///|
+/// 类型化样式表（只读）。
+pub fn Props::styles_map(self : Props) -> Map[String, @style.StyleValue] {
+  self.styles
+}
+
+///|
+/// 字符串属性表（只读）。
+pub fn Props::attrs_map(self : Props) -> Map[String, String] {
+  self.attrs
+}
+
+///|
+/// 非字符串属性表（只读）。
+pub fn Props::props_map(self : Props) -> Map[String, @variant.Variant] {
+  self.props
+}
+
+///|
+/// 把事件处理器包成"只吃一个 JS 值"的形式，供非 DOM 后端（React Native）调用。
+pub fn Props::each_handler(
+  self : Props,
+  scheduler : &Scheduler,
+  f : (String, (Event) -> Unit) -> Unit,
+) -> Unit {
+  for event, handler in self.handlers {
+    f(event, (v) => handler(v, scheduler))
+  }
+}

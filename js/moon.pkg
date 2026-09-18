@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/json",
+}
+
+import {
+  "moonbitlang/core/json",
+  "moonbitlang/core/debug",
+} for "test"
+
+options(
+  targets: { "*": [ "js" ] },
+)

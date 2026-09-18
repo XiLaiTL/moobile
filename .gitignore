@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# moobile —— 仓库根就是模块根（模块名 moobile/moobile）。
+# 原则：**源码与证据入库，生成物不入库**（都能用一条命令重建）。
+# 重建方式：moon check/build、./build.sh、npm install、expo prebuild、android_env_setup.sh。
+# ---------------------------------------------------------------------------
+
+# ---- MoonBit ----
+_build/
+target/
+# 依赖缓存：由 moon.mod 的 import 决定，`moon check` 会自动拉回
+.mooncakes/
+
+# ---- Expo / React Native 宿主 ----
+host/node_modules/
+host/.expo/
+host/dist/
+# 构建产物：./build.sh 从 _build/js/<profile>/build/demo/demo.js 拷过来
+host/moobile.js
+# prebuild 生成，且被 _tools/android_env_setup.sh 幂等重写；
+# 已知良好副本在 _tools/android-config/（那份是入库的）
+host/android/
+*.apk
+*.aab
+
+# ---- 验证脚本的产出 ----
+# _verify.js 每次跑都会重新截三张图（证据类产出在 _r1/ 里，那份入库）
+shot-*.png
+
+# ---- 杂项 ----
+*.log

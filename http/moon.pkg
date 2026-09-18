@@ -1,0 +1,22 @@
+import {
+  "moobile/moobile/cmd",
+  "moobile/moobile/dom",
+  "moobile/moobile/url",
+  "moonbitlang/async",
+  "moonbitlang/async/http" @async_http,
+  "moonbitlang/async/io",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+import {
+  "moobile/moobile/internal/key",
+} for "wbtest"
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"
+
+options(
+  targets: { "http_wbtest.mbt": [ "js" ] },
+)

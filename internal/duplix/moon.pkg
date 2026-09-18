@@ -1,0 +1,8 @@
+import {
+  "moonbitlang/core/queue",
+  "moonbitlang/core/immut/vector",
+  "moobile/moobile/common",
+  "moobile/moobile/internal/slotmap",
+}
+
+supported_targets = "js+native+wasm"

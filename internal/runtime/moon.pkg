@@ -1,0 +1,28 @@
+import {
+  "moobile/moobile/internal/vdom",
+  "moobile/moobile/dom",
+  "moobile/moobile/common",
+  "moobile/moobile/cmd",
+  "moobile/moobile/sub",
+  "moonbitlang/core/queue",
+  "moonbitlang/core/json",
+  "moonbitlang/async/js_async",
+  "moonbitlang/async",
+  "moobile/moobile/internal/key",
+  "moobile/moobile/internal/any",
+  "moobile/moobile/internal/slotmap",
+  "moobile/moobile/internal/duplix",
+}
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"
+
+options(
+  targets: {
+    "host_browser.mbt": [ "js" ],
+    "host_hydration.mbt": [ "js" ],
+    "host_ssr.mbt": [ "wasm", "native" ],
+    "react_host.mbt": [ "js" ],
+  },
+)

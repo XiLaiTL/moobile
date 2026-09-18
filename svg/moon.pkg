@@ -1,0 +1,9 @@
+import {
+  "moobile/moobile/style",
+  "moobile/moobile/internal/vdom",
+  "moobile/moobile/variant",
+  "moobile/moobile/dom",
+  "moobile/moobile/html",
+}
+
+supported_targets = "js+native+wasm"

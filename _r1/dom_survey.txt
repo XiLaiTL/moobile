@@ -1,0 +1,92 @@
+# html/ + svg/ 里的 DOM 缝隙普查（目标 3 的第一半）
+
+共 **45** 处 `@dom.` 使用。
+
+## `html/attrs_event.mbt` :: `(顶层 let/type)`  (23 处)
+- L3 `MouseEvent` — `type MouseEvent = @dom.MouseEvent`
+- L7 `KeyboardEvent` — `type KeyboardEvent = @dom.KeyboardEvent`
+- L11 `FocusEvent` — `type FocusEvent = @dom.FocusEvent`
+- L15 `DragEvent` — `type DragEvent = @dom.DragEvent`
+- L19 `ClipboardEvent` — `type ClipboardEvent = @dom.ClipboardEvent`
+- L23 `CompositionEvent` — `type CompositionEvent = @dom.CompositionEvent`
+- L27 `WheelEvent` — `type WheelEvent = @dom.WheelEvent`
+- L31 `UIEvent` — `type UIEvent = @dom.UIEvent`
+- L35 `InputEvent` — `type InputEvent = @dom.InputEvent`
+- L39 `Event` — `type DomEvent = @dom.Event`
+- L90 `MouseEvent` — `/// ★ moobile 扩展：从 JS 事件对象取得 `@dom.MouseEvent` 的**可替换策略**。`
+- L100 `MouseEvent` — `pub let mouse_event_from_dom : Ref[(Event) -> @dom.MouseEvent] = Ref(`
+- L120 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L146 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L172 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L198 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L224 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L250 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L276 `Event` — `let event : @dom.Event = @vdom.as_dom_event(raw_event)`
+- L383 `Event` — `let event : @dom.Event = @vdom.as_dom_event(event)`
+- L405 `Event` — `let event : @dom.Event = @vdom.as_dom_event(event)`
+- L422 `Event` — `let event : @dom.Event = @vdom.as_dom_event(event)`
+- L439 `Event` — `let event : @dom.Event = @vdom.as_dom_event(event)`
+
+## `html/attrs_event.mbt` :: `dom_mouse_event`  (1 处)
+- L106 `MouseEvent` — `fn dom_mouse_event(event : Event) -> @dom.MouseEvent {`
+
+## `html/attrs_event.mbt` :: `on_beforeinput`  (1 处)
+- L404 `Event` — `// ★ moobile 改造：入口处把后端无关的 `Event` 转成 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_change`  (1 处)
+- L438 `Event` — `// ★ moobile 改造：入口处把后端无关的 `Event` 转成 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_clipboard_event`  (1 处)
+- L223 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_composition_event`  (1 处)
+- L249 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_drag_event`  (1 处)
+- L197 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_focus_event`  (1 处)
+- L171 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_input`  (1 处)
+- L421 `Event` — `// ★ moobile 改造：入口处把后端无关的 `Event` 转成 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_keyboard_event`  (1 处)
+- L145 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_mouse_event`  (1 处)
+- L119 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_scroll`  (1 处)
+- L382 `Event` — `// ★ moobile 改造：入口处把后端无关的 `Event` 转成 `@dom.Event`。`
+
+## `html/attrs_event.mbt` :: `on_wheel_event`  (1 处)
+- L275 `Event` — `// 外面是后端无关的 `Event`，里面这段 DOM 解码逻辑要 `@dom.Event`。`
+
+## `html/html.mbt` :: `(顶层 let/type)`  (1 处)
+- L1757 `Node` — `//   node : @dom.Node,`
+
+## `html/html_utils.mbt` :: `current_form_value`  (1 处)
+- L410 `Event` — `/// DOM 默认实现：转回 `@dom.Event` 后走原来的解析。`
+
+## `html/html_utils.mbt` :: `form_event_value`  (1 处)
+- L418 `Event` — `fn form_event_value(event : @dom.Event) -> String {`
+
+## `html/html_utils.mbt` :: `keyboard_from_dom`  (1 处)
+- L41 `KeyboardEvent` — `fn keyboard_from_dom(event : @dom.KeyboardEvent) -> Keyboard {`
+
+## `html/html_utils.mbt` :: `mouse_from_dom`  (1 处)
+- L31 `MouseEvent` — `fn mouse_from_dom(event : @dom.MouseEvent) -> Mouse {`
+
+## `html/html_utils.mbt` :: `push_size`  (2 处)
+- L399 `Event` — `/// ★ 参数类型是后端无关的 `Event`（不再是 `@dom.Event`）——`
+- L400 `Event` — `/// DOM 实现自己负责在内部转回 `@dom.Event`。`
+
+## `html/html_utils.mbt` :: `push_submit`  (1 处)
+- L149 `Event` — `// ★ 后端无关的 `Event` 在这里转回 `@dom.Event` 才能调 DOM 方法。`
+
+## `html/html_utils.mbt` :: `scroll_from_dom`  (1 处)
+- L57 `Element` — `fn scroll_from_dom(element : @dom.Element) -> Scroll {`
+
+## `svg/svg.mbt` :: `node`  (1 处)
+- L25 `namespace_svg` — `ns? : String = @dom.namespace_svg,`

@@ -1,0 +1,28 @@
+import {
+  "moobile/moobile/html",
+  "moobile/moobile/internal/runtime",
+  "moobile/moobile/internal/vdom",
+  "moobile/moobile/url",
+  "moobile/moobile/cmd",
+  "moobile/moobile/sub",
+  "moobile/moobile/internal/key",
+  "moonbitlang/core/queue",
+  "moonbitlang/core/ref",
+  "moobile/moobile/js",
+  "moobile/moobile/common",
+  "moobile/moobile/internal/duplix",
+  "moobile/moobile/internal/slotmap",
+  "moonbitlang/core/immut/vector",
+  "moonbitlang/async",
+  "moonbitlang/async/js_async",
+}
+
+import {
+  "moonbitlang/core/list",
+} for "test"
+
+warnings = "-unused_package-alert_unstable"
+
+supported_targets = "js+native+wasm"
+
+formatter(ignore: [ "README.mbt.md" ])

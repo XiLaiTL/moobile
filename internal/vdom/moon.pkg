@@ -1,0 +1,12 @@
+import {
+  "moobile/moobile/style",
+  "moobile/moobile/dom",
+  "moobile/moobile/cmd",
+  "moobile/moobile/variant",
+  "moobile/moobile/js",
+  "moonbitlang/core/ref",
+}
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"

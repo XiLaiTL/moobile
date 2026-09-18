@@ -1,0 +1,5 @@
+import {
+  "moobile/moobile/dom",
+}
+
+warnings = "-unused_package"

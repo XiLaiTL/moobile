@@ -1,0 +1,25 @@
+supported_targets = "+js"
+
+import {
+  "moobile/moobile/moobile" @moobile,
+  "moobile/moobile/style",
+  "moobile/moobile/html",
+  "moobile/moobile/cmd",
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "demo_start",
+        "demo_snapshot",
+        "demo_subscribe",
+        "demo_element",
+        "demo_unsupported",
+        "demo_unmapped",
+        "demo_unmapped_names",
+      ],
+    },
+  },
+)

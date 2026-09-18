@@ -1,0 +1,112 @@
+{
+  "ci_long": {
+    "label": "爻辞·九三",
+    "lines": 4,
+    "w": 172,
+    "h": 48,
+    "fontSize": "16px",
+    "letterSpacing": "0.8px",
+    "marginRight": "0px",
+    "minWidth": "auto",
+    "textAlign": "start",
+    "display": "block",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "ci_short": {
+    "label": "爻辞·初九",
+    "lines": 2,
+    "w": 84,
+    "h": 24,
+    "fontSize": "16px",
+    "letterSpacing": "0.8px",
+    "marginRight": "0px",
+    "minWidth": "auto",
+    "textAlign": "start",
+    "display": "block",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "xiang": {
+    "label": "小象·p",
+    "lines": 4,
+    "w": 155.2,
+    "h": 38,
+    "fontSize": "13.5px",
+    "letterSpacing": "0.54px",
+    "marginRight": "0px",
+    "minWidth": "0px",
+    "textAlign": "start",
+    "display": "inline",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "xlab": {
+    "label": "小象·xlab",
+    "lines": 2,
+    "w": 28.8,
+    "h": 16,
+    "fontSize": "12px",
+    "letterSpacing": "2.4px",
+    "marginRight": "0px",
+    "minWidth": "0px",
+    "textAlign": "start",
+    "display": "inline",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "fold": {
+    "label": "折叠箭头",
+    "lines": 2,
+    "w": 10,
+    "h": 15,
+    "fontSize": "11px",
+    "letterSpacing": "normal",
+    "marginRight": "0px",
+    "minWidth": "10px",
+    "textAlign": "center",
+    "display": "block",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "title": {
+    "label": "爻题·初九",
+    "lines": 2,
+    "w": 36.3,
+    "h": 24,
+    "fontSize": "16.5px",
+    "letterSpacing": "1.65px",
+    "marginRight": "0px",
+    "minWidth": "auto",
+    "textAlign": "start",
+    "display": "block",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "bar": {
+    "label": "爻画列",
+    "count": 12,
+    "width": 160
+  },
+  "note_box": {
+    "label": "注疏盒",
+    "lines": 8,
+    "w": 172,
+    "h": 155,
+    "fontSize": "16px",
+    "letterSpacing": "normal",
+    "marginRight": "0px",
+    "minWidth": "0px",
+    "textAlign": "start",
+    "display": "flex",
+    "overflow": "visible",
+    "overflowY": "visible"
+  },
+  "scroller": {
+    "label": "滚动容器",
+    "clientH": 791,
+    "scrollH": 1632,
+    "overflowY": "auto"
+  },
+  "docHeight": 844
+}

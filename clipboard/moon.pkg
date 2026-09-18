@@ -1,0 +1,9 @@
+import {
+  "moobile/moobile/dom",
+  "moobile/moobile/cmd",
+  "moobile/moobile/js",
+}
+
+warnings = "-unused_package"
+
+supported_targets = "js+native+wasm"
