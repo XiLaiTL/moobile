@@ -39,8 +39,8 @@
 | 依赖 | 用途 | 许可 |
 |---|---|---|
 | `moonbitlang/async` | 异步运行时（rabbita 的 `js_async` 等） | 见其仓库 |
-| `moonbitlang/x` | MoonBit 标准扩展库 | 见其仓库 |
-| `hackwaly/moonback` | **仅被 `server/`（SSR/HTTP）用**，RN 库路径用不到 | 见其仓库 |
+| ~~`moonbitlang/x`~~ | **已不再是依赖**（2026-09）：它只被 `server/` 用，而 `server/` 已裁掉 | — |
+| ~~`hackwaly/moonback`~~ | **已不再是依赖**（2026-09）：同上，只被 `server/` 用 | — |
 
 > 依赖的许可条款以其各自仓库为准；这里只做索引，不复制其文本。
 

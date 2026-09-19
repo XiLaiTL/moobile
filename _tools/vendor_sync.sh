@@ -42,7 +42,11 @@ OUR_NAME="$(sed -n 's/^name = "\(.*\)"/\1/p' "$ROOT/moon.mod" | tr -d '\r')"
 UP_NAME="moonbit-community/rabbita"
 
 # fork 的目录（铺在模块根）
-FORK_DIRS="clipboard cmd common dialog dom html http internal js nav server sub svg url variant websocket"
+# fork 的目录（铺在模块根）。
+# ⚠️ `server/`（rabbita 的 SSR/HTTP）**有意裁掉**：它是 moonback 与 moonbitlang/x 的唯一使用者，
+#    而它自己从没被编译过（声明 native+wasm，我们只跑 js），也没有任何包依赖它。
+#    裁掉它 = 发布依赖从 3 个降到 1 个（只剩 moonbitlang/async）。理由见 FORK.md §2.5。
+FORK_DIRS="clipboard cmd common dialog dom html http internal js nav sub svg url variant websocket"
 # fork 的根文件（我们自己占用了模块根，所以它们落到 internal/rabbita/）
 FORK_ROOT_FILES="top.mbt incremental.mbt deprecated.mbt tea.mbt render_test.mbt moon.pkg README.mbt.md"
 

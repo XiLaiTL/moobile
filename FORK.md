@@ -19,9 +19,10 @@
 |---|---|
 | 位置 | 铺在**模块根**（`html/` `cmd/` `dom/` `internal/` …），与我们自己的 `style/` `demo/` 平级 |
 | 版本 | `_tools/vendor.lock` 里的 `RABBITA_VERSION=0.15.4`（**注册表制品**，不可变） |
-| 改动 | `_tools/patches/*.patch`（15 个，按编号顺序 `patch -p1`） |
+| 改动 | `_tools/patches/*.patch`（**14 个**，按编号顺序 `patch -p1`；原 13 号随 `server/` 一起裁掉） |
 | 生成器 | `_tools/vendor_sync.sh`（`--check` / `--apply` / `--capture` / `--from`） |
-| 是否入库 | **否**。16 个第三方目录在 `.gitignore` 里；仓库只跟踪我们自己的代码 + patch + 脚本 |
+| 是否入库 | **否**。15 个第三方目录在 `.gitignore` 里；仓库只跟踪我们自己的代码 + patch + 脚本 |
+| 有意裁掉的包 | `server/`（rabbita 的 SSR/HTTP）—— 见 §2.5 |
 | 为什么必须在同一模块 | `internal` 包的可见性是**按包路径前缀**判的；只有同模块（且 `internal/` 直接在模块根下）才能 import `internal/vdom` |
 | 为什么不能放 `vendor/` 子目录 | 实测：`vendor/rabbita/internal/*` 只对 `…/vendor/rabbita/**` 可见，模块根包 import 会报 `Cannot import internal package … due to internal visibility rules` |
 | 为什么不用 git submodule | 上游 0.15.x **只有 `rabbita-v0.15.6` 一个 tag**，我们 vendor 的 0.15.4 没有 tag；能找到的最近提交跟注册表那份还差 49 处。**能精确钉住的只有注册表版本号** |
@@ -60,9 +61,24 @@ bash _tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），�
 | 10 | `10-vdom-ssr` | `internal/vdom/ssr.mbt` | `write_styles_attr` 的参数类型加宽 |
 | 11 | `11-vdom-moon-pkg` | `internal/vdom/moon.pkg` | 加 `style` 依赖 |
 | 12 | `12-runtime-moon-pkg` | `internal/runtime/moon.pkg` | 给 `react_host.mbt` 加 js 限定（与 15 配套） |
-| 13 | `13-server-moon-pkg-rabbita-root` | `server/moon.pkg` | 根包搬进 `internal/rabbita/` 后，改指新路径 |
+| ~~13~~ | ~~`13-server-moon-pkg-rabbita-root`~~ | — | **已随 `server/` 一起裁掉（2026-09）**，见 §2.5 |
 | 14 | `14-new-html-event-decoders` | `html/event_decoders.mbt` | **新增文件**（122 行）：解码表 + `dom_decoders()` + `passthrough_decoders()` |
 | 15 | `15-new-runtime-react-host` | `internal/runtime/react_host.mbt` | **新增文件**（224 行）：moobile 的 React 后端 |
+
+### 2.5 有意裁掉的包：`server/`
+
+`server/` 是 rabbita 的 SSR / HTTP 那一套。裁它的理由是审计出来的，不是感觉：
+
+| 检查 | 结果 |
+|---|---|
+| 谁依赖 `server/` | **没有任何包**（连 fork 内部都没有）——它是叶子 |
+| 谁用 `hackwaly/moonback` | **只有 `server/moon.pkg`** |
+| 谁用 `moonbitlang/x` | **也只有 `server/moon.pkg`**（`x/path`） |
+| 它被编译过吗 | **没有**：它声明 `supported_targets = "native+wasm"`，而我们只跑 js |
+
+代价与收益：**裁掉一个包 = 去掉两个依赖（3 → 1）**，发布包少两个文件。
+验证：`moon check` 0 错误、`_verify.js` 26/26、`check_external.sh` 通过、`vendor_sync.sh --check` 一致。
+恢复办法：把 `server` 加回 `vendor_sync.sh` 的 `FORK_DIRS`、恢复 13 号 patch、把两个依赖加回 `moon.mod` 即可。
 
 **不属于 patch 的三件事**（由脚本做，见 `_tools/vendor_sync.sh` 的铺开步骤）：
 
@@ -104,8 +120,8 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 
 ### 2.4 `moon.mod` 的依赖
 
-沿用 rabbita 原有的三个：`moonbitlang/async@0.21.0`、`hackwaly/moonback@0.8.1`、`moonbitlang/x@0.5.1`。
-⚠️ 其中 `moonback` **只被 `server/`（SSR/HTTP）用**，RN 路径用不到（`docs/ARCHITECTURE.md` §3.1）。
+**只剩一个**：`moonbitlang/async@0.21.0`（`cmd/`、`http/`、`internal/rabbita/`、`internal/runtime/` 都在用）。
+原有的 `hackwaly/moonback` 与 `moonbitlang/x` 已随 `server/` 一起裁掉 —— 见 §2.5。
 
 ---
 

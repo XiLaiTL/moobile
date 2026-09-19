@@ -157,6 +157,48 @@ description 候选（待定稿）：
 - **C3** CI：把 C2 接到 GitHub Actions（Windows runner；Android 断言暂不进 CI）
 - **判据**：一条命令跑完全部离线检查；CI 在 PR 上必须绿
 
+### 3.5（C）依赖与 API 面治理
+
+**已做的审计**（方法：对每个 `moon.pkg` 反查依赖使用者，不看印象）：
+
+| 依赖 | 谁在用 | 结论 |
+|---|---|---|
+| `moonbitlang/async@0.21.0` | `cmd/` `http/` `internal/rabbita/` `internal/runtime/` | **保留**（真需要） |
+| `hackwaly/moonback` | **只有 `server/moon.pkg`** | 已裁 |
+| `moonbitlang/x` | **也只有 `server/moon.pkg`** | 已裁 |
+| `server/`（rabbita 的 SSR/HTTP） | **没有任何包依赖它**（叶子），且从未被编译过（声明 native+wasm，我们只跑 js） | 已裁 |
+
+**结果**：发布依赖 **3 → 1**；发布包少两个文件（235 → 233）。验证：`moon check` 0 错误、
+`_verify.js` 26/26、`check_external.sh` 通过、`vendor_sync.sh --check` 一致。
+⚠️ **这条改动只在仓库里生效** —— mooncakes 上的 0.1.0 仍是旧的，要发 0.1.1 才带上。
+
+**策略（写下来，避免下次凭感觉加依赖）**：
+`moon.mod` 的 `import` 是**模块粒度**，没法按包细分；所以引入任何依赖前先问两句：
+① 是不是只有某个包用得到？② 那个包能不能一起裁掉？（`server/` 这次就是这条规则的第一个例子）
+三个直接依赖里剩下的 `async` 是硬需求，不在此列。
+
+**顺带发现的 API 面缺口（重要，需要决策）**：
+「形态 B」把 rabbita 的主包挪进了 `internal/rabbita/`，于是外部使用者**已经拿不到增量模型**
+（`Val` / `create_state` / `elmish`）。实测报错：
+
+```
+Cannot import internal package XiLaiTL/moobile/internal/rabbita@0.1.0
+in probe/api@0.1.0 due to internal visibility rules
+```
+
+影响：从 rabbita 迁过来的应用若用了局部组件状态（`Val` / `create_state`），**只能退化成手写 TEA**。
+两条修法：
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| (i) 把该包放回**公开路径** | `internal/rabbita/` → `rabbita/`（或 `model/`），使用者显式 `import { "XiLaiTL/moobile/rabbita" @rabbita }` | 布局与 patch 要改；公开面多一个包名 |
+| (ii) 从模块根包**再导出** | 在库本体里 `pub using @rabbita_root {type Val, create_state, …}`，于是 `@moobile.Val` 可用 | 要手工枚举符号；将来 API 变化容易漂 |
+
+**倾向 (ii)**：对使用者更友好（一个 import 拿全），代价只是枚举；且它同时解决了"rabbita 迁移时状态模型怎么写"的问题。
+**这条要在 E/F 轨道之前定**（脚手架与迁移工具都会依赖这个 API 面）。
+
+---
+
 ---
 
 ## 4. 中期：轨道 D（性能）
@@ -246,7 +288,8 @@ description 候选（待定稿）：
 4. **桌面端支持到哪一档**：① WebView 壳（Tauri / PWA，本机可验证，推荐先做）；② 原生 RN Windows/macOS（**可行但要维护第二个宿主**：裸 RN + RNW，各自 pin 版本，共用同一份产物）；③ 暂不支持。
 5. **脚手架技术选型**：MoonBit CLI（`moon install` 分发）还是 Node（`create-*` 约定）。
 6. **性能目标**：给出量化标准（例如"长列表滚动 ≥ 55 fps、首屏 < 1.5 s（中端安卓）"）。
-7. **`demo/` 与 `host/` 是否拆出库仓**：拆出更干净（也顺带满足 §3.1 的"以用户视角验证"），
+7. **API 面**：`Val` / `create_state` 这类增量模型 API 要不要对使用者开放？方案 (i) 公开包 vs (ii) 根包再导出（见 §3.5）。
+8. **`demo/` 与 `host/` 是否拆出库仓**：拆出更干净（也顺带满足 §3.1 的"以用户视角验证"），
    但要维护第二个仓库。
 
 ---

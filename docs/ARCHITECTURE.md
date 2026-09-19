@@ -124,14 +124,14 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 - **模块内 main 依赖边 79 条**（另有 2 条只在测试里用的边），**main 边无环**。
   唯一的环是测试边：`html/ -[for "test"]-> <root> -[main]-> html/`
   —— 含义是 `html/` 的白盒测试**只能在本模块内跑**。
-- **直接依赖只有 3 个**：`moonbitlang/async@0.21.0`、`hackwaly/moonback@0.8.1`、`moonbitlang/x@0.5.1`。
-  ⚠️ `moonback` **只被 `server/` 用**（`server/moon.pkg`），而 `server/` 是 rabbita 的 SSR/HTTP 那套 ——
-  RN 库根本用不到。它是"别人装了三个依赖，其中一个白装"。
-  ⚠️ 更糟的是 `server/` **从来没被编译过**：它声明 `supported_targets = "native+wasm"`，
-  而 `build.sh` / `moon check` 都只跑 js；它还是**唯一**在 main 代码里 import 模块根包 `internal/rabbita/` 的包。
-  换句话说，它是"既用不上、又没验证过、还拖着一个依赖"的三重死重。
-- **module 级依赖无法按包细分**（`moon.mod` 的 `import` 是模块粒度），所以只要 `server/` 还在模块里，
-  `moonback` 就一直在。
+- **直接依赖只有 1 个**：`moonbitlang/async@0.21.0`（被 `cmd/`、`http/`、`internal/rabbita/`、
+  `internal/runtime/` 使用 —— 是真需要）。
+  ✅ **2026-09 依赖治理**：原来还有 `hackwaly/moonback` 与 `moonbitlang/x`，两者**都只被 `server/` 使用**；
+  而 `server/`（rabbita 的 SSR/HTTP）本身既从未被编译过（声明 `native+wasm`，我们只跑 js）、
+  也没有任何包依赖它（叶子）。于是裁掉 `server/` 一个包，同时去掉**两个**依赖：**3 → 1**。
+  验证：`moon check` 0 错误、`_verify.js` 26/26、`check_external.sh` 通过、`vendor_sync.sh --check` 一致。
+- **module 级依赖无法按包细分**（`moon.mod` 的 `import` 是模块粒度）—— 这条限制仍然成立，
+  所以以后再引入任何"只有某个包用得到"的依赖，都要先问一句：那个包能不能一起裁掉。
 
 ### 3.2 使用者真正需要的闭包
 
@@ -156,7 +156,7 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 |---|---|
 | `html/canvas/` | **全模块零入边** —— 连 vendor 内部都没人 import，纯孤儿 |
 | `svg/` | 依赖 `html+style+vdom+variant+dom`，是"按需 DSL 层"；但标签表**已把 `svg` 排除**，RN 下用不上 |
-| `server/` | 见 3.1：唯一 main 代码用根包的包，从未编译过，顶着 `moonback` 依赖 |
+| ~~`server/`~~ | **已裁掉（2026-09）**：见 3.1 —— 它是 `moonback` 与 `moonbitlang/x` 的唯一使用者，自己又没被编译过、也没人依赖它 |
 | `internal/rabbita/` | 是 rabbita 的主 API（`App` / `run` / `Elmish` / `Val`），不是我们的库 —— 正是 §4.4-1 那个坑的来源 |
 
 > 裁剪这 10 个包，发布面就从 26 个包降到 16 个、依赖从 3 个降到 2 个。
@@ -381,7 +381,7 @@ export default function App() {
 | T7.2 | 形态 B 重构（库提到模块根 + fork 根包进 `internal/rabbita/`） | `moon check` 0 错误；`_verify.js` 26/26；`check_external.sh` 用**裸模块名**导入并通过 |
 | T7.3 | 公开 API 说明：把 §2 的契约写进 `README.md`（宿主 4 件套 + 5 个组件 + 事件的零值语义 + 只支持 js） | 文档里有可复制的两侧样板 |
 | T7.4 ✅ | **已完成**：`--dry-run` → `202 Accepted` → 正式 `moon publish` → **`200 OK`**；随后在新建模块里 `moon add XiLaiTL/moobile@0.1.0` → 写真实应用 → `check` 通过、`build` 产出可被 JS import 的产物 | 发布链路闭环 ✅（2026-09） |
-| T7.5（可选） | 裁剪死重：把 `demo/ clipboard/ dialog/ html/canvas/ http/ nav/ server/ svg/ websocket/` 从 fork 里去掉（根包在形态 B 之后落到 `internal/rabbita/`，去留另议） | 发布体积降 193 KB 区间的死重，依赖从 3 个降到 2 个（去掉 `moonback`） |
+| T7.5（部分完成） | **已完成第一步**：裁掉 `server/`（连带去掉 `moonback` + `moonbitlang/x`，发布依赖 **3 → 1**）。剩下的死重（`clipboard/ dialog/ html/canvas/ http/ nav/ svg/ websocket/`）仍在树里，见新 `PLAN.md` §3.5 | 依赖已降到位；剩余裁剪收益是文件数与 fork diff 的取舍 |
 | T7.6（可选） | 宿主脚手架：`App.js` 模板 / npm 包 | 新项目 5 分钟能跑起来 |
 
 **顺序建议**：T7.1 → T7.2 → T7.3 → T7.4（可选 T7.5/T7.6 随后）。
