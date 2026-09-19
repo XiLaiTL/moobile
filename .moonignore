@@ -25,7 +25,11 @@
 /build.sh
 /*.png
 
-# 文档：README 留着（registry 要显示），其余不发
+# 文档：README 留着（registry 要显示）
+# ⚠️ THIRD-PARTY-NOTICE.md 与 FORK.md **必须随分发一起走** ——
+#    Apache-2.0 §4 要求保留版权声明、并声明修改过；这两个文件正是那份声明。
 /docs/**
 /*.md
 !/README.md
+!/THIRD-PARTY-NOTICE.md
+!/FORK.md

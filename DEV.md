@@ -39,6 +39,40 @@ export JAVA_HOME="/d/Program Files/Java/jdk-17.0.5"
 
 ---
 
+## 1.5 全新 clone 后的第一步（第三方代码不在仓里！）
+
+**第三方代码（rabbita fork）不进仓** —— 16 个目录在 `.gitignore` 里，
+真相是 `_tools/vendor.lock` 的版本 + `_tools/patches/` 的 15 个 patch。
+所以 clone 下来**直接 `moon check` 会报一堆"找不到包"**，那是正常的，不是环境坏了。
+
+```bash
+git clone <repo> && cd moobile
+bash _tools/vendor_sync.sh --apply     # 拉 rabbita@0.15.4 → 铺开 → 打 patch → 统一行尾
+moon check --target js                 # 现在应当是 0 错误
+```
+
+之后跑验证（按需）：
+
+```bash
+bash _tools/vendor_sync.sh --check     # 断言「工作区 == pristine + patch」（提交前/CI）
+bash _tools/lf_normalize.sh --check    # 行尾检查（CRLF 会把 patch 的上下文打乱）
+bash _tools/check_external.sh          # 外部模块可用性（不需要 Metro）
+node _verify.js                        # Web 端到端 26 项（需要 Metro 在 8081）
+```
+
+**改第三方代码之后必须回写 patch**，否则改动会**静默消失**（那目录是 gitignore 的）：
+
+```bash
+vim internal/vdom/vdom.mbt             # 直接改
+bash _tools/vendor_sync.sh --capture   # 回写成 patch
+bash _tools/vendor_sync.sh --check     # 确认一致
+git add _tools/patches && git commit
+```
+
+细节与理由见 `FORK.md` §0–1。
+
+---
+
 ## 2. 磁盘布局（为什么有这么多目录联接）
 
 本机剩余空间：**C: ≈12G，D: ≈1.5G，E: 852G**。D 盘几乎写满，而 RN 的
@@ -195,6 +229,8 @@ moobile/                     ← 项目根（模块名 XiLaiTL/moobile）
 | `link_builddirs.ps1` | 给 Gradle 各项目的 `build/` 建联接指向 E 盘 |
 | `probe_cwd.ps1` | **查「谁锁着这个目录」**：读各进程 PEB 的 CurrentDirectory，列出 CWD 扎在指定路径下的进程（`-Filter 关键词`，`-Pids` 只出 PID）。Windows 上 `mv` 一个目录报 `Permission denied` 时用它 |
 | `check_external.sh` + `ext_probe/` | **外部模块冒烟测试**：临时工作区里编译 `probe/app`（见 `ext_probe/README.md`） |
+| `vendor_sync.sh` + `vendor.lock` + `patches/` | **生成式 vendor**：第三方代码不进仓，靠「版本 + 15 个 patch」重建。`--check` / `--apply` / `--capture` / `--from <版本>`（见 `FORK.md` §1） |
+| `lf_normalize.sh` | **行尾预处理**：把文本文件统一成 LF（白名单式，不碰二进制）。CRLF 会让 patch 贴不上 |
 | `tap_r1.py` / `scroll_r1.py` | 安卓上的 R1 测量 |
 
 ---
@@ -210,6 +246,11 @@ moobile/                     ← 项目根（模块名 XiLaiTL/moobile）
 | Gradle wrapper 下载失败 | `services.gradle.org` 不通 | wrapper 已指向腾讯镜像（`_tools/android_env_setup.sh` 会重设） |
 | Maven 依赖卡住 | `dl.google.com`/`repo1.maven.org` 慢 | `android/build.gradle` + `settings.gradle` 已加阿里云镜像 |
 | Web 页整片空白 | Metro 卡死 | 杀掉占用 8081 的进程重启 |
+| **clone 后 `moon check` 报一堆"找不到包"** | 第三方代码（rabbita fork）**不在仓里**，是 `_tools/vendor_sync.sh` 生成的 | 跑 `bash _tools/vendor_sync.sh --apply`（见 §1.5） |
+| **`vendor_sync.sh --check` 说"内容不同"** | ① 你真改了 fork 代码却没回写 patch；② 只是行尾被写成了 CRLF | ① `--capture` 回写；② 先 `bash _tools/lf_normalize.sh` 再 `--check` |
+| **改了 `html/`、`internal/vdom/` 却 `git status` 一片干净** | 那些目录是 gitignore 的生成物，git **不会**提醒你 | 提交前必须 `--capture` 再 `--check`（否则改动静默丢失） |
+| `patch` 报 `malformed patch` / `hunk FAILED` | patch 文件或工作区的行尾是 CRLF | `bash _tools/lf_normalize.sh`；并确认 `.gitattributes` 没被改 |
+| Metro 在目录大挪动后自己死掉 | 它的文件监视器盯着被移动的目录 | 重启 Metro（`cd host && npx expo start --port 8081`） |
 | 模拟器截屏全黑 | 无头 + swiftshader | 带窗口跑（`-gpu auto`）；或用 `uiautomator dump` 代替截图 |
 | app 白屏、日志有 `loadJSBundleFromMetro` | 没做 `adb reverse tcp:8081 tcp:8081` | 见 §3.3 ③ |
 

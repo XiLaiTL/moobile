@@ -235,7 +235,7 @@
 
 - [ ] **T0.2 把 R1 的测量固化成安卓端断言脚本**
   现在 `_tools/tap_r1.py` / `scroll_r1.py` 只是"打印测量值"，没有断言。
-  改成 `_tools/verify_android.py`：解析 `uiautomator dump`，对 §README「R1 判决」那张表逐项断言
+  改成 `_tools/verify_android.py`：解析 `uiautomator dump`，对 `docs/FINDINGS.md`「R1 判决」那张表逐项断言
   （爻辞 2 行、小象 2 行、折叠箭头宽 ≈10dp、爻画列 ≈160dp、间距 ≈26dp），最后打印 `N/N 通过`。
   **判据**：`python3 _tools/verify_android.py` 输出 `通过 N / N`，退出码 0。
 
