@@ -31,7 +31,7 @@
 | moon 有官方模板机制吗 | `moon new <PATH> [--user] [--name]` 只生成内置脚手架，**没有 `--template` 一类开关** | 模板机制要我们自己实现 |
 | `moobile create` 怎么分发 | `moon install <SOURCE>` 支持 **registry 包路径**（`user/module/pkg[@version]`）、git URL、本地路径 | 发布一个 CLI 模块（例如 `XiLaiTL/moobile-cli`），用户 `moon install` 后得到全局 `moobile` 命令 |
 | 有没有"被添加时执行"的钩子 | `moon.mod` 支持 `options(scripts: { "postadd": "…" })`，`moon add` 后自动运行 | 可用于"添加依赖时打印上手 / 迁移清单" |
-| 多端现实 | Android ✓（真机验证过）；Web ✓（react-native-web）；**iOS 只能在非 Windows 机器上构建验证**；**桌面端 Expo 不支持**（要另选 RN macOS/Windows 或 RNW + Electron/Tauri） | 脚手架可以生成四端工程，但**我们的验证能力只覆盖 Android + Web**，iOS/桌面必须显式标注"未验证" |
+| 多端现实 | Android ✓（真机验证过）；Web ✓（react-native-web）；**iOS 只能在非 Windows 机器上构建验证**。桌面端要分两档：<br>① **WebView 壳**（PWA / Tauri / Electron）—— 复用已跑通的 Web 产物，**本机工具链齐备**（实测 Node 24 / Rust 1.97 / WebView2 153 都在），可做可验证；<br>② **原生**（react-native-windows / react-native-macos）—— **当前被版本耦合卡住**：RNW 最新 0.84.0 的 peer 写死 `react-native@0.84.1`，RN-macOS 最新 0.81.9 要 `0.81.6`，而本宿主是 RN 0.86.3 + Expo SDK 57 | 脚手架可生成四端工程，但**验证能力只覆盖 Android + Web +（壳）桌面**；iOS 与原生桌面必须显式标注"未验证/未支持"及原因 |
 | 迁移的硬约束 | `internal` 可见性按模块判 → 使用者必须整模块替换；`style/` 是公开包；`class=` 与 `style="…"` 在 RN 上**静默失效** | 迁移工具的核心价值是**把静默失效变成可见的报告**，而不是追求全自动改写 |
 
 ---
@@ -175,11 +175,15 @@ description 候选（待定稿）：
     但交互式 CLI 与模板管理要自己写
   - 方案二：**Node 包**（`create-moobile-app` 约定）—— 交互（prompts）与模板生态成熟，
     但引入"用 JS 工具生成 MoonBit 项目"的割裂
-- **E2 模板矩阵**：平台（web / android / ios / desktop）× 变体（最小 / 带路由 / 带数据）。
-  先只做**最小**，四平台各一份
+- **E2 模板矩阵**：平台 × 变体（最小 / 带路由 / 带数据）。先只做**最小**。
+  平台分四档，其中桌面再分两级：
+  - `web`（RNW）· `android`（Expo）· `ios`（Expo，**只生成不验证**）
+  - `desktop-webview`：复用 web 产物套壳（**Tauri 优先**，二进制小、走系统 WebView2；PWA 作为零依赖兜底，直接 `expo export --platform web` + manifest 可"安装为应用"）
+  - `desktop-native`（RN Windows/macOS）：**暂不提供**，原因写进生成物说明（见 §1.1 的版本耦合）
 - **E3 交互**：`moobile create my-app` → 勾平台 → 生成 + 打印后续命令
 - **E4 生成物**：Expo 宿主 + `moon.mod` / `moon.work` + 首屏示例 + README + `.gitignore`
-- **E5 诚实标注**：iOS / 桌面端生成的工程标"本机未验证"，并给出各自需要的环境
+- **E5 诚实标注**：iOS 标注"只生成、未在本机验证"；桌面若用户要原生，直接说明"当前 RN 桌面平台落后于 RN 0.86，要么降 RN 版本、要么用 WebView 壳"
+- **E6（前置验证，约半天）**：先用 Tauri 或 PWA 把现有 web 产物包起来跑通一次，证明"桌面壳"这条路成立，再决定要不要进模板 —— **本机可验证**，所以风险低
 - **判据**：干净机器上 `moon install … && moobile create demo-app` → 选 Android → 能在 Expo Go 里跑起来
 
 ### 5.2（F）迁移工具链
@@ -216,7 +220,7 @@ description 候选（待定稿）：
    —— 影响 B 与 A3 的全部工作。
 2. **参考项目**：Dioxus / Tauri / ratatui / 生态内 rabbita，选哪几个当模板？
 3. **yi 移植去留**：§6 的 (a) / (b) / (c)。
-4. **桌面端支持到哪一档**：只生成工程 / 真做 RNW + Electron（或 Tauri） / 暂不支持。
+4. **桌面端支持到哪一档**：① WebView 壳（Tauri / PWA，本机可验证，推荐先做）；② 原生 RN Windows/macOS（当前被 RN 版本耦合卡住，需要先决定"降 RN 版本"还是"等上游"）；③ 暂不支持。
 5. **脚手架技术选型**：MoonBit CLI（`moon install` 分发）还是 Node（`create-*` 约定）。
 6. **性能目标**：给出量化标准（例如"长列表滚动 ≥ 55 fps、首屏 < 1.5 s（中端安卓）"）。
 7. **`demo/` 与 `host/` 是否拆出库仓**：拆出更干净（也顺带满足 §3.1 的"以用户视角验证"），
