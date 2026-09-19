@@ -11,9 +11,8 @@ moobile 是给 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit
 真机（Android 14 模拟器）验证过、**R1 文本排版判决通过**（见 `docs/FINDINGS.md`）。
 **正题（把 `interest/yi`《御纂周易折中》阅读器搬上来）还没开始** —— 计划见 [`PLAN.md`](PLAN.md)。
 
-> ⚠️ **还没正式发布到 mooncakes.io**，但 `moon publish --dry-run` **已通过**
-> （服务端 `202 Accepted`：接受了包名 `XiLaiTL/moobile` 与版本 `0.1.0`，且制品自检 0 错误）。
-> 现在想试用，走 §1.1 的**本地工作区**方式。
+> ✅ **已发布**：`moon add XiLaiTL/moobile@0.1.0`（2026-09 首发，仓库 <https://github.com/XiLaiTL/moobile>）。
+> 也可以按 §1.1 的**本地工作区**方式用它（开发本库时更方便）。
 >
 > **怎么读这份文档**：使用者看 §1 → §2；想理解为什么这么设计看 §3；要改这个库看 §4。
 

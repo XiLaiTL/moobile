@@ -406,7 +406,12 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
   **事件载荷在 RN 上是零值**这件事 + 只支持 `js` target。
   - **判据**：README 里有可直接复制的 MoonBit/JS 两侧样板（`docs/ARCHITECTURE.md` §6 已拟好）
 
-- [~] **T7.4 发布演练**：`--dry-run` ✅ 已过；**正式发布尚未执行**（等确认）。
+- [x] **T7.4 发布演练** ✅ **已完成（2026-09）**：
+  `moon publish --dry-run` → `202 Accepted`；随后**正式 `moon publish` → `Server status: 200 OK`**。
+  **闭环验证**：新建模块 `moon add XiLaiTL/moobile@0.1.0` → 写了个真实应用（模型/更新/视图 + `mount`）
+  → `moon check --target js` 通过 → `moon build --target js` 产出 263 KB 的 `regtest.js`，
+  尾部 `export { … as start }`。也就是说「别人能装上、能用、能构建出给 JS 的产物」三件都成立。
+  同时：GitHub 初始推送完成（`main` + tag `v0.1.0`）。
   - **判据**：装回来的模块能 `moon check` 通过 —— 发布链路闭环（本地 `moon.work` 验证过的是编译面，
     注册表的下载/解包还没验过）
 

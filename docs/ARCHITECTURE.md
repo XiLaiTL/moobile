@@ -380,7 +380,7 @@ export default function App() {
 | T7.1 | 卫生：`readme`/`repository` 字段、`LICENSE`、`THIRD-PARTY-NOTICE`、`.moonignore`。⚠️ 写 `.moonignore` 时**必须把 `.gitignore` 内容整体抄进去再追加**（它会替换同目录 `.gitignore`，见 §4.1） | `moon package --list` 只剩库文件；不再有 readme/repository 告警；`host/`、`_r1/`、`_tools/`、`demo/` 都不在清单里 |
 | T7.2 | 形态 B 重构（库提到模块根 + fork 根包进 `internal/rabbita/`） | `moon check` 0 错误；`_verify.js` 26/26；`check_external.sh` 用**裸模块名**导入并通过 |
 | T7.3 | 公开 API 说明：把 §2 的契约写进 `README.md`（宿主 4 件套 + 5 个组件 + 事件的零值语义 + 只支持 js） | 文档里有可复制的两侧样板 |
-| T7.4 | 真·发布演练：**先登录 mooncakes**（`moon publish --dry-run` 也要凭据）→ `--dry-run` → 发 `0.1.0` → 用**另一个临时模块** `moon add` 装回来编译 | 装回来的模块能 `check` 通过 = 发布链路闭环（本地 `moon.work` 只验过编译面，注册表的下载/解包还没验） |
+| T7.4 ✅ | **已完成**：`--dry-run` → `202 Accepted` → 正式 `moon publish` → **`200 OK`**；随后在新建模块里 `moon add XiLaiTL/moobile@0.1.0` → 写真实应用 → `check` 通过、`build` 产出可被 JS import 的产物 | 发布链路闭环 ✅（2026-09） |
 | T7.5（可选） | 裁剪死重：把 `demo/ clipboard/ dialog/ html/canvas/ http/ nav/ server/ svg/ websocket/` 从 fork 里去掉（根包在形态 B 之后落到 `internal/rabbita/`，去留另议） | 发布体积降 193 KB 区间的死重，依赖从 3 个降到 2 个（去掉 `moonback`） |
 | T7.6（可选） | 宿主脚手架：`App.js` 模板 / npm 包 | 新项目 5 分钟能跑起来 |
 
