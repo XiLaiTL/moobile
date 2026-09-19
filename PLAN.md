@@ -378,7 +378,7 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
 
 **目标**：别人能 `moon add <ns>/moobile`，照文档接一个 30 行的宿主，就把界面跑起来。
 
-- [ ] **T7.1 发布卫生**（半天）
+- [x] **T7.1 发布卫生** ✅ **已完成（2026-09）**
   - `moon.mod` 补 `readme` / `repository`（`moon package` 现在会告警这两个字段）
   - 模块根补 `LICENSE`（我们自己的）+ `THIRD-PARTY-NOTICE`（rabbita 的 Apache-2.0 版权与许可原文，
     我们改了它，需按 Apache-2.0 §4 保留声明并说明修改 —— 改动清单就是 `FORK.md`）
@@ -406,7 +406,7 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
   **事件载荷在 RN 上是零值**这件事 + 只支持 `js` target。
   - **判据**：README 里有可直接复制的 MoonBit/JS 两侧样板（`docs/ARCHITECTURE.md` §6 已拟好）
 
-- [ ] **T7.4 发布演练**：先发 `0.1.0`，再用**另一个临时模块** `moon add` 装回来编译
+- [~] **T7.4 发布演练**：`--dry-run` ✅ 已过；**正式发布尚未执行**（等确认）。
   - **判据**：装回来的模块能 `moon check` 通过 —— 发布链路闭环（本地 `moon.work` 验证过的是编译面，
     注册表的下载/解包还没验过）
 

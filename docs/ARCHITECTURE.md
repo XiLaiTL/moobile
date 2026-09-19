@@ -171,13 +171,17 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | 指标 | 实测 |
 |---|---|
 | 文件数 | **262 个**（+ 目录），原始 1.80 MB，zip **867 KB** |
-| 产物路径 | `_build/publish/moobile-moobile-0.1.0.zip` |
+| 产物路径 | `_build/publish/XiLaiTL-moobile-0.1.0.zip`（改名前叫 `moobile-moobile-…`） |
 | **混进来的非库内容** | `host/` 14 个文件 **741 KB（占 41%！）**、`_r1/` 11 个 49 KB、`_tools/` 14 个 26 KB、`docs/` 3 个 41 KB、`demo/` 5 个 23 KB、`_verify.js` 12 KB、`README.md` 40 KB、`PLAN.md` 25 KB、`DEV.md` 13 KB |
 | 死重的 vendor | 8 个死重包（`svg/ http/ websocket/ nav/ dialog/ clipboard/ server/ html/canvas/`）**+ 模块根包的 5 个文件** = 45 个文件 **193 KB** |
 | 逃不掉的 vendor | `dom/` 78 个 208 KB（**在 16 包闭包里，删不掉**：`html/`、`cmd/`、`internal/vdom` 都要它）、`html/` 16 个 168 KB、`internal/` 31 个 143 KB、`js/` 15 个 44 KB |
 
 **结论**：现在直接发，等于把**开发环境的截图、安卓构建配置、工作量计划书**一起发给用户。
 `.moonignore` 是**必须**的（`moon package --list` 就是验证工具）。
+
+> ✅ **T7.1 之后（2026-09 实测）**：发布包 **262 → 235 个文件、867 KB → 206 KB**，
+> `host/` `_r1/` `_tools/` `demo/` `docs/` 全部排除，只剩库 + `LICENSE` / `README.md` /
+> `THIRD-PARTY-NOTICE.md` / `FORK.md`。并且**解包后 `moon check` 0 错误**。
 
 三条关于打包机制的**实测**注意事项：
 
@@ -242,12 +246,16 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | 外部模块能**构建出 JS 产物** | 同一工作区 `moon build --target js` | ✅ 产出 `_build/js/debug/build/probe/app/app.js`（258 KB），尾部 `export { … as start }` |
 | 链接导出契约对第三方生效 | 上面的 `export` 语句 | ✅ 宿主可以直接 `import { start }` |
 
-### 4.7 命名空间（**已定：`XiLaiTL/moobile`**）
+### 4.7 命名空间（**已定并已实证：`XiLaiTL/moobile`**）
 
 官方规则：**发布到 mooncakes.io 的模块名必须以用户名开头**
 （[Module Configuration](https://docs.moonbitlang.com/en/latest/toolchain/moon/module.html)）。
 
 **已落地**：`moon whoami` → `Logged in as XiLaiTL`，所以模块名 = **`XiLaiTL/moobile`**，
+并且 **`moon publish --dry-run` 服务端返回 `202 Accepted`**：
+`Dry run completed successfully. No changes were made. The dry-run was made for package
+XiLaiTL/moobile version 0.1.0.` —— 也就是说「首段必须是账号名」这条**服务端真的接受了**，
+这里原本标的"未验证"可以划掉了（2026-09 实测）。
 仓库 = `https://github.com/XiLaiTL/moobile.git`（写进 `moon.mod` 的 `repository`）。
 改名的机械工作面（`moon.mod` 的 `name` + 全部 `moon.pkg` 的 import 前缀 + 文档示例 +
 `FORK.md` §1 的重放脚本 + `_tools/ext_probe/`）已经做完并验证。
