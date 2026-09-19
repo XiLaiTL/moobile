@@ -24,6 +24,16 @@
 2. **迁移工具链**：把已有的 rabbita 项目迁到 moobile —— 至少要有"迁移动检报告"，
    最好是样式层的半自动改造。
 
+### 1.1 事实核查（决定这两条能做到什么程度）
+
+| 问题 | 实测事实 | 结论 |
+|---|---|---|
+| moon 有官方模板机制吗 | `moon new <PATH> [--user] [--name]` 只生成内置脚手架，**没有 `--template` 一类开关** | 模板机制要我们自己实现 |
+| `moobile create` 怎么分发 | `moon install <SOURCE>` 支持 **registry 包路径**（`user/module/pkg[@version]`）、git URL、本地路径 | 发布一个 CLI 模块（例如 `XiLaiTL/moobile-cli`），用户 `moon install` 后得到全局 `moobile` 命令 |
+| 有没有"被添加时执行"的钩子 | `moon.mod` 支持 `options(scripts: { "postadd": "…" })`，`moon add` 后自动运行 | 可用于"添加依赖时打印上手 / 迁移清单" |
+| 多端现实 | Android ✓（真机验证过）；Web ✓（react-native-web）；iOS 只能出工程（Windows 上无法构建验证）。桌面/新平台的关键事实：**RN 版本由宿主决定，库不绑版本**（证据见 §1.2）。因此：① **WebView 壳**（PWA / Tauri / Electron）复用已跑通的 Web 产物，本机工具链齐备（实测 Node 24 / Rust 1.97.1 / WebView2 153），可做可验证；② **原生桌面**（react-native-windows / react-native-macos）**可行，代价是多一套宿主** —— RNW 最新 0.84.0 的 peer 写死 `react-native@0.84.1`，与 Expo 57 的 RN 0.86.3 不兼容，所以要另建一个**不带 Expo 的裸 RN 宿主**（pin 它要求的版本），共用同一份 MoonBit 产物；macOS 仍需 Mac 或 CI 才能构建 |
+| 迁移的硬约束 | `internal` 可见性按模块判 → 使用者必须整模块替换；`style/` 是公开包；`class=` 与 `style="…"` 在 RN 上**静默失效** | 迁移工具的核心价值是**把静默失效变成可见的报告**，而不是追求全自动改写 |
+
 ### 1.2 架构事实：宿主是可替换件（"多端"的真正机制）
 
 我们验证过：**库与具体 RN 版本无关，也与 Expo 无关**。
@@ -44,16 +54,6 @@
    `host-webview`（桌面壳）、`host-rn-desktop`（原生桌面，后续）。
 
 ---
-
-### 1.1 事实核查（决定这两条能做到什么程度）
-
-| 问题 | 实测事实 | 结论 |
-|---|---|---|
-| moon 有官方模板机制吗 | `moon new <PATH> [--user] [--name]` 只生成内置脚手架，**没有 `--template` 一类开关** | 模板机制要我们自己实现 |
-| `moobile create` 怎么分发 | `moon install <SOURCE>` 支持 **registry 包路径**（`user/module/pkg[@version]`）、git URL、本地路径 | 发布一个 CLI 模块（例如 `XiLaiTL/moobile-cli`），用户 `moon install` 后得到全局 `moobile` 命令 |
-| 有没有"被添加时执行"的钩子 | `moon.mod` 支持 `options(scripts: { "postadd": "…" })`，`moon add` 后自动运行 | 可用于"添加依赖时打印上手 / 迁移清单" |
-| 多端现实 | Android ✓（真机验证过）；Web ✓（react-native-web）；iOS 只能出工程（Windows 上无法构建验证）。桌面/新平台的关键事实：**RN 版本由宿主决定，库不绑版本**（证据见 §1.2）。因此：① **WebView 壳**（PWA / Tauri / Electron）复用已跑通的 Web 产物，本机工具链齐备（实测 Node 24 / Rust 1.97.1 / WebView2 153），可做可验证；② **原生桌面**（react-native-windows / react-native-macos）**可行，代价是多一套宿主** —— RNW 最新 0.84.0 的 peer 写死 `react-native@0.84.1`，与 Expo 57 的 RN 0.86.3 不兼容，所以要另建一个**不带 Expo 的裸 RN 宿主**（pin 它要求的版本），共用同一份 MoonBit 产物；macOS 仍需 Mac 或 CI 才能构建 |
-| 迁移的硬约束 | `internal` 可见性按模块判 → 使用者必须整模块替换；`style/` 是公开包；`class=` 与 `style="…"` 在 RN 上**静默失效** | 迁移工具的核心价值是**把静默失效变成可见的报告**，而不是追求全自动改写 |
 
 ---
 
@@ -157,7 +157,7 @@ description 候选（待定稿）：
 - **C3** CI：把 C2 接到 GitHub Actions（Windows runner；Android 断言暂不进 CI）
 - **判据**：一条命令跑完全部离线检查；CI 在 PR 上必须绿
 
-### 3.5（C）依赖与 API 面治理
+### 3.5（A）依赖与 API 面治理
 
 **已做的审计**（方法：对每个 `moon.pkg` 反查依赖使用者，不看印象）：
 
@@ -197,7 +197,15 @@ in probe/api@0.1.0 due to internal visibility rules
 **倾向 (ii)**：对使用者更友好（一个 import 拿全），代价只是枚举；且它同时解决了"rabbita 迁移时状态模型怎么写"的问题。
 **这条要在 E/F 轨道之前定**（脚手架与迁移工具都会依赖这个 API 面）。
 
----
+**同批该处理的另外两条（都属"对外诚实性"）**：
+
+- **`supported_targets` 的声明是假的**：14 个包声称 `js+native+wasm`、14 个声称 `+native`，
+  但 `moon check --target native` 实测失败（`html/attrs_event.mbt` 等处报 unbound）。
+  要么把这些声明收敛成 `+js`（native 使用者会**快速失败并拿到清楚理由**），
+  要么把 `html/` 的 native 构建修回来（那是 fork 的又一笔改动）。
+- **公开签名里的 internal 类型**：`render_node(v : @vdom.VNode, …)` 这类函数对外**等于不可调用**
+  （能编译，但碰它的参数类型就报错）。与决策点 7 的 API 面工作同批处理。
+
 
 ---
 
@@ -239,8 +247,7 @@ in probe/api@0.1.0 due to internal visibility rules
     但交互式 CLI 与模板管理要自己写
   - 方案二：**Node 包**（`create-moobile-app` 约定）—— 交互（prompts）与模板生态成熟，
     但引入"用 JS 工具生成 MoonBit 项目"的割裂
-- **E2 模板矩阵**：平台 × 变体（最小 / 带路由 / 带数据）。先只做**最小**。
-  平台分四档，其中桌面再分两级：
+- **E2 模板矩阵**：**以宿主为单位**（不是按"平台"切，理由见 §1.2），变体先只做**最小**：
   - `host-expo`：一份宿主吃 web / android / ios（iOS 只生成不验证）
   - `host-webview`：复用 web 产物套壳（**Tauri 优先**，二进制小、走系统 WebView2；PWA 作为零依赖兜底，`expo export --platform web` + manifest 即可"安装为应用"）
   - `host-rn-desktop`（RN Windows/macOS）：**第一版不提供**，但要写清"为什么现在不做、以后怎么做"——另建一个不带 Expo 的裸 RN 宿主 pin 到 RNW 要求的版本即可（见 §1.2）
@@ -297,7 +304,7 @@ in probe/api@0.1.0 due to internal visibility rules
 ## 8. 建议顺序与里程碑
 
 ```
-P8 近期   C1 安卓断言 → A 治理 + B 叙事（并行）→ C2 检查入口 → C3 CI
+P8 近期   C0 宿主可替换性验证（半天）→ C1 安卓断言 → A 治理 + B 叙事（并行）→ C2 检查入口 → C3 CI
 P9 中期   D1/D2 性能基线 → D3–D5 优化 →（可选）D6 升级演练
 P10 远景  E 脚手架（依赖 A/B/C）  ∥  F1 迁移动检（可提前，成本低）
 ```
