@@ -1,7 +1,0 @@
-import {
-  "moonbitlang/core/debug",
-  "moonbitlang/core/ref",
-  "XiLaiTL/moobile/internal/key",
-}
-
-supported_targets = "js+native+wasm"

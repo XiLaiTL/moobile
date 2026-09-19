@@ -1,0 +1,31 @@
+# .moonignore —— 发布到 mooncakes.io 的文件策略
+#
+# ⚠️ 它会【替换】同目录的 .gitignore，而不是叠加（官方文档语义 + 实测过）。
+#    两个后果方向正好相反，别搞混：
+#      · fork 的目录在 .gitignore 里被排除（第三方代码不进仓），但**必须进发布包**
+#        —— 消费者要拿它们编译，缺了直接编不过。所以这里**不能**列它们（不列 = 包含）。
+#      · host/、_r1/、_tools/ 这些在 .gitignore 里也被排除，这里要再列一次（因为替换）。
+#
+# 发布范围 = **只发库**：fork（含 patch 结果）+ 模块根包（moobile 库本体）+ style/
+# 不发：Expo 宿主、演示应用、工具脚本、R1 测量证据、设计文档、计划书
+#
+# ⚠️ 实测坑：`/docs/`（锚定 + 尾斜杠）在 moon 里**不生效**，`/docs/**` 才管用。
+
+/_build/
+/.mooncakes/
+/vendor/
+
+# 应用侧与工具（不是库的一部分）
+/host/
+/demo/
+/_tools/
+/_r1/
+/_verify.js
+/_r1.js
+/build.sh
+/*.png
+
+# 文档：README 留着（registry 要显示），其余不发
+/docs/**
+/*.md
+!/README.md

@@ -1,0 +1,63 @@
+--- a/internal/vdom/diff.mbt
++++ b/internal/vdom/diff.mbt
+@@ -16,7 +16,7 @@
+ #cfg(target="js")
+ priv struct IProps {
+   props : Props
+-  slots : Map[String, Ref[(@dom.Event, &Scheduler) -> Unit]]
++  slots : Map[String, Ref[(Event, &Scheduler) -> Unit]]
+ }
+ 
+ ///|
+@@ -123,10 +123,10 @@
+   captured_link_listener : @dom.Listener,
+ ) -> IProps {
+   let { handlers, attrs, props: properties, styles } = props
+-  let slots : Map[String, Ref[(@dom.Event, &Scheduler) -> Unit]] = Map([])
++  let slots : Map[String, Ref[(Event, &Scheduler) -> Unit]] = Map([])
+   for event, handler in handlers {
+     let slot = @ref.new(handler)
+-    element.add_event_listener(event, event => (slot.val)(event, scheduler))
++    element.add_event_listener(event, event => (slot.val)(dom_event(event), scheduler))
+     slots[event] = slot
+   }
+   if is_captured_link_tag(tag) {
+@@ -146,7 +146,8 @@
+     panic()
+   }
+   for name, value in styles {
+-    sheet.set_property(name, value)
++    // 类型化样式 → CSSOM。camelCase 键要转成 CSS 语法，长度要补 px。
++    sheet.set_property(@style.css_property_name(name), value.to_css())
+   }
+   { props, slots }
+ }
+@@ -598,7 +599,7 @@
+       slot.val = handler
+     } else {
+       let slot = @ref.new(handler)
+-      parent.add_event_listener(event, event => (slot.val)(event, scheduler))
++      parent.add_event_listener(event, event => (slot.val)(dom_event(event), scheduler))
+       slots[event] = slot
+     }
+   }
+@@ -640,16 +641,16 @@
+   }
+   for key, _ in old.props.styles {
+     if !new.styles.contains(key) {
+-      stylesheet.remove_property(key) |> ignore
++      stylesheet.remove_property(@style.css_property_name(key)) |> ignore
+     }
+   }
+   for key, value2 in new.styles {
+     if old.props.styles.get(key) is Some(value1) {
+       if value1 != value2 {
+-        stylesheet.set_property(key, value2)
++        stylesheet.set_property(@style.css_property_name(key), value2.to_css())
+       }
+     } else {
+-      stylesheet.set_property(key, value2)
++      stylesheet.set_property(@style.css_property_name(key), value2.to_css())
+     }
+   }
+   { props: new, slots }

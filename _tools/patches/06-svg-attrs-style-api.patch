@@ -1,0 +1,20 @@
+--- a/svg/attrs.mbt
++++ b/svg/attrs.mbt
+@@ -46,9 +46,14 @@
+ }
+ 
+ ///|
+-/// Set a style declaration.
+-pub fn Attrs::style(self : Attrs, key : String, value : String) -> Attrs {
+-  self.0.styles[key] = value
++/// 合并一份**类型化**样式。
++///
++/// ★ moobile 改造：与 `html/attrs.mbt` 同步 —— 字符串样式入口已删除，
++/// 见那里的说明。SVG 属性的取值仍是 `String`，由 `StyleValue::Str` 承载。
++pub fn Attrs::styles(self : Attrs, s : @style.Style) -> Attrs {
++  for entry in s.entries() {
++    self.0.styles[entry.0] = entry.1
++  }
+   self
+ }
+ 

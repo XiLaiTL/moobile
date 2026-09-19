@@ -1,0 +1,10 @@
+--- a/server/moon.pkg
++++ b/server/moon.pkg
+@@ -1,6 +1,6 @@
+ import {
+   "XiLaiTL/moobile/html",
+-  "XiLaiTL/moobile",
++  "XiLaiTL/moobile/internal/rabbita" @rabbita,
+   "hackwaly/moonback/middlewares/unstable_static" @static,
+   "moonbitlang/async/fs",
+   "moonbitlang/core/env",

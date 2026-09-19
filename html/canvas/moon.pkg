@@ -1,5 +1,0 @@
-import {
-  "XiLaiTL/moobile/dom",
-}
-
-warnings = "-unused_package"

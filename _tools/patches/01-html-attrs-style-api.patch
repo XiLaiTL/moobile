@@ -1,0 +1,41 @@
+--- a/html/attrs.mbt
++++ b/html/attrs.mbt
+@@ -5,12 +5,9 @@
+ using @variant {type Variant}
+ 
+ ///|
+-#cfg(target="js")
+-using @dom {type Event}
+-
+-///|
+-#cfg(not(target="js"))
+-type Event = Unit
++/// ★ moobile 改造：`Event` 现在取自 `@vdom`（后端无关的不透明类型），
++/// 不再从 `@dom` 引入。DOM 后端在监听器边界处强转，React 后端原样透传。
++using @vdom {type Event}
+ 
+ ///|
+ struct Attrs(Props)
+@@ -60,9 +57,19 @@
+ }
+ 
+ ///|
+-/// Set a style declaration.
+-pub fn Attrs::style(self : Attrs, key : String, value : String) -> Attrs {
+-  self.0.styles[key] = value
++/// 合并一份**类型化**样式 —— 这是唯一的结构化样式入口。
++///
++/// ★ moobile 改造：原来的 `Attrs::style(key : String, value : String)` 已删除。
++/// 理由有两条，都有实测支撑：
++///
++/// 1. 字符串通道让 `fontWeight`（RN 要字符串）与 `fontSize`（RN 要数字）
++///    在编译期无法区分，只能靠运行时白名单兜（见 README 的 F3）。
++/// 2. 它**零调用点** —— 唯一真实应用 `interest/yi` 从未用过结构化样式
++///    （136 处 `class=` / 0 处 `style=`），所以删掉不破坏任何代码。
++pub fn Attrs::styles(self : Attrs, s : @style.Style) -> Attrs {
++  for entry in s.entries() {
++    self.0.styles[entry.0] = entry.1
++  }
+   self
+ }
+ 

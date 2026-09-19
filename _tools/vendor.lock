@@ -1,0 +1,3 @@
+// vendor.lock —— 生成式 vendor 的基准：第三方代码不进仓，靠「版本 + patch 系列」重建。
+// 改这个版本号 = 试升级（见 _tools/vendor_sync.sh --from）。
+RABBITA_VERSION=0.15.4

@@ -1,9 +1,0 @@
-import {
-  "XiLaiTL/moobile/dom",
-  "XiLaiTL/moobile/js",
-  "XiLaiTL/moobile/cmd",
-}
-
-warnings = "-unused_package"
-
-supported_targets = "js+native+wasm"

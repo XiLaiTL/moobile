@@ -1,0 +1,130 @@
+--- a/html/attrs_event.mbt
++++ b/html/attrs_event.mbt
+@@ -93,8 +93,8 @@
+   event : String,
+   msg : (MouseEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_mouse_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).mouse_event)(raw_event)))
+   })
+ }
+ 
+@@ -116,8 +116,8 @@
+   event : String,
+   msg : (KeyboardEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_keyboard_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).keyboard_event)(raw_event)))
+   })
+ }
+ 
+@@ -139,8 +139,8 @@
+   event : String,
+   msg : (FocusEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_focus_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).focus_event)(raw_event)))
+   })
+ }
+ 
+@@ -162,8 +162,8 @@
+   event : String,
+   msg : (DragEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_drag_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).drag_event)(raw_event)))
+   })
+ }
+ 
+@@ -185,8 +185,8 @@
+   event : String,
+   msg : (ClipboardEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_clipboard_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).clipboard_event)(raw_event)))
+   })
+ }
+ 
+@@ -208,8 +208,8 @@
+   event : String,
+   msg : (CompositionEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_composition_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).composition_event)(raw_event)))
+   })
+ }
+ 
+@@ -231,8 +231,8 @@
+   event : String,
+   msg : (WheelEvent) -> Cmd,
+ ) -> Attrs {
+-  self.handler(event, (event, scheduler) => {
+-    scheduler.add(msg(event.to_wheel_event().unwrap()))
++  self.handler(event, (raw_event, scheduler) => {
++    scheduler.add(msg(((event_decoders.val).wheel_event)(raw_event)))
+   })
+ }
+ 
+@@ -337,6 +337,8 @@
+ #cfg(target="js")
+ pub fn Attrs::on_scroll(self : Attrs, msg : (UIEvent) -> Cmd) -> Attrs {
+   self.handler("scroll", (event, scheduler) => {
++    // ★ moobile 改造：入口处把后端无关的 `Event` 转成 `@dom.Event`。
++    let event : @dom.Event = @vdom.as_dom_event(event)
+     scheduler.add(msg(scroll_event_as_ui_event(event)))
+   })
+ }
+@@ -357,7 +359,7 @@
+ #cfg(target="js")
+ pub fn Attrs::on_beforeinput(self : Attrs, msg : (InputEvent) -> Cmd) -> Attrs {
+   self.handler("beforeinput", (event, scheduler) => {
+-    scheduler.add(msg(event.to_input_event().unwrap()))
++    scheduler.add(msg(((event_decoders.val).input_event)(event)))
+   })
+ }
+ 
+@@ -372,7 +374,7 @@
+ #cfg(target="js")
+ pub fn Attrs::on_input(self : Attrs, msg : (InputEvent) -> Cmd) -> Attrs {
+   self.handler("input", (event, scheduler) => {
+-    scheduler.add(msg(event.to_input_event().unwrap()))
++    scheduler.add(msg(((event_decoders.val).input_event)(event)))
+   })
+ }
+ 
+@@ -387,7 +389,7 @@
+ #cfg(target="js")
+ pub fn Attrs::on_change(self : Attrs, msg : (InputEvent) -> Cmd) -> Attrs {
+   self.handler("change", (event, scheduler) => {
+-    scheduler.add(msg(event.to_input_event().unwrap()))
++    scheduler.add(msg(((event_decoders.val).input_event)(event)))
+   })
+ }
+ 
+@@ -420,12 +422,12 @@
+ 
+ ///|
+ pub fn Attrs::on_submit(self : Attrs, msg : (DomEvent) -> Cmd) -> Attrs {
+-  self.handler("submit", (event, scheduler) => scheduler.add(msg(event)))
++  self.handler("submit", (event, scheduler) => scheduler.add(msg(((event_decoders.val).dom_event)(event))))
+ }
+ 
+ ///|
+ pub fn Attrs::on_reset(self : Attrs, msg : (DomEvent) -> Cmd) -> Attrs {
+-  self.handler("reset", (event, scheduler) => scheduler.add(msg(event)))
++  self.handler("reset", (event, scheduler) => scheduler.add(msg(((event_decoders.val).dom_event)(event))))
+ }
+ 
+ ///|

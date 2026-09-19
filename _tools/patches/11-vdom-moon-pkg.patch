@@ -1,0 +1,8 @@
+--- a/internal/vdom/moon.pkg
++++ b/internal/vdom/moon.pkg
+@@ -1,4 +1,5 @@
+ import {
++  "XiLaiTL/moobile/style",
+   "XiLaiTL/moobile/dom",
+   "XiLaiTL/moobile/cmd",
+   "XiLaiTL/moobile/variant",

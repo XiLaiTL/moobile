@@ -1,9 +1,0 @@
-import {
-  "XiLaiTL/moobile/style",
-  "XiLaiTL/moobile/internal/vdom",
-  "XiLaiTL/moobile/variant",
-  "XiLaiTL/moobile/dom",
-  "XiLaiTL/moobile/html",
-}
-
-supported_targets = "js+native+wasm"

@@ -1,0 +1,8 @@
+--- a/svg/moon.pkg
++++ b/svg/moon.pkg
+@@ -1,4 +1,5 @@
+ import {
++  "XiLaiTL/moobile/style",
+   "XiLaiTL/moobile/internal/vdom",
+   "XiLaiTL/moobile/variant",
+   "XiLaiTL/moobile/dom",

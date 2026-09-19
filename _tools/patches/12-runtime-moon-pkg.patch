@@ -1,0 +1,9 @@
+--- a/internal/runtime/moon.pkg
++++ b/internal/runtime/moon.pkg
+@@ -23,5 +23,6 @@
+     "host_browser.mbt": [ "js" ],
+     "host_hydration.mbt": [ "js" ],
+     "host_ssr.mbt": [ "wasm", "native" ],
++    "react_host.mbt": [ "js" ],
+   },
+ )

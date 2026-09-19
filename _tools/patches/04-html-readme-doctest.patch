@@ -1,0 +1,20 @@
+--- a/html/README.mbt.md
++++ b/html/README.mbt.md
+@@ -144,7 +144,7 @@
+ ```mbt check
+ ///|
+ let html1 : Html = div(
+-  attrs=Attrs::build().class("card").style("gap", "12px").data("..."),
++  attrs=Attrs::build().class("card").styles(@style.Style::new().gap(12)).data("..."),
+   [text("Hello")],
+ )
+ ```
+@@ -157,7 +157,7 @@
+ ///|
+ let html2 : Html = node(
+   "div",
+-  Attrs::build().class("card").style("gap", "12px").data("..."),
++  Attrs::build().class("card").styles(@style.Style::new().gap(12)).data("..."),
+   [p("text1"), p("text2")],
+ )
+ ```

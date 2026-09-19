@@ -28,3 +28,23 @@ shot-*.png
 
 # ---- 杂项 ----
 *.log
+
+# ---- 第三方代码（rabbita fork）：**不进仓**，靠 _tools/vendor_sync.sh 重建 ----
+# 真相 = _tools/vendor.lock 的版本 + _tools/patches/*.patch
+# （MoonBit 的 internal 可见性要求 fork 必须铺在模块根，所以这是生成物）
+/clipboard/
+/cmd/
+/common/
+/dialog/
+/dom/
+/html/
+/http/
+/internal/
+/js/
+/nav/
+/server/
+/sub/
+/svg/
+/url/
+/variant/
+/websocket/

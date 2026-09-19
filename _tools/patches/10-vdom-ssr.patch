@@ -1,0 +1,23 @@
+--- a/internal/vdom/ssr.mbt
++++ b/internal/vdom/ssr.mbt
+@@ -51,7 +51,7 @@
+ fn write_styles_attr(
+   buf : StringBuilder,
+   attrs : Map[String, String],
+-  styles : Map[String, String],
++  styles : Map[String, @style.StyleValue],
+ ) -> Unit {
+   if !attrs.contains("style") && styles.is_empty() {
+     return
+@@ -66,9 +66,9 @@
+     if need_separator {
+       buf.write_char(';')
+     }
+-    buf.write_string(name)
++    buf.write_string(@style.css_property_name(name))
+     buf.write_char(':')
+-    write_escaped_attr_value(buf, value)
++    write_escaped_attr_value(buf, value.to_css())
+     need_separator = true
+   }
+   buf.write_char('"')
