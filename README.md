@@ -133,7 +133,7 @@ cd <你的 Expo 工程> && npx expo start --port 8081
 | 标签 | **42 条**有映射（`render.mbt` 的 `tag_table()`）；**12 条明确排除**并写明理由（`excluded_tags()`）：`img` `video` `audio` `canvas` `svg` `table` `iframe` `select` `details` `summary` `dialog` `marquee` |
 | 未收录标签 | 兜底成 `View`（不崩），但**会计数** —— `unmapped_tag_count()`，验证脚本断言为 0 |
 | 不可移植节点 | `Children::RawHtml` 会被跳过并计数（`unsupported_count()`） |
-| 事件载荷 | `Mouse` / `Keyboard` / `Scroll` 在 React 后端**一律是零值**：能写、不崩、**拿不到坐标**。真实手势要接 RN 手势通道（`PLAN.md` T3.4） |
+| 事件载荷 | `Mouse` / `Keyboard` / `Scroll` 在 React 后端**一律是零值**：能写、不崩、**拿不到坐标**。真实手势要接 RN 手势通道（见 `PLAN.md` 的 D/E 轨道与设计文档 R2） |
 | target | **只支持 `js`**（`moon check --target native` 会失败，见 `docs/ARCHITECTURE.md` §4.4-3） |
 | 样式 | 类型化 `StyleValue`；`class=` 与 `style="…"` 在 RN 上**不生效**（前者 RN 无类名，后者会被类型化样式覆盖）—— **这两件不报错，只是没效果** |
 | 宿主组件 | 必须提供 `View` `Text` `Pressable` `TextInput` `ScrollView` 五个；缺哪个，对应标签就变 `undefined` |
@@ -261,7 +261,8 @@ bash _tools/lf_normalize.sh --check  # 行尾检查
 
 | 文档 | 内容 |
 |---|---|
-| [`PLAN.md`](PLAN.md) | **剩余工作计划**：分阶段待办、完成判据、风险与决策点 |
+| [`PLAN.md`](PLAN.md) | **当前计划**：定位与远景（多端脚手架、迁移工具链）、六条轨道、决策点与里程碑 |
+| [`docs/PLAN-2026Q3-yi-port.md`](docs/PLAN-2026Q3-yi-port.md) | （归档）以"移植 yi 阅读器"为终点的旧计划；旧任务编号（T0.x–T7.x）以它为准 |
 | [`DEV.md`](DEV.md) | **环境与运行手册**：工具链、磁盘布局、Web/安卓怎么起、排错表、禁区 |
 | [`FORK.md`](FORK.md) | **对 rabbita 改了什么**：15 个 patch 逐条说明 + 跟版/升级流程 + 上游化提案 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **架构总览 + 发布成库的可行性**：分层与契约、依赖闭包、发布体检 |

@@ -94,7 +94,7 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 
 **换来的语义要说清楚**：是"**不崩、可降级**"，不是"载荷等价"。
 `Mouse`/`Keyboard`/`Scroll` 在 React 后端一律返回**零值**，
-读取它们的处理器会拿到 0 —— 真实手势数据要接 RN 手势系统（设计文档 R2 / `PLAN.md` T3.4）。
+读取它们的处理器会拿到 0 —— 真实手势数据要接 RN 手势系统（设计文档 R2 / 旧计划 `docs/PLAN-2026Q3-yi-port.md` 的 T3.4）。
 
 ### 2.3 patch 15 的细节（`internal/runtime/react_host.mbt`）
 
@@ -139,7 +139,7 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 | **与我们冲突的文件** | **5 个**：`internal/vdom/{vdom,diff,ssr}.mbt`、`html/html_utils.mbt`、`internal/runtime/moon.pkg`（另外 8 个我们改过的文件上游没动，patch 可直接重放） |
 | 上游有没有采纳我们的提案 | **没有**：0.16.0 里 `Event` 仍别名 `@dom.Event`、`Props.styles` 仍是 `Map[String, String]` |
 | 0.16.0 里的 breaking 改动 | `refactor(js)!: migrate to standard async Promise` —— `js/async.mbt` 从 `pub async fn suspend` 变成 `pub type Promise[T] = @js_async.Promise[T]`，`js/js.mbti` 被删，`internal/runtime/moon.pkg` 的依赖从 `moonbitlang/async/js_async` 换成 `rabbita/js` |
-| 对我们有价值的 | 只有一条：`feat: add HTML memoization`（长列表性能，`PLAN.md` T5.5 关心的事） |
+| 对我们有价值的 | 只有一条：`feat: add HTML memoization`（长列表性能，对应新 `PLAN.md` 的 D 轨道） |
 
 **结论与触发条件**：现在**不升** —— 换来的东西（SSR 修复、dom 修复、依赖对齐）对我们几乎没用，
 代价却是重做 5 处核心 patch + 一个 breaking 的 async 迁移 + 全套验证重跑。

@@ -110,7 +110,7 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 `html/` 的公开处理器签名是 DOM 味的：`on_click : (MouseEvent) -> Cmd`、`on_scroll : (UIEvent) -> Cmd`…
 而在 React 后端下，`Mouse`/`Keyboard`/`Scroll` 这些载荷**一律是零值**
 （`html/event_decoders.mbt` 的透传表，见 `FORK.md` §2.5）。
-含义：**能写、不崩、坐标拿不到**。要真实手势数据得走 RN 手势通道（`PLAN.md` T3.4）。
+含义：**能写、不崩、坐标拿不到**。要真实手势数据得走 RN 手势通道（旧计划 `docs/PLAN-2026Q3-yi-port.md` 的 T3.4）。
 
 ---
 
@@ -160,7 +160,7 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | `internal/rabbita/` | 是 rabbita 的主 API（`App` / `run` / `Elmish` / `Val`），不是我们的库 —— 正是 §4.4-1 那个坑的来源 |
 
 > 裁剪这 10 个包，发布面就从 26 个包降到 16 个、依赖从 3 个降到 2 个。
-> 代价是 fork 的 diff 从"改 4 个包"变成"删 10 个包"，跟版脚本要多一份删除清单（`PLAN.md` T7.5）。
+> 代价是 fork 的 diff 从"改 4 个包"变成"删 10 个包"，跟版脚本要多一份删除清单（旧计划 `docs/PLAN-2026Q3-yi-port.md` 的 T7.5）。
 
 ---
 
