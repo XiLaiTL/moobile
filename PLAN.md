@@ -24,6 +24,27 @@
 2. **迁移工具链**：把已有的 rabbita 项目迁到 moobile —— 至少要有"迁移动检报告"，
    最好是样式层的半自动改造。
 
+### 1.2 架构事实：宿主是可替换件（"多端"的真正机制）
+
+我们验证过：**库与具体 RN 版本无关，也与 Expo 无关**。
+
+| 检查 | 实测结果 |
+|---|---|
+| 库侧向宿主索要什么 | 只有 `MOBILE_HOST.react.{createElement, Fragment, cloneElement}`、`components` 表（5 个组件名）、以及 `scheduleTask` / `scheduleFrame` 两个调度钩子 —— **没有任何 RN 版本相关的 API** |
+| 库发出的 RN 专有 props | 只有 `onPress` / `onLongPress` / `onChangeText` / `onFocus` / `onBlur` 与 `style` 对象；这些在 RN 各版本间长期稳定 |
+| Expo 出现在哪里 | **只在宿主工程**：`host/index.js` 一行 `registerRootComponent`（换成裸 RN 就是 `AppRegistry.registerComponent`）；`host/app.json` 与 prebuild 流程 |
+| 我们自己的工具链 | `build.sh` / `_verify.js` / `_r1.js` **完全不引用 Expo**，只产出并喂 JS 产物 |
+
+**推论（这是本计划后面几条轨道的依据）**：
+
+1. 支持一个新平台，通常等于**写一个新宿主**（约 30 行 + 构建配置），而不是改库；
+2. 桌面端的"版本冲突"是**宿主之间的冲突**（Expo 宿主 vs RNW 宿主），各宿主可以各自 pin 自己的 RN 版本，
+   共享同一个 MoonBit 产物；
+3. 因此脚手架真正的可配置维度是**宿主**，不是"平台"：`host-expo`（android/ios/web）、
+   `host-webview`（桌面壳）、`host-rn-desktop`（原生桌面，后续）。
+
+---
+
 ### 1.1 事实核查（决定这两条能做到什么程度）
 
 | 问题 | 实测事实 | 结论 |
@@ -31,7 +52,7 @@
 | moon 有官方模板机制吗 | `moon new <PATH> [--user] [--name]` 只生成内置脚手架，**没有 `--template` 一类开关** | 模板机制要我们自己实现 |
 | `moobile create` 怎么分发 | `moon install <SOURCE>` 支持 **registry 包路径**（`user/module/pkg[@version]`）、git URL、本地路径 | 发布一个 CLI 模块（例如 `XiLaiTL/moobile-cli`），用户 `moon install` 后得到全局 `moobile` 命令 |
 | 有没有"被添加时执行"的钩子 | `moon.mod` 支持 `options(scripts: { "postadd": "…" })`，`moon add` 后自动运行 | 可用于"添加依赖时打印上手 / 迁移清单" |
-| 多端现实 | Android ✓（真机验证过）；Web ✓（react-native-web）；**iOS 只能在非 Windows 机器上构建验证**。桌面端要分两档：<br>① **WebView 壳**（PWA / Tauri / Electron）—— 复用已跑通的 Web 产物，**本机工具链齐备**（实测 Node 24 / Rust 1.97 / WebView2 153 都在），可做可验证；<br>② **原生**（react-native-windows / react-native-macos）—— **当前被版本耦合卡住**：RNW 最新 0.84.0 的 peer 写死 `react-native@0.84.1`，RN-macOS 最新 0.81.9 要 `0.81.6`，而本宿主是 RN 0.86.3 + Expo SDK 57 | 脚手架可生成四端工程，但**验证能力只覆盖 Android + Web +（壳）桌面**；iOS 与原生桌面必须显式标注"未验证/未支持"及原因 |
+| 多端现实 | Android ✓（真机验证过）；Web ✓（react-native-web）；iOS 只能出工程（Windows 上无法构建验证）。桌面/新平台的关键事实：**RN 版本由宿主决定，库不绑版本**（证据见 §1.2）。因此：① **WebView 壳**（PWA / Tauri / Electron）复用已跑通的 Web 产物，本机工具链齐备（实测 Node 24 / Rust 1.97.1 / WebView2 153），可做可验证；② **原生桌面**（react-native-windows / react-native-macos）**可行，代价是多一套宿主** —— RNW 最新 0.84.0 的 peer 写死 `react-native@0.84.1`，与 Expo 57 的 RN 0.86.3 不兼容，所以要另建一个**不带 Expo 的裸 RN 宿主**（pin 它要求的版本），共用同一份 MoonBit 产物；macOS 仍需 Mac 或 CI 才能构建 |
 | 迁移的硬约束 | `internal` 可见性按模块判 → 使用者必须整模块替换；`style/` 是公开包；`class=` 与 `style="…"` 在 RN 上**静默失效** | 迁移工具的核心价值是**把静默失效变成可见的报告**，而不是追求全自动改写 |
 
 ---
@@ -128,6 +149,7 @@ description 候选（待定稿）：
 
 ### 3.4（C）回归与验证补齐
 
+- **C0 宿主可替换性验证（约半天）**：把 `host/index.js` 的 Expo 依赖换成裸 RN 的 `AppRegistry`，或在最小裸 RN 工程里跑一次 —— 目的是把 §1.2 的论断**变成实测事实**。这条一旦成立，桌面原生、多宿主脚手架、以及"换 RN 版本"都不再是未知量
 - **C1** 把 R1 的测量固化成安卓端断言脚本（原 T0.2）：`_tools/verify_android.py`，
   解析 `uiautomator dump`，对判决表逐项断言，输出 `通过 N / N`
 - **C2** 离线检查入口 `_tools/verify_all.sh`：`moon check` + `check_external.sh` +
@@ -177,12 +199,12 @@ description 候选（待定稿）：
     但引入"用 JS 工具生成 MoonBit 项目"的割裂
 - **E2 模板矩阵**：平台 × 变体（最小 / 带路由 / 带数据）。先只做**最小**。
   平台分四档，其中桌面再分两级：
-  - `web`（RNW）· `android`（Expo）· `ios`（Expo，**只生成不验证**）
-  - `desktop-webview`：复用 web 产物套壳（**Tauri 优先**，二进制小、走系统 WebView2；PWA 作为零依赖兜底，直接 `expo export --platform web` + manifest 可"安装为应用"）
-  - `desktop-native`（RN Windows/macOS）：**暂不提供**，原因写进生成物说明（见 §1.1 的版本耦合）
+  - `host-expo`：一份宿主吃 web / android / ios（iOS 只生成不验证）
+  - `host-webview`：复用 web 产物套壳（**Tauri 优先**，二进制小、走系统 WebView2；PWA 作为零依赖兜底，`expo export --platform web` + manifest 即可"安装为应用"）
+  - `host-rn-desktop`（RN Windows/macOS）：**第一版不提供**，但要写清"为什么现在不做、以后怎么做"——另建一个不带 Expo 的裸 RN 宿主 pin 到 RNW 要求的版本即可（见 §1.2）
 - **E3 交互**：`moobile create my-app` → 勾平台 → 生成 + 打印后续命令
 - **E4 生成物**：Expo 宿主 + `moon.mod` / `moon.work` + 首屏示例 + README + `.gitignore`
-- **E5 诚实标注**：iOS 标注"只生成、未在本机验证"；桌面若用户要原生，直接说明"当前 RN 桌面平台落后于 RN 0.86，要么降 RN 版本、要么用 WebView 壳"
+- **E5 诚实标注**：iOS 标注"只生成、未在本机验证"；桌面原生要说明"需要第二个宿主（不带 Expo、pin RNW 要求的 RN 版本），当前未提供"
 - **E6（前置验证，约半天）**：先用 Tauri 或 PWA 把现有 web 产物包起来跑通一次，证明"桌面壳"这条路成立，再决定要不要进模板 —— **本机可验证**，所以风险低
 - **E7 跨平台产物**：桌面/移动的原生产物**不能交叉编译**（Windows 上只能出 Windows 桌面与 Android APK；macOS、Linux 桌面与 iOS 要在各自系统上构建）。可行的做法是脚手架直接生成 **GitHub Actions 构建矩阵**（windows / macos / ubuntu 三个 runner），这样"我们没 Mac 也能验证 iOS 与 macOS 产物能不能构建"
 - **判据**：干净机器上 `moon install … && moobile create demo-app` → 选 Android → 能在 Expo Go 里跑起来
@@ -221,7 +243,7 @@ description 候选（待定稿）：
    —— 影响 B 与 A3 的全部工作。
 2. **参考项目**：Dioxus / Tauri / ratatui / 生态内 rabbita，选哪几个当模板？
 3. **yi 移植去留**：§6 的 (a) / (b) / (c)。
-4. **桌面端支持到哪一档**：① WebView 壳（Tauri / PWA，本机可验证，推荐先做）；② 原生 RN Windows/macOS（当前被 RN 版本耦合卡住，需要先决定"降 RN 版本"还是"等上游"）；③ 暂不支持。
+4. **桌面端支持到哪一档**：① WebView 壳（Tauri / PWA，本机可验证，推荐先做）；② 原生 RN Windows/macOS（**可行但要维护第二个宿主**：裸 RN + RNW，各自 pin 版本，共用同一份产物）；③ 暂不支持。
 5. **脚手架技术选型**：MoonBit CLI（`moon install` 分发）还是 Node（`create-*` 约定）。
 6. **性能目标**：给出量化标准（例如"长列表滚动 ≥ 55 fps、首屏 < 1.5 s（中端安卓）"）。
 7. **`demo/` 与 `host/` 是否拆出库仓**：拆出更干净（也顺带满足 §3.1 的"以用户视角验证"），
