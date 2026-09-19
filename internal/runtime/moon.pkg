@@ -1,17 +1,17 @@
 import {
-  "moobile/moobile/internal/vdom",
-  "moobile/moobile/dom",
-  "moobile/moobile/common",
-  "moobile/moobile/cmd",
-  "moobile/moobile/sub",
+  "XiLaiTL/moobile/internal/vdom",
+  "XiLaiTL/moobile/dom",
+  "XiLaiTL/moobile/common",
+  "XiLaiTL/moobile/cmd",
+  "XiLaiTL/moobile/sub",
   "moonbitlang/core/queue",
   "moonbitlang/core/json",
   "moonbitlang/async/js_async",
   "moonbitlang/async",
-  "moobile/moobile/internal/key",
-  "moobile/moobile/internal/any",
-  "moobile/moobile/internal/slotmap",
-  "moobile/moobile/internal/duplix",
+  "XiLaiTL/moobile/internal/key",
+  "XiLaiTL/moobile/internal/any",
+  "XiLaiTL/moobile/internal/slotmap",
+  "XiLaiTL/moobile/internal/duplix",
 }
 
 warnings = "-unused_package"

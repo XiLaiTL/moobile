@@ -8,5 +8,5 @@ preferred_target = "js"
 // 这里必须写版本号 —— 新版 moon.mod 的 import 只接受带版本的 registry 形式，
 // 工作区解析时 `@版本号` 会被忽略。
 import {
-  "moobile/moobile@0.1.0",
+  "XiLaiTL/moobile@0.1.0",
 }

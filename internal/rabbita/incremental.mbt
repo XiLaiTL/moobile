@@ -703,7 +703,7 @@ pub type Resource[T] = Val[Status[T]]
 ///
 /// ```mbt nocheck
 /// fn chapter() -> Val[Html] {
-///   // Import "moobile/moobile/http" as @http in moon.pkg.
+///   // Import "XiLaiTL/moobile/http" as @http in moon.pkg.
 ///   let chapter = @rabbita.create_resource(inject => {
 ///     @http.get("/chapter.md").expect_text(inject)
 ///   })

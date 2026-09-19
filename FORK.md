@@ -15,7 +15,7 @@
 | 项 | 做法 |
 |---|---|
 | 位置 | 模块根下（`html/` `cmd/` `dom/` `internal/` …），与我们自己的 `moobile/` `style/` `demo/` 平级 |
-| 模块名 | `moobile/moobile`（原 `moonbit-community/rabbita`） |
+| 模块名 | `XiLaiTL/moobile`（原 `moonbit-community/rabbita`） |
 | 为什么必须在同一模块 | `internal` 包的可见性是**按模块**判的；只有同模块才能 import `internal/vdom` |
 | 关键约束 | **`internal/` 必须直接在模块根下**（嵌在 `vendor/internal/` 里会被判为不可见） |
 
@@ -40,21 +40,21 @@ find html cmd common dom internal js nav server sub svg url variant websocket \
 
 # 4) 改模块名前缀（67 处，全在 moon.pkg）
 for d in <同上列表>; do
-  grep -rl 'moonbit-community/rabbita' "$d" | xargs -r sed -i 's|moonbit-community/rabbita|moobile/moobile|g'
+  grep -rl 'moonbit-community/rabbita' "$d" | xargs -r sed -i 's|moonbit-community/rabbita|XiLaiTL/moobile|g'
 done
-sed -i 's|moonbit-community/rabbita|moobile/moobile|g' moon.pkg *.mbt
+sed -i 's|moonbit-community/rabbita|XiLaiTL/moobile|g' moon.pkg *.mbt
 
 # 5) ★ 修根包别名：路径改名后推导出的别名会从 @rabbita 变成 @moobile，
 #    但代码里写的是 @rabbita。显式补上别名即可（只有 2 处）。
-#    ⚠️ 模式串**必须带结尾引号**：`moobile/moobile` 是 `moobile/moobile/html` 等
+#    ⚠️ 模式串**必须带结尾引号**：`XiLaiTL/moobile` 是 `XiLaiTL/moobile/html` 等
 #       所有子包路径的前缀，不带引号会一次性改坏一大片。
-grep -rl '"moobile/moobile"' --include=moon.pkg . | grep -v '^./host/' \
-  | xargs -r sed -i 's|"moobile/moobile"|"moobile/moobile" @rabbita|g'
+grep -rl '"XiLaiTL/moobile"' --include=moon.pkg . | grep -v '^./host/' \
+  | xargs -r sed -i 's|"XiLaiTL/moobile"|"XiLaiTL/moobile" @rabbita|g'
 #    改完复查这两处（其余子包别名都是从末段推导的，不受影响）：
 #      html/moon.pkg 与 server/moon.pkg 的 `for "test"` / 主 import 段
 
 # 6) 然后按下面 §2 逐条重放语义改动
-moon check --target js && moon test --target js -p moobile/moobile/internal/vdom
+moon check --target js && moon test --target js -p XiLaiTL/moobile/internal/vdom
 ```
 
 > ⚠️ 第 1 步只会删掉 **vendor 自己的目录**。我们自己的 `moobile/`、`style/`、`demo/`、

@@ -1,6 +1,6 @@
 import {
-  "moobile/moobile/html",
-  "moobile/moobile" @rabbita,
+  "XiLaiTL/moobile/html",
+  "XiLaiTL/moobile/internal/rabbita" @rabbita,
   "hackwaly/moonback/middlewares/unstable_static" @static,
   "moonbitlang/async/fs",
   "moonbitlang/core/env",

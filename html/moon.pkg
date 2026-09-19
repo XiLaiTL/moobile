@@ -1,10 +1,10 @@
 import {
-  "moobile/moobile/style",
-  "moobile/moobile/internal/vdom",
-  "moobile/moobile/dom",
-  "moobile/moobile/common",
-  "moobile/moobile/cmd",
-  "moobile/moobile/variant",
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/internal/vdom",
+  "XiLaiTL/moobile/dom",
+  "XiLaiTL/moobile/common",
+  "XiLaiTL/moobile/cmd",
+  "XiLaiTL/moobile/variant",
   "moonbitlang/core/debug",
   "moonbitlang/core/ref",
   "moonbitlang/core/immut/vector",
@@ -12,7 +12,7 @@ import {
 }
 
 import {
-  "moobile/moobile" @rabbita,
+  "XiLaiTL/moobile/internal/rabbita" @rabbita,
 } for "test"
 
 warnings = "-unused_package"

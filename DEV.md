@@ -5,7 +5,7 @@
 > 以及怎么重建。**动手改环境前先读 §7「禁区」。**
 >
 > 📌 **代码与文档同在一处**（2026-09 完成 T0.0 合并）：项目根就是本目录
-> `interest/moobile/`，模块名 **`moobile/moobile`**。
+> `interest/moobile/`，模块名 **`XiLaiTL/moobile`**。
 > `_tools/*.py`、`_tools/*.ps1`、`_r1.js`、`_verify.js` 里的路径已改成
 > **从脚本位置推导**，不再写死盘符，换机器照样能跑。
 > 目录联接（§2 那张表）不受影响。
@@ -159,25 +159,32 @@ AVD 的 `config.ini` 里已经设好真机尺寸（`hw.lcd.width=1080 / height=2
 ## 5. 项目结构速览
 
 ```
-moobile/                     ← 项目根（模块名 moobile/moobile）
+moobile/                     ← 项目根（模块名 XiLaiTL/moobile）
 ├── moon.mod                 # 模块定义
+├── moon.pkg                 # ★ 模块根包 = moobile 库本体
+├── host.mbt render.mbt app.mbt store.mbt schedule.mbt
 ├── style/                   # ★ 公开包：类型化样式层（StyleValue / Style / 关键字枚举）
+├── internal/rabbita/        # vendor 的 rabbita **主包**（App / run / Val / elmish）
 ├── internal/vdom/           # ★ vendor 自 rabbita，已改：Event 解耦、Props 加宽
 ├── internal/runtime/        # ★ react_host.mbt = moobile 的 React 后端（新增）
 ├── html/ cmd/ sub/ dom/ …   # vendor 自 rabbita（跟版方式见 FORK.md）
-├── moobile/                 # ★ moobile 后端：render / host / app / store / schedule
 ├── demo/                    # 演示应用：model / ui(待办) / r1(R1 样本) / main
 ├── host/                    # Expo 宿主（React + RN + react-native-web）
 │   └── App.js               # 一个根组件 + useSyncExternalStore，仅此而已
 ├── _verify.js _r1.js        # 验证脚本
 ├── _tools/                  # 环境脚本（见下）
 ├── _r1/                     # R1 的测量产出与原始数据
-├── docs/                    # 设计文档：DESIGN / EVIDENCE / DESIGN-README
+├── docs/                    # 设计文档：DESIGN / EVIDENCE / DESIGN-README / ARCHITECTURE
 ├── FORK.md                  # ★ 对 rabbita 的 diff 清单（跟版/上游化用）
 ├── PLAN.md                  # ★ 剩余工作计划
 ├── README.md                # 全部实测结论（含 R1 判决）
 └── DEV.md                   # 本文件
 ```
+
+> **`internal/rabbita/` 是什么**：vendor 的 rabbita **主包**（原来在模块根），
+> 2026-09 的「形态 B」把它挪进去，为的是让**模块根包 = moobile 库本体** ——
+> 使用者写 `import { "XiLaiTL/moobile" @moobile }` 拿到的是库，而不是 rabbita 的 `App`/`run`。
+> 见 `docs/ARCHITECTURE.md` §5。
 
 `_tools/`：
 

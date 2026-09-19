@@ -1,7 +1,7 @@
 import {
-  "moobile/moobile/cmd",
-  "moobile/moobile/dom",
-  "moobile/moobile/url",
+  "XiLaiTL/moobile/cmd",
+  "XiLaiTL/moobile/dom",
+  "XiLaiTL/moobile/url",
   "moonbitlang/async",
   "moonbitlang/async/http" @async_http,
   "moonbitlang/async/io",
@@ -10,7 +10,7 @@ import {
 }
 
 import {
-  "moobile/moobile/internal/key",
+  "XiLaiTL/moobile/internal/key",
 } for "wbtest"
 
 warnings = "-unused_package"

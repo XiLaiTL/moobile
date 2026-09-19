@@ -1,10 +1,10 @@
 supported_targets = "+js"
 
 import {
-  "moobile/moobile/moobile" @moobile,
-  "moobile/moobile/style",
-  "moobile/moobile/html",
-  "moobile/moobile/cmd",
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/html",
+  "XiLaiTL/moobile/cmd",
 }
 
 options(

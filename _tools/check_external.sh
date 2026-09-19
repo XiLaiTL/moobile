@@ -52,6 +52,6 @@ if [ $RC -ne 0 ]; then
 fi
 
 case "$OUT" in
-  *"0 errors"*) echo ""; echo "外部模块 check 通过：probe/app 能依赖 moobile/moobile/moobile + style 并编译"; exit 0 ;;
+  *"0 errors"*) echo ""; echo "外部模块 check 通过：probe/app 能依赖 XiLaiTL/moobile + style 并编译"; exit 0 ;;
   *) echo ""; echo "外部模块 check 未报错但也没有 '0 errors'，请人工确认上面的输出"; exit 1 ;;
 esac

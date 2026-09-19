@@ -9,11 +9,15 @@
 //
 // 来源：moonbit-community/rabbita@0.15.4（Apache-2.0）；
 // 我们对它的全部改动见 FORK.md（模块根的 README.mbt.md 是 vendor 自带的）。
-name = "moobile/moobile"
+name = "XiLaiTL/moobile"
 
 version = "0.1.0"
 
 license = "Apache-2.0"
+
+readme = "README.md"
+
+repository = "https://github.com/XiLaiTL/moobile.git"
 
 description = "moobile：MoonBit 写 UI，React / React Native 渲染（内含 rabbita vendor fork）"
 

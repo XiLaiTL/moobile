@@ -1,5 +1,5 @@
 import {
-  "moobile/moobile/dom",
+  "XiLaiTL/moobile/dom",
 }
 
 warnings = "-unused_package"

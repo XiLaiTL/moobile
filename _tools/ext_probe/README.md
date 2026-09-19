@@ -17,17 +17,17 @@
 
 | 项 | 结果 |
 |---|---|
-| `probe/app` 依赖 `moobile/moobile/moobile` + `style` + `html` + `cmd` | ✅ **0 错误**编译通过 |
+| `probe/app` 依赖 `XiLaiTL/moobile` + `style` + `html` + `cmd` | ✅ **0 错误**编译通过 |
 | 能写出完整的 模型/更新/视图 + `@moobile.mount(...) -> @moobile.Mount` | ✅ |
 | 公开样式包可用（`@style.Style::new().font_size(16.0)` 等） | ✅ |
 
 ### 两个容易踩的点
 
-1. **库本体是 `moobile/moobile/moobile`，不是 `moobile/moobile`。**
-   后者是**模块根包**（vendor 的 rabbita 根）。外部使用者要写
-   `import { "moobile/moobile/moobile" @moobile }`；写成 `"moobile/moobile" @moobile`
-   会得到 `Value mount not found in package 'moobile'`。
-   （将来"库与应用分模块"时值得顺手改个不绕的名字。）
+1. ~~**库本体是 `XiLaiTL/moobile/moobile`，模块根包是 rabbita**~~
+   ✅ **形态 B（2026-09）之后这个坑没了**：模块根包**就是库本体**，所以外部使用者写
+   `import { "XiLaiTL/moobile" @moobile }` 直接拿到 `mount`/`Mount`。
+   改之前它会拿到 vendor 的 rabbita 主包，报 `Value mount not found in package 'moobile'`
+   —— 本探针当初就是**真踩过这个坑**才发现的（历史记录，留在这里当回归说明）。
 2. **`render_node` 的公开签名里有 `@vdom.VNode`（internal 包）。**
    实测**不阻断**外部使用者：引用这个函数能编译（`main.mbt` 末尾的 `probe_internal_type_leak`
    就是这个回归探针），只是外部没法**命名**那个参数类型。

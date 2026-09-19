@@ -1,7 +1,7 @@
 import {
-  "moobile/moobile/dom",
-  "moobile/moobile/cmd",
-  "moobile/moobile/js",
+  "XiLaiTL/moobile/dom",
+  "XiLaiTL/moobile/cmd",
+  "XiLaiTL/moobile/js",
 }
 
 warnings = "-unused_package"

@@ -4,7 +4,7 @@
 /// 它被 `_tools/check_external.sh` 拷进一个临时工作区，与本模块一起
 /// 由 `moon.work` 解析；`demo/` 在模块内部，证明不了这件事。
 ///
-/// 注意库本体的包名是 `moobile/moobile/moobile`（模块名 + 目录名），
+/// 注意库本体的包名是 `XiLaiTL/moobile`（模块名 + 目录名），
 /// 见 `moon.pkg`。
 struct Model {
   n : Int

@@ -15,9 +15,9 @@
 |---|---|
 | 能不能发布？ | **能。** 代码层面已经验证通了：外部模块能 `check` 能 `build`，还能拿到 `export { start }` |
 | 现在就能发吗？ | **不能。** 有 5 个必须先解决的点：**2 个元数据类**（缺 `readme`/`repository` 字段、缺 LICENSE）、**1 个打包配置**（没有 `.moonignore`，会把 `host/`、`_r1/` 一起发出去）、**2 个结构性**（模块根包是 rabbita 而不是库、命名空间要先定名） |
-| 最该先做哪个结构改动？ | **把库提到模块根**（形态 B）—— 现在 `import "<ns>/moobile"` 拿到的是 **rabbita 的主包**，不是 moobile |
+| 最该先做哪个结构改动？ | **把库提到模块根**（形态 B）—— 现在 `import "XiLaiTL/moobile"` 拿到的是 **rabbita 的主包**，不是 moobile |
 | 工作量 | 元数据 + LICENSE + `.moonignore`：**半天**；形态 B 重构：**半天~一天**；裁剪 vendor 死重：**另算（可选）** |
-| 最大不确定性 | 模块名的命名空间规则（要不要用你的 mooncakes 账号名）—— 见 §4.7 |
+| 最大不确定性 | ~~模块名的命名空间规则~~ **已定：`XiLaiTL/moobile`**（账号 `XiLaiTL`，`moon whoami` 实测）。剩下唯一查不出的，是服务端会不会在**上传那一刻**接受它 —— 见 §4.7 |
 
 ---
 
@@ -33,11 +33,11 @@
 ├─ L4 vendor 运行时 ────────────────────────────────────────
 │    internal/runtime/react_host.mbt   ★ fork 新增：把最后一跳换成"产出 React 元素"
 │    （Cmd / Emit / 订阅 / 异步 effect 全由 rabbita 自己的运行时执行）
-├─ L3 TEA 挂载 ───────────────────────────────────────────── moobile/app.mbt
+├─ L3 TEA 挂载 ───────────────────────────────────────────── 根包 app.mbt
 │    mount(model, update, view) -> Mount；start / snapshot / subscribe / element
-├─ L2 翻译层 ─────────────────────────────────────────────── moobile/render.mbt
+├─ L2 翻译层 ─────────────────────────────────────────────── 根包 render.mbt
 │    VNode → React 元素；标签表 42 条 + 排除表 12 条 + 样式 map → RN style
-├─ L1 FFI 边界 ───────────────────────────────────────────── moobile/host.mbt
+├─ L1 FFI 边界 ───────────────────────────────────────────── 根包 host.mbt
 │    ★ 全套代码里 %identity 不安全性**唯一的集中地**
 └─ L0 宿主（JS） ──────────────────────────────────────────── host/
      Expo + React + RN + react-native-web；App.js 提供 MOBILE_HOST
@@ -50,7 +50,7 @@
 
 | 层 | 归属 | 文件 | 行数 |
 |---|---|---|---|
-| L1–L3 | **我们** | `moobile/{host,render,app,store,schedule}.mbt` | 544 |
+| L1–L3 | **我们** | 根包 `host.mbt` `render.mbt` `app.mbt` `store.mbt` `schedule.mbt` | 544 |
 | 样式层 | **我们** | `style/style.mbt` | 928 |
 | L4 | **我们**（fork 新增） | `internal/runtime/react_host.mbt` | 224 |
 | L5 及以下 | **vendor** | `html/ cmd/ sub/ dom/ js/ variant/ common/ internal/*` | ~19,400（不含测试） |
@@ -78,7 +78,7 @@ globalThis.MOBILE_HOST = {
 ```
 
 ⚠️ **必须提供的组件恰好是这 5 个**（`View` `Text` `Pressable` `TextInput` `ScrollView`）——
-它是 `moobile/render.mbt` 标签表的**值域**：42 条标签全部映射到这 5 个名字上，少一个，
+它是 `render.mbt`（模块根包） 标签表的**值域**：42 条标签全部映射到这 5 个名字上，少一个，
 对应标签就会变成 `undefined`。
 
 ### 2.2 应用侧契约（MoonBit → JS 的链接导出）
@@ -118,8 +118,8 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 
 ### 3.1 规模
 
-- **包总数**：**26 个**（模块内，含模块根包 `<root>`、`style/`、`demo/`；不含 `host/`、`_tools/`）。
-  分类：**我们的 3 个**（`moobile/` `style/` `demo/`）、**改过的 vendor 4 个**（`html/` `svg/`
+- **包总数**：**26 个**（模块内，含**模块根包**、`style/`、`demo/`；不含 `host/`、`_tools/`）。
+  分类：**我们的 3 个**（**模块根包** + `style/` + `demo/`）、**改过的 vendor 4 个**（`html/` `svg/`
   `internal/vdom/` `internal/runtime/`）、**原样 vendor 19 个**。
 - **模块内 main 依赖边 79 条**（另有 2 条只在测试里用的边），**main 边无环**。
   唯一的环是测试边：`html/ -[for "test"]-> <root> -[main]-> html/`
@@ -128,7 +128,7 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
   ⚠️ `moonback` **只被 `server/` 用**（`server/moon.pkg`），而 `server/` 是 rabbita 的 SSR/HTTP 那套 ——
   RN 库根本用不到。它是"别人装了三个依赖，其中一个白装"。
   ⚠️ 更糟的是 `server/` **从来没被编译过**：它声明 `supported_targets = "native+wasm"`，
-  而 `build.sh` / `moon check` 都只跑 js；它还是**唯一**在 main 代码里 import 模块根包 `<root>` 的包。
+  而 `build.sh` / `moon check` 都只跑 js；它还是**唯一**在 main 代码里 import 模块根包 `internal/rabbita/` 的包。
   换句话说，它是"既用不上、又没验证过、还拖着一个依赖"的三重死重。
 - **module 级依赖无法按包细分**（`moon.mod` 的 `import` 是模块粒度），所以只要 `server/` 还在模块里，
   `moonback` 就一直在。
@@ -143,12 +143,12 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 + internal/{vdom, runtime, any, duplix, key, slotmap}/   ← 传递依赖（12 个）
 ```
 
-`html/` 与 `cmd/` 是**零新增依赖**的（本来就在 `moobile/` 的闭包里）；
-再加上根包 `<root>` 是 17 个包、也是零新增依赖（只在要用 `Val` / `create_state` / `App` / `elmish` 时才需要）。
+`html/` 与 `cmd/` 是**零新增依赖**的（本来就在模块根包的闭包里）；
+再加上根包 `internal/rabbita/` 是 17 个包、也是零新增依赖（只在要用 `Val` / `create_state` / `App` / `elmish` 时才需要）。
 
 ### 3.3 死重清单（10 个包）
 
-`<root>`、`demo/`、`clipboard/`、`dialog/`、`html/canvas/`、`http/`、`nav/`、`server/`、`svg/`、`websocket/`
+`internal/rabbita/`、`demo/`、`clipboard/`、`dialog/`、`html/canvas/`、`http/`、`nav/`、`server/`、`svg/`、`websocket/`
 
 其中几个有额外含义：
 
@@ -157,7 +157,7 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | `html/canvas/` | **全模块零入边** —— 连 vendor 内部都没人 import，纯孤儿 |
 | `svg/` | 依赖 `html+style+vdom+variant+dom`，是"按需 DSL 层"；但标签表**已把 `svg` 排除**，RN 下用不上 |
 | `server/` | 见 3.1：唯一 main 代码用根包的包，从未编译过，顶着 `moonback` 依赖 |
-| `<root>` | 是 rabbita 的主 API（`App` / `run` / `Elmish` / `Val`），不是我们的库 —— 正是 §4.4-1 那个坑的来源 |
+| `internal/rabbita/` | 是 rabbita 的主 API（`App` / `run` / `Elmish` / `Val`），不是我们的库 —— 正是 §4.4-1 那个坑的来源 |
 
 > 裁剪这 10 个包，发布面就从 26 个包降到 16 个、依赖从 3 个降到 2 个。
 > 代价是 fork 的 diff 从"改 4 个包"变成"删 10 个包"，跟版脚本要多一份删除清单（`PLAN.md` T7.5）。
@@ -200,7 +200,7 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | `repository` | 未设（`git remote -v` 也是空的，只有 1 个 commit） | ⚠️ **仅告警**，但**现在没有可填的 URL** —— 得先决定仓库放哪 |
 | `license` 字段 | `"Apache-2.0"` | ✅ 合法 SPDX（实测：非法值如 `BogusLicense-9.9` 会被硬拒） |
 | `version` | `"0.1.0"` | ✅ 但注意实测规则：**主版本必须是 `0`**，`1.2.3` 会被硬拒（`the major version must be '0'`） |
-| `name` | `moobile/moobile` | ⚠️ 形状合法（`<author>/<module>`），**但归属要等上传时才判** —— 见 §4.7 |
+| `name` | `XiLaiTL/moobile` | ⚠️ 形状合法（`<author>/<module>`），**但归属要等上传时才判** —— 见 §4.7 |
 | LICENSE 文件 | **不存在** | ❌ **CLI 不检查**（实测无任何相关校验），所以这是**法律问题**，不是工具问题 → §4.3 |
 
 ### 4.3 许可证（法律上必须先补；工具不会提醒你）
@@ -219,9 +219,9 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 
 | # | 现象 | 实测 | 影响 |
 |---|---|---|---|
-| 1 | **模块根包是 rabbita 的主包，不是 moobile** | 外部模块写 `import { "<ns>/moobile" @moobile }` 再调 `@moobile.mount` → **`Value mount not found in package 'moobile'`**（这次踩坑是真实发生的） | 使用者第一次就会撞上；`import "<ns>/moobile"` 拿到的是 `App`/`run` 这套 rabbita API |
-| 2 | 公开签名里露 internal 类型 | `moobile/render.mbt` 的 `render_node(v : @vdom.VNode, …)`；`html/html.mbt` 的 `to_virtual_dom/from_vnode`；`svg/svg.mbt` 同；`cmd/commands.mbt` 的 `flatten(key : @key.Key, …)`、`cmd/scheduler.mbt` 的 `runner(_ : @key.Key, …)` | 实测（双模块 scratch）：**签名能编译过**，但消费者**一旦点它的方法或字段就硬失败** —— `4037 Cannot call method of type …VNode: package … is not imported`；直接 import 那个 internal 包则是 `Cannot import internal package … due to internal visibility rules`。结论：这种类型对外**只能当不透明句柄转手**，等于这两个 `pub fn` 对外是废的。属 vendor 既有风格，`FORK.md` §3 的上游化提案 #1/#4 正是治它 |
-| 3 | **`supported_targets` 的声明是假的**（不只是含糊） | 模块 `preferred_target = js`，但 14 个包声明 `"js+native+wasm"`、14 个 `"+native"`、7 个 `"-all+native"`。实测 `moon check --target native` **直接失败**：`html/attrs_event.mbt:425/430` 与 `html/html_utils.mbt:400` 报 `The value identifier event_decoders / dom_form_value is unbound` | ① `js/moon.pkg` 是 `options(targets: { "*": ["js"] })`，`dom/` 依赖它 → **传递性 js 锁**；② 我们 fork 的 `html/event_decoders.mbt` 是 js-only 文件，于是 `html/` 的 native 构建**被我们的改动弄坏了**（`docs/DESIGN.md` 里"核心 + html + cmd → native ✅"的结论已经过期）。**对外应明确"只支持 JS target"**；顺手把声明收敛成 `+js` 还能让 native 编译**快速失败并给出清楚的理由**。另据实测：模块级**没有**声明 `supported_targets`，所以包级声明**不会**被"模块 ∩ 包"的交集削弱 —— 意思是 native 消费者只要依赖 `moobile/` 或 `demo/`，构建会**直接失败**（不是静默降级） |
+| 1 | ~~模块根包是 rabbita 的主包，不是 moobile~~ ✅ **形态 B 已消除（2026-09）** | 外部模块写 `import { "XiLaiTL/moobile" @moobile }` 再调 `@moobile.mount` → **`Value mount not found in package 'moobile'`**（这次踩坑是真实发生的） | 使用者第一次就会撞上；`import "XiLaiTL/moobile"` 拿到的是 `App`/`run` 这套 rabbita API |
+| 2 | 公开签名里露 internal 类型 | `render.mbt`（模块根包） 的 `render_node(v : @vdom.VNode, …)`；`html/html.mbt` 的 `to_virtual_dom/from_vnode`；`svg/svg.mbt` 同；`cmd/commands.mbt` 的 `flatten(key : @key.Key, …)`、`cmd/scheduler.mbt` 的 `runner(_ : @key.Key, …)` | 实测（双模块 scratch）：**签名能编译过**，但消费者**一旦点它的方法或字段就硬失败** —— `4037 Cannot call method of type …VNode: package … is not imported`；直接 import 那个 internal 包则是 `Cannot import internal package … due to internal visibility rules`。结论：这种类型对外**只能当不透明句柄转手**，等于这两个 `pub fn` 对外是废的。属 vendor 既有风格，`FORK.md` §3 的上游化提案 #1/#4 正是治它 |
+| 3 | **`supported_targets` 的声明是假的**（不只是含糊） | 模块 `preferred_target = js`，但 14 个包声明 `"js+native+wasm"`、14 个 `"+native"`、7 个 `"-all+native"`。实测 `moon check --target native` **直接失败**：`html/attrs_event.mbt:425/430` 与 `html/html_utils.mbt:400` 报 `The value identifier event_decoders / dom_form_value is unbound` | ① `js/moon.pkg` 是 `options(targets: { "*": ["js"] })`，`dom/` 依赖它 → **传递性 js 锁**；② 我们 fork 的 `html/event_decoders.mbt` 是 js-only 文件，于是 `html/` 的 native 构建**被我们的改动弄坏了**（`docs/DESIGN.md` 里"核心 + html + cmd → native ✅"的结论已经过期）。**对外应明确"只支持 JS target"**；顺手把声明收敛成 `+js` 还能让 native 编译**快速失败并给出清楚的理由**。另据实测：模块级**没有**声明 `supported_targets`，所以包级声明**不会**被"模块 ∩ 包"的交集削弱 —— 意思是 native 消费者只要依赖**模块根包**或 `demo/`，构建会**直接失败**（不是静默降级） |
 | 4 | 公开签名里引用**非 pub 类型**（同一类问题的另一面） | 模块根包 `incremental.mbt:12` 是 `struct Val[A](@duplix.Node[A])`（**没有 `pub`**），但 `pub fn Val::map(a : Val[A], …)`、`pub type Cell = () -> Val[Html]` 都在用它；`server/server.mbt:5` 还 `using @rabbita {type Val, …}` | 对使用者而言 `Val` 不可命名 → 与第 2 项同类。因为 `server/` 从没被编译过（§3.1），这个 `using` 到底编不编得过**至今没验证** |
 
 ### 4.5 小瑕疵（不阻塞发布，但会误导人）
@@ -242,31 +242,25 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | 外部模块能**构建出 JS 产物** | 同一工作区 `moon build --target js` | ✅ 产出 `_build/js/debug/build/probe/app/app.js`（258 KB），尾部 `export { … as start }` |
 | 链接导出契约对第三方生效 | 上面的 `export` 语句 | ✅ 宿主可以直接 `import { start }` |
 
-### 4.7 命名空间（唯一的外部不确定性）
+### 4.7 命名空间（**已定：`XiLaiTL/moobile`**）
 
-官方文档写明：模块名只能含字母、数字与 `_ - /`，而且**发布到 mooncakes.io 的模块名必须以用户名开头**
+官方规则：**发布到 mooncakes.io 的模块名必须以用户名开头**
 （[Module Configuration](https://docs.moonbitlang.com/en/latest/toolchain/moon/module.html)）。
 
-现在模块名是 **`moobile/moobile`**，第一段是 `moobile`。因此只有两种走法：
+**已落地**：`moon whoami` → `Logged in as XiLaiTL`，所以模块名 = **`XiLaiTL/moobile`**，
+仓库 = `https://github.com/XiLaiTL/moobile.git`（写进 `moon.mod` 的 `repository`）。
+改名的机械工作面（`moon.mod` 的 `name` + 全部 `moon.pkg` 的 import 前缀 + 文档示例 +
+`FORK.md` §1 的重放脚本 + `_tools/ext_probe/`）已经做完并验证。
 
-- 你的 mooncakes 账号就叫 `moobile`（或能拿到这个名字）→ 可以照原样发；
-- 否则必须改成 `<你的账号>/moobile`。
-
-改名的影响面是**机械的但很广**：`moon.mod` 的 `name` + 全部 `moon.pkg` 的 import 前缀 +
-四份文档里的示例 + `FORK.md` §1 的重放脚本（里面写死了 `moobile/moobile`）。
-做法和 T0.0 那次改名完全一样（一条 `sed` + 复查别名）。
-
-> **所以："定名"要排在动手发布之前** —— 一旦发出去就是别人依赖住的路径。
-
-三条**实测**补充（都会改变你的操作顺序）：
+三条**实测**补充（将来换名字时仍然适用）：
 
 1. **CLI 只校验形状**（`<author>/<module>`），**归属由服务端在上传时判定**。
    也就是说 `moon package` 会一路绿灯，失败发生在**按下 publish 的那一刻**，
-   而服务端的拒绝文案**未文档化**（没登录测不了）。
+   而服务端的拒绝文案**未文档化**。
 2. **组织 / 团队命名空间未文档化**。mooncakes.io 上确实存在 `moonbitlang/*`、`moonbit-community/*`
    这类首段，但官方文档里**没有任何** organization/team 功能说明 —— 按文档只能理解成"首段 = 你的用户名"。
 3. `moon publish`（**含 `--dry-run`**）都会**先检查凭据**：没登录直接
-   `failed to open credentials file … please login first`。所以"先试发一次探路"的前提是**先登录账号**。
+   `failed to open credentials file … please login first`。
 
 ---
 
@@ -277,10 +271,10 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 只做 §4.2/§4.3/§4.1 的卫生工作，模块结构不动。
 
 - **改动**：`moon.mod` 加 `readme`/`repository`；补 `LICENSE` + `THIRD-PARTY-NOTICE`；加 `.moonignore`。
-- **用户体验**：`import { "<ns>/moobile/moobile" @moobile }`，且 `import { "<ns>/moobile" }` 会拿到 rabbita 主包（§4.4-1 的坑还在）。
+- **用户体验**：`import { "XiLaiTL/moobile/moobile" @moobile }`，且 `import { "XiLaiTL/moobile" }` 会拿到 rabbita 主包（§4.4-1 的坑还在）。
 - **适合**：想**先验证发布链路**（注册表、版本、`moon add` 能不能装回来）。
 
-### 形态 B —— 把库提到模块根（**推荐**）
+### 形态 B —— 把库提到模块根 ✅ **已实施（2026-09）**
 
 1. vendor 的根包（`top.mbt` / `incremental.mbt` / `deprecated.mbt` / `tea.mbt` / 根 `moon.pkg`）
    挪进 `internal/rabbita/`；
@@ -288,9 +282,17 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 3. 更新 2 处 vendor 对根包的引用（`html/moon.pkg` 的 `for "test"`、`server/moon.pkg`）；
 4. 同步 `FORK.md` §1 的重放步骤（根包现在落到 `internal/rabbita/`）。
 
-- **体验**：`import { "<ns>/moobile" @moobile }` **就是库**；`style/` 依旧是 `<ns>/moobile/style`。
+**实施结果（2026-09，全部实测）**：
+
+- `moon check --target js` → **0 错误 / 19 警告**；`bash build.sh` 正常
+- `node _verify.js` → **26 / 26**（Metro 因目录变动崩过一次，重启即恢复 —— 它监视着被移动的目录）
+- `bash _tools/check_external.sh` → 外部模块用**裸模块名** `import { "XiLaiTL/moobile" @moobile }` 编译通过
+- 附带修复：**`README.mbt.md` 与 `render_test.mbt` 也跟着根包搬走了** —— 它们是 vendor 的
+  README 测试与根包单测，若留在模块根就会变成**我们库的**测试文件（引用的 `@rabbita` 会编不过）
+
+- **体验**：`import { "XiLaiTL/moobile" @moobile }` **就是库**；`style/` 依旧是 `XiLaiTL/moobile/style`。
 - **代价**：半天~一天；风险低（`moon check` + `node _verify.js` 26/26 就能验证）；生成 JS 里的符号名也会变干净
-  （现在是 `_M0FP37moobile7moobile7moobile5mount…`）。
+  （从 `_M0FP37moobile7moobile7moobile5mount…` 变成 `_M0FP37XiLaiTL7moobile5mount…`）。
 - **附带收益**：让"模块名 = 库名"这件事名副其实，也让将来的形态 C 更容易走。
 
 ### 形态 B′ —— 不搬目录，让根包"再导出"库（备选，比 B 便宜但更脏）
@@ -302,7 +304,7 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 pub using @moobile_lib {mount, type Mount}
 ```
 
-这样 `import { "<ns>/moobile" @moobile }` 也能拿到 `@moobile.mount`。
+这样 `import { "XiLaiTL/moobile" @moobile }` 也能拿到 `@moobile.mount`。
 **为什么仍推荐 B 而不是 B′**：根包的主身份还是 rabbita（`App`/`run`/`Elmish`），
 只是"顺手带了"moobile 的几个符号；而且这些符号要**手工列全**（枚举 API 容易漏），
 将来 API 一长就会漂。B′ 适合"只想先止血、不想动目录"的场景。
@@ -324,15 +326,15 @@ pub using @moobile_lib {mount, type Mount}
 
 ```
 // moon.mod
-name = "<ns>/myapp"
-import { "<ns>/moobile@0.1.0" }
+name = "XiLaiTL/myapp"
+import { "XiLaiTL/moobile@0.1.0" }
 
 // myapp/moon.pkg
 import {
-  "<ns>/moobile" @moobile,          ← 形态 B 之后
-  "<ns>/moobile/style",
-  "<ns>/moobile/html",
-  "<ns>/moobile/cmd",
+  "XiLaiTL/moobile" @moobile,          ← 形态 B 之后
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/html",
+  "XiLaiTL/moobile/cmd",
 }
 options(link: { "js": { "format": "esm", "exports": ["start", "snapshot", "subscribe", "element"] } })
 ```
@@ -359,7 +361,7 @@ export default function App() {
 
 **目前这套是靠文档传递的**（没有 npm 包、没有脚手架）。发布为库时至少要给：
 可复制的 `App.js` 模板 + 一句"必须提供哪 5 个组件"。更彻底的做法是发一个
-`create-moobile-app` 模板仓或 `@<ns>/moobile-host` npm 包（列入 P7 可选）。
+`create-moobile-app` 模板仓或 `@XiLaiTL/moobile-host` npm 包（列入 P7 可选）。
 
 ---
 
@@ -381,7 +383,7 @@ T7.1+T7.2 是"发布"的最小充分集。
 
 ## 8. 待拍板（先别动手，这些决定会改变做法）
 
-1. **账号名**：mooncakes.io 上你打算用哪个账号/命名空间？模块名大概率要写成 `<账号>/moobile`。
+1. **账号名**：mooncakes.io 上你打算用哪个账号/命名空间？模块名大概率要写成 `XiLaiTL/moobile`。
    （发布与 `--dry-run` 都要求**先 `moon login`**；归属检查在服务端，本地工具查不出来。）
 2. **形态**：A（先验证链路）还是直接 B（推荐）？
 3. **要不要裁 vendor 死重**（T7.5）：裁了发布更干净、少一个白装依赖，但 fork 的 diff 变大、跟版更麻烦。

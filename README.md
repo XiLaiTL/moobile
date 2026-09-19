@@ -12,7 +12,7 @@
 > (3) 完成 `Event` 解耦这一半（另一半经论证不做，见文末）。
 >
 > ✅ **代码与文档已同在一处**（2026-09 完成 `PLAN.md` 的 T0.0）：
-> 项目根 = `interest/moobile/`，模块名 **`moobile/moobile`**，
+> 项目根 = `interest/moobile/`，模块名 **`XiLaiTL/moobile`**，
 > 原 `moobile_demo/` 已不存在。
 
 ---
@@ -34,9 +34,10 @@
 
 | 目录 | 是什么 |
 |---|---|
-| `moon.mod` | 模块定义（模块名 `moobile/moobile`） |
-| `moobile/` | **库本体**：`render.mbt` / `host.mbt` / `app.mbt` / `store.mbt` / `schedule.mbt` |
+| `moon.mod` | 模块定义（模块名 `XiLaiTL/moobile`） |
+| **模块根包**（`host.mbt` `render.mbt` `app.mbt` `store.mbt` `schedule.mbt`） | **库本体** —— `import { "XiLaiTL/moobile" @moobile }` 拿到的就是它 |
 | `style/` | **公开包**：类型化样式层（使用者写视图的入口） |
+| `internal/rabbita/` | vendor 的 rabbita **主包**（`App` / `run` / `Val` / `elmish`），2026-09 从模块根挪进去 |
 | `internal/vdom/` `html/` `cmd/` `dom/` … | vendor 的 rabbita（改动清单见 `FORK.md`） |
 | `demo/` | 演示应用：`ui.mbt`（待办）+ `r1.mbt`（R1 样本） |
 | `host/` | Expo 宿主（`App.js` 只有一个根组件） |

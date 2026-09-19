@@ -1,9 +1,9 @@
 import {
-  "moobile/moobile/dom",
-  "moobile/moobile/common",
-  "moobile/moobile/cmd",
-  "moobile/moobile/url",
-  "moobile/moobile/internal/key",
+  "XiLaiTL/moobile/dom",
+  "XiLaiTL/moobile/common",
+  "XiLaiTL/moobile/cmd",
+  "XiLaiTL/moobile/url",
+  "XiLaiTL/moobile/internal/key",
   "moonbitlang/core/ref",
 }
 

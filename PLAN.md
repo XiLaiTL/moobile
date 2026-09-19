@@ -7,7 +7,7 @@
 > → `FORK.md`（对 rabbita 改了什么）。
 >
 > ✅ **`T0.0` / `T0.1` / `T0.3` 已完成**（2026-09）：代码与文档同处 `interest/moobile/`，
-> 模块名 **`moobile/moobile`**，原 `moobile_demo/` 已不存在；`internal/style` 已提为
+> 模块名 **`XiLaiTL/moobile`**，原 `moobile_demo/` 已不存在；`internal/style` 已提为
 > 公开包 **`style/`**；调试脚手架已清掉；git 仓库已建。
 > 验证：`moon check --target js` **0 错误**、`node _verify.js` **26 / 26**。
 >
@@ -29,7 +29,7 @@
 | ✅ | **标签表 42 条** + 未收录计数（可断言为 0） | `moobile/render.mbt` |
 | ✅ | **验证脚本**：Web 端到端 26/26 | `node _verify.js` |
 | ✅ | **fork 可跟版**：diff 清单 + 重放步骤 | `FORK.md` |
-| ✅ | **T0.0 目录合并**：代码 + 文档同处 `interest/moobile/`，模块名 `moobile/moobile`，`style/` 已公开，原 `moobile_demo/` 不存在 | 本文件 T0.0 |
+| ✅ | **T0.0 目录合并**：代码 + 文档同处 `interest/moobile/`，模块名 `XiLaiTL/moobile`，`style/` 已公开，原 `moobile_demo/` 不存在 | 本文件 T0.0 |
 | ✅ | **T0.1 清诊断脚手架** / **T0.3 建仓**：`moon check` 0 错误、`node _verify.js` 26/26、`git log` 一条初始提交 `0021283` | 本文件 T0.1 / T0.3 |
 | ❌ | **移植 yi 本身** | ← 剩下的主要工作 |
 
@@ -42,18 +42,18 @@
 - [x] **T0.0 目录合并：把实现搬进 `interest/moobile/`，取消 `moobile_demo`** ✅ **已完成（2026-09）**
 
   **结论**：`interest/moobile_demo/` 已不存在，代码与文档同处 `interest/moobile/`；
-  模块名 `moobile/moobile`；`internal/style/` 已提为公开包 `style/`，
+  模块名 `XiLaiTL/moobile`；`internal/style/` 已提为公开包 `style/`，
   `demo/moon.pkg` 里已无任何 `internal/`；`_tools/*.py|*.ps1` 与 `_r1.js` / `_verify.js`
   的路径改成**从脚本位置推导**，不再写死盘符。
   实测：`moon check --target js` **0 错误 / 19 警告**；`node _verify.js` **26 / 26**。
 
   **★ style 提公开的效果有硬证据了**：新增 `_tools/check_external.sh`
   —— 它在一个临时 `moon.work` 工作区里编译一个**真正的外部模块** `probe/app`
-  （`_tools/ext_probe/`），该模块依赖 `moobile/moobile/moobile` + `style` + `html` + `cmd`
+  （`_tools/ext_probe/`），该模块依赖 `XiLaiTL/moobile/moobile` + `style` + `html` + `cmd`
   并写出完整的 模型/更新/视图 + `@moobile.mount(...)`，**0 错误通过**。
   （`demo/` 在模块内部，它编译得过证明不了这件事。）
-  两个已知坑记在 `_tools/ext_probe/README.md`：① 库本体是 `moobile/moobile/moobile`，
-  `moobile/moobile` 是模块根包；② `render_node` 的公开签名里含 `@vdom.VNode`（internal），
+  两个已知坑记在 `_tools/ext_probe/README.md`：① 库本体是 `XiLaiTL/moobile/moobile`，
+  `XiLaiTL/moobile` 是模块根包；② `render_node` 的公开签名里含 `@vdom.VNode`（internal），
   实测不阻断外部使用者，但要等 `internal/vdom` 拆包才彻底干净。
 
   > 搬迁踩到的坑（下次搬目录可复用）：Metro/Gradle 守护进程会把**父目录**锁住，
@@ -125,7 +125,7 @@
   ├── docs/
   │   ├── DESIGN.md  EVIDENCE.md        ← 设计文档（原样搬入）
   │   └── DESIGN-README.md              ← 原 moobile/README.md（设计期导读，留档）
-  ├── moon.mod                          ← 模块 moobile/moobile
+  ├── moon.mod                          ← 模块 XiLaiTL/moobile
   ├── moobile/                          ← 库：render / host / app / store / schedule
   ├── style/                            ← ★ 公开包（从 internal/style 提出）
   ├── internal/  html/  cmd/  sub/  dom/  svg/ …   ← vendor 的 rabbita + 库内部
@@ -154,12 +154,12 @@
      ⚠️ `moobile_demo/README.mbt.md` 是 **vendor 的 rabbita 自带的**（README 形式的测试），
      会跟着代码一起搬过去，别删也别改。`_tools/` 与 `_r1/` 也属于代码侧，一起搬。
      ⚠️ 搬之前先**停掉 Metro**（它锁着 `host/` 下的文件）。
-  3. **改模块名**：`moon.mod` 里 `name = "moobile/moobile_demo"` → `name = "moobile/moobile"`，
+  3. **改模块名**：`moon.mod` 里 `name = "moobile/moobile_demo"` → `name = "XiLaiTL/moobile"`，
      然后全局替换 import 里的模块名前缀：
      ```bash
      cd /d/ai_project/interest/moobile
      grep -rl 'moobile/moobile_demo' --include=moon.pkg --include=*.mbt . \
-       | xargs -r sed -i 's|moobile/moobile_demo|moobile/moobile|g'
+       | xargs -r sed -i 's|moobile/moobile_demo|XiLaiTL/moobile|g'
      ```
      ⚠️ **同时必须更新 `FORK.md` §1 的重放命令**（那里写的是旧模块名）——
      跟版脚本和新版 rabbita 重放都要用新名字。
@@ -387,14 +387,18 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
   - **判据**：`moon package --list` 只剩库文件（vendor + `moobile/` + `style/`），
     不再有 `readme`/`repository` 告警，zip 明显变小
 
-- [ ] **T7.2 形态 B：把库提到模块根**（半天）—— **推荐先做这个再发**
-  现在 `import { "<ns>/moobile" @moobile }` 拿到的是 **rabbita 的主包**（`App`/`run`），
+- [x] **T7.2 形态 B：把库提到模块根** ✅ **已完成（2026-09）**
+  改之前 `import { "XiLaiTL/moobile" @moobile }` 拿到的是 **rabbita 的主包**（`App`/`run`），
   调 `@moobile.mount` 会报 `Value mount not found in package 'moobile'`（实测踩过）。
-  做法：vendor 根包（`top.mbt incremental.mbt deprecated.mbt tea.mbt` + 根 `moon.pkg`）
-  挪进 `internal/rabbita/`；`moobile/*.mbt` 提到根；改 2 处引用
-  （`html/moon.pkg` 的 `for "test"`、`server/moon.pkg`）；同步 `FORK.md` §1 的重放步骤。
-  - **判据**：`moon check --target js` 0 错误；`node _verify.js` 26/26；
-    `_tools/ext_probe/app` 改成**裸模块名**导入后 `check_external.sh` 仍通过
+  **做法**：vendor 根包（`top.mbt incremental.mbt deprecated.mbt tea.mbt render_test.mbt
+  README.mbt.md` + 根 `moon.pkg`）挪进 `internal/rabbita/`；`moobile/*.mbt` 提到模块根；
+  改 2 处引用（`html/moon.pkg` 的 `for "test"`、`server/moon.pkg`）。
+  ⚠️ **`README.mbt.md` 与 `render_test.mbt` 必须跟着走** —— 它们是 vendor 的 README 测试与根包单测，
+  留在模块根就会变成**我们库的**测试文件（里面的 `@rabbita` 引用编不过）。
+  - **判据**：`moon check --target js` **0 错误** ✅；`node _verify.js` **26 / 26** ✅；
+    `_tools/ext_probe/app` 用**裸模块名**导入后 `check_external.sh` **通过** ✅
+  - **顺带**：模块名同时定为 `XiLaiTL/moobile`（mooncakes 账号 `XiLaiTL`），
+    全仓 24 个源码文件 + 文档 + 探针的模块路径前缀已同步。
 
 - [ ] **T7.3 对外契约写进 `README.md`**（半天）
   宿主 4 件套（`react` / `components` / `scheduleTask` / `scheduleFrame`）+ **必须提供的 5 个组件**
@@ -425,7 +429,7 @@ yi 的罗盘是 `<canvas>` 画出来的。RN 无 canvas。
 | Q3 | **上游化 vs 长期 fork** | 当前 diff 很小（`FORK.md` 有清单），越晚上游越贵 | P6 |
 | Q4 | **样式改写能否脚本化** | 198 条 CSS 手工改是几天的工作量；脚本化可能省一半，也可能更慢 | P5 的 T5.2 开始前 |
 | Q5 | **`Mouse` 载荷通道** | 见 T3.4。**不要试图"修好" `Mouse`** —— 那是在 RN 上模拟 DOM 事件，走反了 | P3 |
-| Q6 | **发布成库的形态与命名** | 见 `docs/ARCHITECTURE.md`：模块名第一段必须是 mooncakes 账号名（`moobile/moobile` 未必发得出去）；形态 A/B/B′/C 选哪个；要不要裁掉 10 个死重包 | **P7 动手前**（发文前定名，否则路径就被别人依赖住了） |
+| Q6 | **发布成库的形态与命名** | 见 `docs/ARCHITECTURE.md`：模块名第一段必须是 mooncakes 账号名（`XiLaiTL/moobile` 未必发得出去）；形态 A/B/B′/C 选哪个；要不要裁掉 10 个死重包 | **P7 动手前**（发文前定名，否则路径就被别人依赖住了） |
 
 ---
 
