@@ -9,6 +9,11 @@
 > - 外部模块可用性已验证：`moon check` / `moon build` 通过，产物含 `export { … as start }`
 > - 离线检查：Web 端到端 26/26、真机（Android 14 模拟器）验证过、R1 文本排版判决通过
 > - **尚未做过任何真实应用的完整移植**（这是当前最大的空白）
+>
+> **接手要先读哪几份**：`README.md`（使用者视角：这是什么、怎么用、能力边界）→
+> `docs/ARCHITECTURE.md`（架构分层、发布体检、宿主契约）→ `FORK.md`（第三方 fork 与 patch 系列）→
+> `DEV.md`（环境怎么跑、排错、禁区）。实测结论在 `docs/FINDINGS.md`，
+> 设计期证据在 `docs/EVIDENCE.md`，旧计划（T0.x–T7.x 编号）在 `docs/PLAN-2026Q3-yi-port.md`。
 
 ---
 
