@@ -184,6 +184,7 @@ description 候选（待定稿）：
 - **E4 生成物**：Expo 宿主 + `moon.mod` / `moon.work` + 首屏示例 + README + `.gitignore`
 - **E5 诚实标注**：iOS 标注"只生成、未在本机验证"；桌面若用户要原生，直接说明"当前 RN 桌面平台落后于 RN 0.86，要么降 RN 版本、要么用 WebView 壳"
 - **E6（前置验证，约半天）**：先用 Tauri 或 PWA 把现有 web 产物包起来跑通一次，证明"桌面壳"这条路成立，再决定要不要进模板 —— **本机可验证**，所以风险低
+- **E7 跨平台产物**：桌面/移动的原生产物**不能交叉编译**（Windows 上只能出 Windows 桌面与 Android APK；macOS、Linux 桌面与 iOS 要在各自系统上构建）。可行的做法是脚手架直接生成 **GitHub Actions 构建矩阵**（windows / macos / ubuntu 三个 runner），这样"我们没 Mac 也能验证 iOS 与 macOS 产物能不能构建"
 - **判据**：干净机器上 `moon install … && moobile create demo-app` → 选 Android → 能在 Expo Go 里跑起来
 
 ### 5.2（F）迁移工具链
