@@ -93,10 +93,17 @@ case "$MODE" in
     done
     # internal/rabbita 也在 internal 里，跟着上面一起铺好了
     echo "已按 $UP_NAME@$VERSION + $(ls "$PATCHDIR" | wc -l) 个 patch 重建第三方代码。"
+    # 顺手把整棵树的行尾规范成 LF（含我们自己的文件）
+    bash "$ROOT/_tools/lf_normalize.sh" | tail -2
     echo "接着跑：moon check --target js && bash _tools/check_external.sh && node _verify.js"
     ;;
 
   --check)
+    # 先查行尾：CRLF 会把 patch 的上下文打乱，必须优先报出来（否则被误读成"内容漂移"）
+    if ! bash "$ROOT/_tools/lf_normalize.sh" --check > "$W/lf.log" 2>&1; then
+      cat "$W/lf.log"
+      exit 1
+    fi
     # 逐文件比：expected vs 工作区（忽略行尾差异，单独标注）
     PYTHONIOENCODING=utf-8 python3 - "$W/expected" "$ROOT" "$FORK_DIRS" "$FORK_ROOT_FILES" <<'PY'
 import os,sys
