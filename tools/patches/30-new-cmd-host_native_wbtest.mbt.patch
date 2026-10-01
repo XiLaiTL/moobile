@@ -1,0 +1,275 @@
+--- /dev/null
++++ b/cmd/host_native_wbtest.mbt
+@@ -0,0 +1,272 @@
++///|
++/// `host_native.mbt` 的证伪测试。
++///
++/// 每条都针对一个**会真出错的设计假设**，而不是"函数被调用了"：
++/// ① 没有 `MOBILE_HOST` 时必须给 `None`（不能抛 —— 否则 SSR/测试环境变白屏）；
++/// ② 登记了能力时必须问得到；
++/// ③ 回调的 `Bool` 要真的穿过 FFI 边界（JS 的 true/false → MoonBit 的 Bool）；
++/// ④ 退订要真的退订、且**幂等**（sub 的 unload 可能被调用不止一次）；
++/// ⑤ 登记了能力但形状不对（没有 `subscribe`）必须给 `None` ——
++///    这是"回退 DOM"的依据；给 `Some` 会让调用方以为流是空的。
++
++///|
++extern "js" fn install_mock_host() -> Unit =
++  #| () => {
++  #|   globalThis.__trigger = null;
++  #|   globalThis.__cancelled = 0;
++  #|   globalThis.MOBILE_HOST = {
++  #|     native: {
++  #|       visibility: {
++  #|         subscribe(cb) {
++  #|           globalThis.__trigger = cb;
++  #|           return () => { globalThis.__cancelled++; };
++  #|         },
++  #|       },
++  #|       // 登记了名字，但形状不对（没有 subscribe）
++  #|       broken: {},
++  #|       // 有 subscribe，但返回的不是函数（宿主实现有 bug 时不能炸）
++  #|       badreturn: { subscribe(cb) { globalThis.__trigger = cb; return 42; } },
++  #|     },
++  #|   };
++  #| }
++
++///|
++extern "js" fn remove_mock_host() -> Unit =
++  #| () => { delete globalThis.MOBILE_HOST; }
++
++///|
++extern "js" fn fire(value : Bool) -> Unit =
++  #| (v) => { if (globalThis.__trigger) globalThis.__trigger(v); }
++
++///|
++extern "js" fn cancelled_count() -> Int =
++  #| () => globalThis.__cancelled;
++
++///|
++test "没有 MOBILE_HOST 时给 None 且不抛（SSR / 测试环境）" {
++  remove_mock_host()
++  let found = match host_capability("visibility") {
++    None => false
++    Some(_) => true
++  }
++  assert_false(found, msg="宿主整个没提供时应当回退，而不是抛")
++}
++
++///|
++test "宿主登记了能力就能问到；没登记的名字给 None" {
++  install_mock_host()
++  let registered = match host_capability("visibility") {
++    None => false
++    Some(_) => true
++  }
++  assert_true(registered, msg="登记过的能力必须问得到")
++  let unregistered = match host_capability("nope") {
++    None => false
++    Some(_) => true
++  }
++  assert_false(unregistered, msg="没登记的名字必须给 None")
++}
++
++///|
++test "订阅回调真的被调用，且 Bool 穿过了 FFI 边界" {
++  install_mock_host()
++  let seen : Array[Bool] = []
++  match host_capability("visibility") {
++    Some(cap) =>
++      match cap.subscribe_bool(v => seen.push(v)) {
++        Some(_) => ()
++        None => fail("登记了正确形状的能力，不该给 None")
++      }
++    None => fail("登记过的能力必须问得到")
++  }
++  fire(true)
++  fire(false)
++  assert_eq(seen.length(), 2, msg="两次 fire 应当都被收到")
++  assert_true(seen[0], msg="JS 的 true 应当是 MoonBit 的 true")
++  assert_false(seen[1], msg="JS 的 false 应当是 MoonBit 的 false")
++}
++
++///|
++test "退订幂等：cancel 两次只调一次宿主退订，且不抛" {
++  install_mock_host()
++  let sub = match host_capability("visibility") {
++    Some(cap) =>
++      match cap.subscribe_bool(_ => ()) {
++        Some(s) => s
++        None => fail("登记了正确形状的能力，不该给 None")
++      }
++    None => fail("登记过的能力必须问得到")
++  }
++  sub.cancel()
++  sub.cancel()
++  assert_eq(cancelled_count(), 1, msg="二次 cancel 必须是无操作")
++}
++
++///|
++test "形状不对时给 None（这是回退 DOM 的依据）" {
++  install_mock_host()
++  match host_capability("broken") {
++    Some(cap) =>
++      match cap.subscribe_bool(_ => ()) {
++        None => ()
++        Some(_) => fail("没有 subscribe 方法时必须给 None，否则调用方会以为流是空的")
++      }
++    None => fail("名字登记了，能力对象就该拿得到")
++  }
++}
++
++///|
++test "宿主 subscribe 返回非函数时不炸，而且 cancel 仍是无操作" {
++  install_mock_host()
++  match host_capability("badreturn") {
++    Some(cap) =>
++      match cap.subscribe_bool(_ => ()) {
++        Some(sub) =>
++          // 宿主实现有 bug（返回了 42）—— 退订要安静地不做任何事
++          sub.cancel()
++        None => fail("有 subscribe 方法就该给 Some")
++      }
++    None => fail("名字登记了，能力对象就该拿得到")
++  }
++}
++
++// ── `subscribe_json`：结构化载荷（N5b 的适配器形状） ──
++
++///|
++extern "js" fn install_mock_geometry() -> Unit =
++  #| () => {
++  #|   globalThis.__geoCancelled = 0;
++  #|   globalThis.__geoTrigger = null;
++  #|   globalThis.MOBILE_HOST = {
++  #|     native: {
++  #|       geometry: {
++  #|         subscribe(cb) {
++  #|           globalThis.__geoTrigger = cb;
++  #|           return () => { globalThis.__geoCancelled++; };
++  #|         },
++  #|       },
++  #|     },
++  #|   };
++  #| }
++
++///|
++extern "js" fn geo_push_object(width : Int, height : Int) -> Unit =
++  #| (w, h) => { if (globalThis.__geoTrigger) globalThis.__geoTrigger({ width: w, height: h }); }
++
++///|
++extern "js" fn geo_push_string(text : String) -> Unit =
++  #| (t) => { if (globalThis.__geoTrigger) globalThis.__geoTrigger(t); }
++
++///|
++extern "js" fn geo_cancelled() -> Int =
++  #| () => globalThis.__geoCancelled;
++
++///|
++test "subscribe_json：宿主给对象 → 收到的是 JSON 字符串" {
++  install_mock_geometry()
++  let got : Array[String] = []
++  match host_capability("geometry") {
++    Some(cap) =>
++      match cap.subscribe_json(s => got.push(s)) {
++        Some(_) => ()
++        None => fail("登记了正确形状的能力，不该给 None")
++      }
++    None => fail("登记过的能力必须问得到")
++  }
++  geo_push_object(320, 640)
++  assert_eq(got.length(), 1, msg="一次推送应当到达")
++  // 不在断言里比对整串：键序由宿主决定，只要解得出正确的值就行
++  assert_true(got[0].contains("320"), msg="应当含 320，实得 \{got[0]}")
++  assert_true(got[0].contains("640"), msg="应当含 640，实得 \{got[0]}")
++  remove_mock_host()
++}
++
++///|
++test "subscribe_json：宿主直接给字符串 → 原样穿过（两种宿主写法都支持）" {
++  install_mock_geometry()
++  let got : Array[String] = []
++  match host_capability("geometry") {
++    Some(cap) =>
++      match cap.subscribe_json(s => got.push(s)) {
++        Some(_) => ()
++        None => fail("不该给 None")
++      }
++    None => fail("登记过的能力必须问得到")
++  }
++  geo_push_string("{\"width\":1,\"height\":2}")
++  assert_eq(got.length(), 1, msg="字符串推送也该到达")
++  assert_eq(got[0], "{\"width\":1,\"height\":2}", msg="字符串应当原样穿过，不被再包一层")
++  remove_mock_host()
++}
++
++///|
++test "subscribe_json：退订同样幂等" {
++  install_mock_geometry()
++  let sub = match host_capability("geometry") {
++    Some(cap) =>
++      match cap.subscribe_json(_ => ()) {
++        Some(s) => s
++        None => fail("不该给 None")
++      }
++    None => fail("登记过的能力必须问得到")
++  }
++  sub.cancel()
++  sub.cancel()
++  assert_eq(geo_cancelled(), 1, msg="二次 cancel 必须是无操作")
++  remove_mock_host()
++}
++
++///|
++test "subscribe_json：形状不对（没有 subscribe）时给 None —— 回退的依据" {
++  // 用带 broken 的那份 mock（只有名字、没有方法）
++  install_mock_host()
++  match host_capability("broken") {
++    Some(cap) =>
++      match cap.subscribe_json(_ => ()) {
++        None => ()
++        Some(_) => fail("没有 subscribe 方法时必须给 None，否则调用方会以为流是空的")
++      }
++    None => fail("名字登记了，能力对象就该拿得到")
++  }
++  remove_mock_host()
++}
++
++// ── `host_has_dom`：运行时探测（与"宿主能力"是两个问题） ──
++
++///|
++/// 只放 ASCII（`#|` 里的坑见过：注释折行、非 ASCII 都会咬人，见 FINDINGS 的 N5b 补记）。
++extern "js" fn install_mock_dom(full : Bool) -> Unit =
++  #| (full) => {
++  #|   if (full) {
++  #|     globalThis.document = { addEventListener() {} };
++  #|   } else {
++  #|     globalThis.document = { hidden: false };
++  #|   }
++  #| }
++
++///|
++extern "js" fn delete_mock_dom() -> Unit =
++  #| () => { delete globalThis.document; }
++
++///|
++test "host_has_dom：没有 document → false（RN / Node 的处境）" {
++  delete_mock_dom()
++  assert_false(host_has_dom(), msg="没有 document 时必须为 false")
++}
++
++///|
++test "host_has_dom：有完整 document → true" {
++  install_mock_dom(true)
++  assert_true(host_has_dom(), msg="有 document 且能挂监听 → true")
++  delete_mock_dom()
++}
++
++///|
++test "host_has_dom：只有一个残缺的 document 壳 → 仍为 false" {
++  install_mock_dom(false)
++  assert_false(
++    host_has_dom(),
++    msg="只查'有没有 document'不够 —— 挂不上监听的壳要判成 false",
++  )
++  delete_mock_dom()
++}

@@ -1,0 +1,270 @@
+--- /dev/null
++++ b/cmd/host_native.mbt
+@@ -0,0 +1,267 @@
++///|
++/// 宿主能力通道（PLAN §3.6 的 N2）。
++///
++/// ## 它解决的是什么问题
++///
++/// vendor 里的能力包（`sub/` `clipboard/` `nav/` `dialog/`）都是 **DOM 实现**：
++/// 它们直接调 `@dom.window()` / `@dom.document()`。在 RN 上 `document` 不存在，
++/// `window.innerWidth` / `window.scrollY` / `window.location` 也不存在 ——
++/// 于是这些能力在原生端**要么静默失效、要么直接抛**。
++///
++/// ⚠️ **`#cfg(target="js")` 解决不了这件事**：RN 走的也是 js 目标
++/// （`moobile-host` 就是 `moon build --target js`），Web 与 RN 是**同一个 target**。
++/// 所以"这是不是浏览器"必须由**宿主自己声明**，不能由编译目标推断。
++///
++/// ## 机制
++///
++/// 宿主在 `globalThis.MOBILE_HOST.native` 下登记"某个能力在它这个平台上的实现"：
++///
++/// ```js
++/// MOBILE_HOST.native = {
++///   visibility: {
++///     // 订阅一个布尔流；返回退订函数
++///     subscribe(cb) {
++///       const sub = AppState.addEventListener("change", s => cb(s !== "active"));
++///       return () => sub.remove();
++///     },
++///   },
++/// }
++/// ```
++///
++/// 能力包的用法是**先问这里，问不到就回退 DOM**：
++///
++/// ```moonbit
++/// match @cmd.host_capability("visibility") {
++///   Some(cap) => cap.subscribe_bool(...)   // 宿主实现（RN）
++///   None => ...原有的 DOM 实现...           // 回退（Web）
++/// }
++/// ```
++///
++/// 这样做的三条性质：
++///
++/// 1. **Web 行为一字不变** —— 宿主不登记就自动走回退，不需要新代码。
++/// 2. **RN 上有了真实现的路** —— 只要求宿主登记，不要求库知道 RN 的存在。
++/// 3. **两端都没有时仍然回退**（老行为：DOM 抛），由 N5 的"哪端可用"标注负责
++///    **说清楚**，而不是假装支持。
++///
++/// ## 为什么放在 `cmd/`
++///
++/// `Context` / `Scheduler`（宿主契约 trait）就在这个包，而全部能力包都已 import 它 ——
++/// 于是加这条通道**不需要任何新的包依赖、也不会成环**（能力包不能 import 模块根包：
++/// 根包已经 import 了它们）。
++///
++/// ## 为什么不复用 `Context`
++///
++/// `Context` 的现有方法（`get_origin` 等）是**同步取值**；能力多数是**异步或流式**
++/// （剪贴板读写、可见性变化、尺寸变化）。把它塞进 `Context` 会让每条能力都要求
++/// `Context` 的每个实现（含 SSR / dummy 宿主）跟着实现一遍。
++/// 这条通道是**可选注册表**：没有登记就是 `None`，宿主不必为不用的能力写空实现。
++#external
++pub type HostCapability
++
++///|
++/// 一次订阅的句柄。持着它才能在 `unload` 时退订。
++#external
++pub type HostSubscription
++
++///|
++/// 问宿主："这个能力你有平台实现吗？"
++///
++/// 名字是**能力名**（`"visibility"` / `"dimensions"` / `"clipboard"` …），
++/// 不是标签名也不是组件名 —— 与 `库名:组件名` 那套（I 轨道）是**两个不同的名字空间**：
++/// 组件通道解决"渲染一个 UI 组件"，本通道解决"取一个平台能力"。
++#cfg(target="js")
++pub fn host_capability(name : String) -> HostCapability? {
++  host_capability_ffi(name).to_option()
++}
++
++///|
++#cfg(not(target="js"))
++pub fn host_capability(_name : String) -> HostCapability? {
++  None
++}
++
++///|
++/// 读 `globalThis.MOBILE_HOST.native[name]`；没有就 `null`。
++///
++/// 三级短路的写法是有意的：**宿主整个没提供 `MOBILE_HOST`（SSR / 测试环境）
++/// 也不能抛** —— 抛了就变成"库版本不匹配 → 白屏"，而正确的行为是"问不到 → 走回退"。
++#cfg(target="js")
++extern "js" fn host_capability_ffi(
++  name : String,
++) -> @js.Nullable[HostCapability] =
++  #| (name) => {
++  #|   const h = globalThis.MOBILE_HOST;
++  #|   const reg = h && h.native;
++  #|   const cap = reg && reg[name];
++  #|   return (cap === undefined || cap === null) ? null : cap;
++  #| }
++
++///|
++/// 订阅一个**布尔流**（能力对象上要有 `subscribe(cb) -> unsubscribe`）。
++///
++/// 返回 `None` 表示**这个宿主登记了这个能力、但没提供这个形状的方法** ——
++/// 调用方应当据此回退，而不是当作"流为空"。
++#cfg(target="js")
++pub fn HostCapability::subscribe_bool(
++  self : HostCapability,
++  cb : (Bool) -> Unit,
++) -> HostSubscription? {
++  subscribe_bool_ffi(self, cb).to_option()
++}
++
++///|
++#cfg(not(target="js"))
++pub fn HostCapability::subscribe_bool(
++  self : HostCapability,
++  _cb : (Bool) -> Unit,
++) -> HostSubscription? {
++  ignore(self)
++  None
++}
++
++///|
++/// 退订。**幂等**：宿主没给 `unsubscribe` 也不抛（同"提取器永不抛错"那条取舍，
++/// 见 design/DESIGN-COMPONENT-LIBRARY.md §5 T1）。
++#cfg(target="js")
++pub fn HostSubscription::cancel(self : HostSubscription) -> Unit {
++  cancel_ffi(self)
++}
++
++///|
++#cfg(not(target="js"))
++pub fn HostSubscription::cancel(self : HostSubscription) -> Unit {
++  ignore(self)
++}
++
++///|
++/// 把退订函数收进一个句柄里 —— **不让 JS 返回 MoonBit 函数**，
++/// 免得依赖"函数类型跨 FFI 边界返回"这种没在本仓库验过的形态。
++#cfg(target="js")
++extern "js" fn subscribe_bool_ffi(
++  cap : HostCapability,
++  cb : (Bool) -> Unit,
++) -> @js.Nullable[HostSubscription] =
++  #| (cap, cb) => {
++  #|   if (typeof cap.subscribe !== "function") return null;
++  #|   const un = cap.subscribe(cb);
++  #|   return { un: (typeof un === "function") ? un : null };
++  #| }
++
++///|
++#cfg(target="js")
++extern "js" fn cancel_ffi(sub : HostSubscription) -> Unit =
++  #| (sub) => {
++  #|   if (sub && typeof sub.un === "function") { const f = sub.un; sub.un = null; f(); }
++  #| }
++
++///|
++/// 订阅一个**结构化载荷流**（能力对象上同样要有 `subscribe(cb) -> unsubscribe`）。
++///
++/// ## 为什么是"JSON 字符串"而不是每种载荷一个窄适配器
++///
++/// 载荷形状各不相同：`Viewport` 是两个整数、`Scroll` 是四个、URL 变化是一个字符串。
++/// 三条路：
++///
++/// | 方案 | 代价 |
++/// |---|---|
++/// | 每种形状一个窄适配器（`subscribe_vec2` / `subscribe_scroll` / …） | FFI 面按载荷数量线性膨胀，**每加一条能力都要动库** |
++/// | **JSON 字符串**（本方案） | 形状错误在编译期看不见 —— **用"解码严格"补**（见下） |
++/// | 不透明 `@js.Value` 交给能力包自己打字 | 每个能力包都要写一遍 JS 互操作，且要 import `@js` |
++///
++/// 选 JSON 是**跟随本仓库已有的约定**：`sqlite/` 也是"参数与返回值都是 JSON 字符串，
++/// 边界上只传字符串，MoonBit 侧用 `@json` 解，避免把 JS 对象逐个字段打字"
++/// （见 `npm/moobile-host/capabilities/db.js` 顶部）。
++///
++/// ## 形状错了怎么办：**严格解码，不是静默给默认值**
++///
++/// 这一条是关键。载荷形状不匹配（宿主写错字段名）如果解成 0，就正好复现了本通道要
++/// 消灭的那个毛病 —— **静默给错值**。所以调用方**必须严格解**：字段缺失就当场报错，
++/// 而不是取默认值。这与 `sqlite/ensure()` 的取舍一致：**契约不匹配是作者错误，
++/// 要立刻看见**；而载荷"运行时才知道形状"那是另一回事（那是
++/// `design/DESIGN-COMPONENT-LIBRARY.md` §5 T1 说的"提取器永不抛错"）。
++///
++/// 宿主侧可以给对象也可以给字符串 —— FFI 里统一成字符串，省得每个宿主记一遍规矩。
++#cfg(target="js")
++pub fn HostCapability::subscribe_json(
++  self : HostCapability,
++  cb : (String) -> Unit,
++) -> HostSubscription? {
++  subscribe_json_ffi(self, cb).to_option()
++}
++
++///|
++#cfg(not(target="js"))
++pub fn HostCapability::subscribe_json(
++  self : HostCapability,
++  _cb : (String) -> Unit,
++) -> HostSubscription? {
++  ignore(self)
++  None
++}
++
++///|
++#cfg(target="js")
++extern "js" fn subscribe_json_ffi(
++  cap : HostCapability,
++  cb : (String) -> Unit,
++) -> @js.Nullable[HostSubscription] =
++  #| (cap, cb) => {
++  #|   if (typeof cap.subscribe !== "function") return null;
++  #|   // 宿主给对象或给字符串都行：统一成字符串，省得每个宿主记一遍规矩。
++  #|   const un = cap.subscribe((v) => cb(typeof v === "string" ? v : JSON.stringify(v)));
++  #|   return { un: (typeof un === "function") ? un : null };
++  #| }
++
++///|
++/// **这个运行时有没有 DOM？**
++///
++/// ## 为什么需要它（与"宿主能力"是两个不同的问题）
++///
++/// 宿主能力回答的是"**你有没有这个能力的实现**"；这个函数回答的是
++/// "**浏览器到底在不在**"。两者互补，不能互相替代：
++///
++/// | | 问题 | 谁来答 |
++/// |---|---|---|
++/// | `host_capability(name)` | 这个能力你有替代实现吗？ | 宿主登记 |
++/// | `host_has_dom()` | 这个运行时是不是浏览器？ | **运行时事实，不需要谁声明** |
++///
++/// 有一个具体场景只有这条能解：**有些 js-only 的订阅即使在 RN 上也没法"换成别的实现"，
++/// 它只是不该去碰 DOM**。典型是 `on_url_changed` —— 它的宿主机制
++/// （`Scheduler::set_url_changed_injector`）本来就在，宿主驱动即可；
++/// 但老代码**无条件**去 `@dom.window().add_event_listener("popstate", …)`，
++/// 而 RN 上 `window` 存在、`addEventListener` 不存在 → **直接抛**。
++/// 这种情况下"宿主没登记能力"并不等于"没有 DOM"，两件事必须分开问。
++///
++/// ## 判据为什么要查 `addEventListener` 而不只查 `document` 是否存在
++///
++/// RN 把 `global.window` 指到了 `globalThis`（`global.window = global`），所以
++/// **`window` 一定存在**、`document` 一定不存在。但只查 `document` 还不够稳：
++/// 有些非浏览器环境会挂一个残缺的 `document` 壳。要求
++/// `document.addEventListener` 是个函数，才是"能真的挂监听"的判据。
++///
++/// ⚠️ 它是**运行时探测**，不是编译期判断 —— 因为 `#cfg(target="js")` 分不开 Web 与 RN
++/// （两边同一个 target，见本文件顶部）。
++#cfg(target="js")
++pub fn host_has_dom() -> Bool {
++  has_dom_ffi()
++}
++
++///|
++#cfg(not(target="js"))
++pub fn host_has_dom() -> Bool {
++  false
++}
++
++///|
++#cfg(target="js")
++extern "js" fn has_dom_ffi() -> Bool =
++  #| () => {
++  #|   try {
++  #|     return typeof document !== "undefined"
++  #|       && document !== null
++  #|       && typeof document.addEventListener === "function";
++  #|   } catch (_) {
++  #|     return false;
++  #|   }
++  #| }

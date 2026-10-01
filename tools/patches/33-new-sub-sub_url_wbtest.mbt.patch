@@ -1,0 +1,128 @@
+--- /dev/null
++++ b/sub/sub_url_wbtest.mbt
+@@ -0,0 +1,125 @@
++///|
++/// `on_url_changed` / `on_url_request` 在没有 DOM 的运行时的行为（`PLAN.md` §3.6 的 N5b）。
++///
++/// ## 这两条修的不是"少个实现"，是"直接抛"
++///
++/// `Scheduler::set_url_changed_injector` 这条宿主机制**本来就在**（`ReactHost` 已实现）：
++/// sub 把注入器交给宿主，宿主在它自己的"URL 变化"时机调用。
++/// 但老代码**无条件**又去挂了 `popstate`：
++///
++/// ```moonbit
++/// @dom.window().to_event_target().add_event_listener("popstate", listener)
++/// ```
++///
++/// RN 上 `window` **存在**（`global.window = global`）而 `addEventListener` 不存在
++/// → `TypeError` —— 也就是说这条订阅在原生端连**装载**都过不去。
++///
++/// 现在按 `@cmd.host_has_dom()` 分两条路：有 DOM 照旧自己挂 popstate（Web 一字不变），
++/// 没有 DOM 就只把注入器留给宿主。**这里断言的就是这两条路各自成立**。
++
++// ── 工具 ──
++
++///|
++/// 数一次"tagger 被调了几次" —— 不关心 URL 长什么样，只关心**有没有到**。
++/// （`@url.Url` 的形状不是这条测试要验的东西。）
++fn counting_tagger(counter : Array[Int]) -> (@url.Url) -> @cmd.Cmd {
++  fn (_u) {
++    counter.push(1)
++    @cmd.none
++  }
++}
++
++///|
++extern "js" fn ensure_no_dom_at_all() -> Unit =
++  #| () => { delete globalThis.document; delete globalThis.window; }
++
++// ── on_url_changed ──
++
++///|
++test "没有 DOM：on_url_changed 不再抛，改为把驱动权交给宿主" {
++  ensure_no_dom_at_all()
++  let counter : Array[Int] = []
++  let sched = mock_sched()
++  let running = builtin_sub_loader(
++    BuiltinSub::UrlChanged(counting_tagger(counter)),
++    sched,
++  )
++  // ★ 走到这里本身就是断言：老代码会在这里读 `window.addEventListener` 直接抛。
++  let r = match running {
++    Some(r) => r
++    None => fail("UrlChanged 应当能装载 —— 没有 DOM 也要能装")
++  }
++  assert_eq(counter.length(), 0, msg="刚装载时不该有推送")
++
++  // 宿主驱动一次
++  match sched.url_changed {
++    Some(inject) => {
++      ignore(inject("https://example.com/a"))
++    }
++    None => fail("注入器必须被设上 —— 没有它宿主就没有驱动入口，这条订阅永远不响")
++  }
++  assert_eq(counter.length(), 1, msg="宿主注入一次，tagger 应当收到一次")
++
++  // 卸载之后不该再推
++  (r.unload)(sched)
++  match sched.url_changed {
++    Some(inject) => {
++      ignore(inject("https://example.com/b"))
++    }
++    None => ()
++  }
++  assert_eq(counter.length(), 1, msg="卸载后注入器应当被清成 no-op，不再推")
++}
++
++///|
++test "有 DOM：on_url_changed 仍然自己挂 popstate（Web 老行为不回归）" {
++  install_mock_document()
++  install_mock_document_with_window()
++  let counter : Array[Int] = []
++  let sched = mock_sched()
++  let r = match builtin_sub_loader(
++    BuiltinSub::UrlChanged(counting_tagger(counter)),
++    sched,
++  ) {
++    Some(r) => r
++    None => fail("UrlChanged 应当能装载")
++  }
++  assert_eq(
++    win_listener_count(),
++    1,
++    msg="有 DOM 时必须照旧挂 popstate —— 这条是 Web 的驱动方式，别改掉",
++  )
++  (r.unload)(sched)
++  assert_eq(win_listener_count(), 0, msg="卸载应当摘掉 popstate")
++  remove_mock_document()
++  remove_mock_document_with_window()
++}
++
++// ── on_url_request ──
++
++///|
++test "没有 DOM：on_url_request 用宿主 origin 当基准，不读 window.location" {
++  ensure_no_dom_at_all()
++  let counter : Array[Int] = []
++  let tagger = req => {
++    ignore(req)
++    counter.push(1)
++    @cmd.none
++  }
++  let sched = mock_sched()
++  let running = builtin_sub_loader(BuiltinSub::UrlRequest(tagger), sched)
++  let r = match running {
++    Some(r) => r
++    None => fail("UrlRequest 应当能装载 —— 没有 DOM 也要能装")
++  }
++  // ★ 关键：同源判断的基准 URL 走 `Context::get_origin`（宿主实现），
++  //   而不是 `@dom.window().current_url()`（RN 上没有 location，会抛）。
++  match sched.url_request {
++    Some(inject) => {
++      ignore(inject("https://example.com/same"))
++    }
++    None => fail("请求注入器必须被设上")
++  }
++  assert_eq(counter.length(), 1, msg="宿主注入一次请求，tagger 应当收到一次")
++  (r.unload)(sched)
++}

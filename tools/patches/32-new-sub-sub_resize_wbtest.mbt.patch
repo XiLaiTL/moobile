@@ -1,0 +1,208 @@
+--- /dev/null
++++ b/sub/sub_resize_wbtest.mbt
+@@ -0,0 +1,205 @@
++///|
++/// `on_resize` 的宿主能力通道测试（`PLAN.md` §3.6 的 N5b）。
++///
++/// ⚠️ 这条**比 visibility 那条更值得测**：它在 RN 上原来属于**静默失效** ——
++/// `window` 存在（RN 做了 `global.window = global`）但没有 `innerWidth`，
++/// 于是库侧接到 `undefined`、按 `Int` 接住就是 **0×0，不抛**。
++/// 也就是说"跑起来了、界面没崩、尺寸永远是 0" —— 靠肉眼几乎发现不了。
++///
++/// 所以这里断言两件独立的事：
++/// ① **走的是哪条分支**（宿主 vs DOM 回退）—— 用两个独立的 JS 侧计数器区分；
++/// ② **载荷解出来对不对**（含"形状错了必须给 None 而不是 0"）。
++
++// ── JS 侧 ──
++
++///|
++extern "js" fn install_mock_geometry_host() -> Unit =
++  #| () => {
++  #|   globalThis.__geoSubscribed = 0;
++  #|   globalThis.__geoCancelled = 0;
++  #|   globalThis.__geoTrigger = null;
++  #|   globalThis.MOBILE_HOST = {
++  #|     native: {
++  #|       geometry: {
++  #|         subscribe(cb) {
++  #|           globalThis.__geoSubscribed++;
++  #|           globalThis.__geoTrigger = cb;
++  #|           return () => { globalThis.__geoCancelled++; };
++  #|         },
++  #|       },
++  #|     },
++  #|   };
++  #| }
++
++///|
++extern "js" fn geo_push(json : String) -> Unit =
++  #| (s) => { if (globalThis.__geoTrigger) globalThis.__geoTrigger(s); }
++
++///|
++extern "js" fn geo_subscribed() -> Int =
++  #| () => globalThis.__geoSubscribed;
++
++///|
++extern "js" fn geo_cancelled() -> Int =
++  #| () => globalThis.__geoCancelled;
++
++///|
++extern "js" fn remove_geometry_host() -> Unit =
++  #| () => { delete globalThis.MOBILE_HOST; }
++
++// ── MoonBit 侧 ──
++
++///|
++/// 装一次订阅，返回 (收到的 Viewport 列表, 卸载函数)。
++fn setup_resize(seen : Array[Viewport]) -> ((&@cmd.Scheduler) -> Unit)? {
++  let tagger = v => {
++    seen.push(v)
++    @cmd.none
++  }
++  let sched = mock_sched()
++  match builtin_sub_loader(BuiltinSub::Resize(tagger), sched) {
++    Some(r) => Some(r.unload)
++    None => None
++  }
++}
++
++///|
++test "解码器：形状对 → Some；形状错 / 缺字段 → None（不是 0）" {
++  match viewport_of_payload("{\"width\":320,\"height\":640}") {
++    Some(v) => {
++      assert_eq(v.width, 320, msg="宽应当解出来")
++      assert_eq(v.height, 640, msg="高应当解出来")
++    }
++    None => fail("正确的形状必须解得出来")
++  }
++  // 缺字段 —— 这一条是关键：**不能**给 0
++  let missing = viewport_of_payload("{\"width\":320}")
++  match missing {
++    None => ()
++    Some(v) => fail("缺 height 时必须给 None，实得 \{v.height} —— 取 0 就是静默给错值")
++  }
++  // 键名不对（宿主写错了）
++  match viewport_of_payload("{\"w\":320,\"h\":640}") {
++    None => ()
++    Some(_) => fail("键名不对时必须给 None")
++  }
++  // 根本不是 JSON
++  match viewport_of_payload("not json") {
++    None => ()
++    Some(_) => fail("非 JSON 必须给 None")
++  }
++}
++
++///|
++test "宿主登记了 geometry → 走宿主分支，绝不碰 window" {
++  install_mock_document()
++  install_mock_geometry_host()
++  let seen : Array[Viewport] = []
++  let unload = match setup_resize(seen) {
++    Some(u) => u
++    None => fail("Resize 应当总能装载（两条分支都是）")
++  }
++  assert_eq(geo_subscribed(), 1, msg="宿主能力应当被订阅到")
++  geo_push("{\"width\":123,\"height\":456}")
++  assert_eq(seen.length(), 1, msg="一次推送应当到达 tagger")
++  assert_eq(seen[0].width, 123, msg="宽应当原样到达")
++  assert_eq(seen[0].height, 456, msg="高应当原样到达")
++  let sched = mock_sched()
++  unload(sched)
++  assert_eq(geo_cancelled(), 1, msg="卸载应当调用宿主的退订")
++  remove_geometry_host()
++  remove_mock_document()
++}
++
++///|
++test "宿主没登记 geometry → 回退 DOM（window 上的 resize）" {
++  install_mock_document_with_window()
++  remove_geometry_host()
++  let seen : Array[Viewport] = []
++  let unload = match setup_resize(seen) {
++    Some(u) => u
++    None => fail("Resize 应当总能装载")
++  }
++  assert_eq(geo_subscribed(), 0, msg="没登记就不该有宿主订阅")
++  assert_eq(win_listener_count(), 1, msg="回退分支应当挂上 resize 监听")
++  win_resize(800, 600)
++  assert_eq(seen.length(), 1, msg="DOM 事件应当到达 tagger")
++  assert_eq(seen[0].width, 800, msg="回退分支的宽应当来自 window.innerWidth")
++  assert_eq(seen[0].height, 600, msg="回退分支的高应当来自 window.innerHeight")
++  let sched = mock_sched()
++  unload(sched)
++  remove_mock_document_with_window()
++}
++
++///|
++test "宿主登记了但形状不对（没有 subscribe）→ 回退 DOM" {
++  install_mock_document_with_window()
++  install_shape_broken_geometry_host()
++  let seen : Array[Viewport] = []
++  let unload = match setup_resize(seen) {
++    Some(u) => u
++    None => fail("Resize 应当总能装载")
++  }
++  assert_eq(win_listener_count(), 1, msg="形状不对时必须回退 DOM，否则这条订阅永远不会说话")
++  win_resize(1, 2)
++  assert_eq(seen.length(), 1, msg="回退之后载荷仍然要对")
++  let sched = mock_sched()
++  unload(sched)
++  remove_geometry_host()
++  remove_mock_document_with_window()
++}
++
++///|
++extern "js" fn install_shape_broken_geometry_host() -> Unit =
++  #| () => { globalThis.MOBILE_HOST = { native: { geometry: {} } }; }
++
++// ── 回退分支要一个带 innerWidth/innerHeight 的 window mock ──
++//
++// ⚠️ 为什么单独一个（不复用 visibility 测试里的 document mock）：DOM 回退读的是
++// `@dom.window().inner_width()`，也就是 `window.innerWidth` —— Node 里连 `window`
++// 都没有，所以这一支**必须**自己把 window 造出来。
++
++///|
++/// **装一套"只有 window、没有 MOBILE_HOST"的环境**（DOM 回退分支用）。
++///
++/// ⚠️ 计数器是全局的、会跨测试残留 —— 装环境时一律归零。
++/// 不归零的话，"没登记就不该有宿主订阅"会读到上一条测试留下的 1
++/// （这条残留是测试自己抓到的，不是实现的问题）。
++///
++/// ⚠️ **`#|` 块里的注释不要折行**（每条 `#|` 行都是 JS 的一行，`//` 只吃到行尾）。
++/// 踩过（真因，已定点复现）：一句中文注释折成两行、只有第一行带 `//`，
++/// 第二行就成了**裸代码**；它以全角 `）` 结尾 → 全角括号不是合法 JS token →
++/// 生成的 JS 在**加载期**就 `SyntaxError: Invalid or unexpected token`（测试进程根本没起来）。
++/// 排查时先排除了三个嫌疑（中文、制表符、全角括号**单独出现在注释行里**）都是无辜的 ——
++/// 真正缺的是第二行的 `//`。
++extern "js" fn install_mock_document_with_window() -> Unit =
++  #| () => {
++  #|   globalThis.__winListeners = [];
++  #|   globalThis.__geoSubscribed = 0;
++  #|   globalThis.__geoCancelled = 0;
++  #|   globalThis.__geoTrigger = null;
++  #|   globalThis.window = {
++  #|     innerWidth: 0,
++  #|     innerHeight: 0,
++  #|     addEventListener(t, cb) { globalThis.__winListeners.push({ t, cb }); },
++  #|     removeEventListener(t, cb) {
++  #|       globalThis.__winListeners = globalThis.__winListeners.filter(x => x.cb !== cb);
++  #|     },
++  #|   };
++  #| }
++
++///|
++extern "js" fn remove_mock_document_with_window() -> Unit =
++  #| () => { delete globalThis.window; globalThis.__winListeners = []; }
++
++///|
++extern "js" fn win_listener_count() -> Int =
++  #| () => globalThis.__winListeners.length;
++
++///|
++extern "js" fn win_resize(w : Int, h : Int) -> Unit =
++  #| (w, h) => {
++  #|   globalThis.window.innerWidth = w;
++  #|   globalThis.window.innerHeight = h;
++  #|   globalThis.__winListeners.slice().forEach(l => l.cb({}));
++  #| }

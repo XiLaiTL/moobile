@@ -1,0 +1,232 @@
+--- /dev/null
++++ b/sub/sub_visibility_wbtest.mbt
+@@ -0,0 +1,229 @@
++///|
++/// `on_visibility_change` 的宿主能力通道测试（PLAN §3.6 的 N2 / N5）。
++///
++/// 这份测试要抓住的设计错误是**"改了个寂寞"**：只断言"函数能跑"的话，
++/// 把 `host_capability` 那段删掉、直接调 DOM，测试照样绿。
++/// 所以每条断言都必须能区分**走了哪条分支** —— 用两个独立的 JS 侧计数器：
++/// `__hostSubscribed`（宿主分支）与 `__domListeners`（DOM 回退分支）。
++///
++/// ⚠️ 测试环境是 **Node，没有 `document`**。这恰好复现了 RN 的处境：
++/// 老代码在原生端不是"静默失效"，而是 `document` 为 undefined 时**直接抛**。
++/// 所以下面两个分支都要把 `document` 自己 mock 出来才能跑 —— 这本身就是证据。
++
++// ── JS 侧：mock document（DOM 回退分支）/ mock MOBILE_HOST（宿主分支） ──
++
++///|
++extern "js" fn install_mock_document() -> Unit =
++  #| () => {
++  #|   globalThis.__domListeners = [];
++  #|   // 计数器是全局的，会跨测试残留 —— 每次装环境都归零。
++  #|   // 否则"没登记就不该有宿主订阅"会读到上一条测试留下的 1
++  #|   // （这条残留是测试自己抓到的，不是实现的问题）。
++  #|   globalThis.__hostSubscribed = 0;
++  #|   globalThis.__hostCancelled = 0;
++  #|   globalThis.__hostTrigger = null;
++  #|   globalThis.document = {
++  #|     hidden: false,
++  #|     addEventListener(_t, cb) { globalThis.__domListeners.push(cb); },
++  #|     removeEventListener(_t, cb) {
++  #|       globalThis.__domListeners = globalThis.__domListeners.filter(x => x !== cb);
++  #|     },
++  #|   };
++  #| }
++
++///|
++extern "js" fn remove_mock_document() -> Unit =
++  #| () => { delete globalThis.document; globalThis.__domListeners = []; }
++
++///|
++extern "js" fn dom_listener_count() -> Int =
++  #| () => globalThis.__domListeners.length;
++
++///|
++/// 触发一次 visibilitychange；顺带把 `document.hidden` 设成给定值，
++/// 好断言回退分支送出去的**载荷**是对的（不是"事件到了"就算）。
++extern "js" fn dom_fire(hidden : Bool) -> Unit =
++  #| (hidden) => {
++  #|   globalThis.document.hidden = hidden;
++  #|   globalThis.__domListeners.slice().forEach(cb => cb({}));
++  #| }
++
++///|
++extern "js" fn install_mock_host_visibility() -> Unit =
++  #| () => {
++  #|   globalThis.__hostSubscribed = 0;
++  #|   globalThis.__hostCancelled = 0;
++  #|   globalThis.__hostTrigger = null;
++  #|   globalThis.MOBILE_HOST = {
++  #|     native: {
++  #|       visibility: {
++  #|         subscribe(cb) {
++  #|           globalThis.__hostSubscribed++;
++  #|           globalThis.__hostTrigger = cb;
++  #|           return () => { globalThis.__hostCancelled++; };
++  #|         },
++  #|       },
++  #|     },
++  #|   };
++  #| }
++
++///|
++extern "js" fn remove_mock_host() -> Unit =
++  #| () => { delete globalThis.MOBILE_HOST; }
++
++///|
++extern "js" fn host_subscribed() -> Int =
++  #| () => globalThis.__hostSubscribed;
++
++///|
++extern "js" fn host_cancelled() -> Int =
++  #| () => globalThis.__hostCancelled;
++
++///|
++extern "js" fn host_fire(hidden : Bool) -> Unit =
++  #| (h) => { if (globalThis.__hostTrigger) globalThis.__hostTrigger(h); }
++
++// ── MoonBit 侧：最小 Scheduler（`runtime` 的 DummyHost 在别的包，反向 import 会成环） ──
++
++///|
++priv struct MockSched {
++  queued : Array[Int]
++  /// URL 变化的注入器 —— **存下来**才能测"宿主驱动"那条路
++  /// （`on_url_changed` 在 RN 上就是靠宿主调它，而不是靠 popstate）。
++  mut url_changed : @cmd.Injector[String]?
++  mut url_request : @cmd.Injector[String]?
++}
++
++///|
++/// 造一个干净的 mock scheduler。
++fn mock_sched() -> MockSched {
++  { queued: [], url_changed: None, url_request: None }
++}
++
++///|
++impl @cmd.Context for MockSched with fn get_origin(_self) {
++  // 给一个**能解析**的 origin：`on_url_request` 在没有 DOM 时用它当基准
++  // （老代码读 `window.location.href`，RN 上会抛）。
++  "https://example.com"
++}
++
++///|
++impl @cmd.Context for MockSched with fn inject_url_changed(_self, _url) {
++  @cmd.none
++}
++
++///|
++impl @cmd.Context for MockSched with fn inject_url_request(_self, _url) {
++  @cmd.none
++}
++
++///|
++impl @cmd.Scheduler for MockSched with fn add(_self, _cmd) {
++  ()
++}
++
++///|
++impl @cmd.Scheduler for MockSched with fn queue_command(self, _cmd) {
++  self.queued.push(1)
++}
++
++///|
++impl @cmd.Scheduler for MockSched with fn set_url_changed_injector(
++  self,
++  injector,
++) {
++  self.url_changed = Some(injector)
++}
++
++///|
++impl @cmd.Scheduler for MockSched with fn set_url_request_injector(
++  self,
++  injector,
++) {
++  self.url_request = Some(injector)
++}
++
++///|
++/// 装好一次订阅，返回 (收到的载荷, 卸载函数)。
++fn setup(seen : Array[Bool]) -> ((&@cmd.Scheduler) -> Unit)? {
++  let tagger = hidden => {
++    seen.push(hidden)
++    @cmd.none
++  }
++  let sched = mock_sched()
++  match builtin_sub_loader(BuiltinSub::VisibilityChange(tagger), sched) {
++    Some(r) => Some(r.unload)
++    None => None
++  }
++}
++
++///|
++test "宿主登记了 visibility → 走宿主分支，绝不碰 document" {
++  install_mock_document()
++  install_mock_host_visibility()
++  let seen : Array[Bool] = []
++  let unload = match setup(seen) {
++    Some(u) => u
++    None => fail("VisibilityChange 应当总能装载（两条分支都是）")
++  }
++  assert_eq(host_subscribed(), 1, msg="宿主能力应当被订阅到")
++  assert_eq(dom_listener_count(), 0, msg="走了宿主分支就不该再挂 DOM 监听")
++  host_fire(true)
++  host_fire(false)
++  assert_eq(seen.length(), 2, msg="宿主两次推送都该到达 tagger")
++  assert_true(seen[0], msg="载荷 true 应当原样到达")
++  assert_false(seen[1], msg="载荷 false 应当原样到达")
++  // 卸载要走宿主的退订，不是 DOM 的 removeEventListener
++  let sched = mock_sched()
++  unload(sched)
++  assert_eq(host_cancelled(), 1, msg="卸载应当调用宿主的退订函数")
++  remove_mock_host()
++  remove_mock_document()
++}
++
++///|
++test "宿主没登记 visibility → 回退 DOM，行为与老代码一致" {
++  install_mock_document()
++  remove_mock_host()
++  let seen : Array[Bool] = []
++  let unload = match setup(seen) {
++    Some(u) => u
++    None => fail("VisibilityChange 应当总能装载（两条分支都是）")
++  }
++  assert_eq(dom_listener_count(), 1, msg="回退分支应当挂上 visibilitychange")
++  assert_eq(host_subscribed(), 0, msg="没登记就不该有宿主订阅")
++  dom_fire(true)
++  assert_eq(seen.length(), 1, msg="DOM 事件应当到达 tagger")
++  assert_true(seen[0], msg="回退分支的载荷应当是 document.hidden（true）")
++  dom_fire(false)
++  assert_false(seen[1], msg="回退分支的载荷应当是 document.hidden（false）")
++  let sched = mock_sched()
++  unload(sched)
++  assert_eq(dom_listener_count(), 0, msg="卸载应当摘掉 DOM 监听")
++  remove_mock_document()
++}
++
++///|
++test "宿主登记了但形状不对 → 回退 DOM（而不是当成空流）" {
++  install_mock_document()
++  // 登记了名字，但没有 subscribe 方法
++  install_shape_broken_host()
++  let seen : Array[Bool] = []
++  let unload = match setup(seen) {
++    Some(u) => u
++    None => fail("VisibilityChange 应当总能装载（两条分支都是）")
++  }
++  assert_eq(dom_listener_count(), 1, msg="形状不对时必须回退 DOM，否则这条流永远不会说话")
++  dom_fire(true)
++  assert_true(seen[0], msg="回退之后载荷仍然要对")
++  let sched = mock_sched()
++  unload(sched)
++  remove_mock_host()
++  remove_mock_document()
++}
++
++///|
++extern "js" fn install_shape_broken_host() -> Unit =
++  #| () => {
++  #|   globalThis.MOBILE_HOST = { native: { visibility: {} } };
++  #| }

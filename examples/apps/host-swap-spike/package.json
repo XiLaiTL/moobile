@@ -1,0 +1,16 @@
+{
+  "name": "host-swap-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "C0 实验：把同一份 MoonBit 产物挂到一个**不含 Expo** 的裸 RN(Web) 宿主上（PLAN §3.4 的 C0）",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "moobile-host": "file:../../../npm/moobile-host",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native-web": "^0.21.2"
+  }
+}

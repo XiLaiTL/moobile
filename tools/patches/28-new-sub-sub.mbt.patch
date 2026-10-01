@@ -1,0 +1,425 @@
+--- a/sub/sub.mbt
++++ b/sub/sub.mbt
+@@ -12,7 +12,24 @@
+ ///
+ /// Use subscriptions to listen to external signals such as timers, window
+ /// resize, scrolling, keyboard input, visibility changes, or WebSocket events.
+-/// Browser event sources are inert on native targets.
++///
++/// ## 平台可用性（**别信"inert"那句话**）
++///
++/// 上游原文是 "Browser event sources are inert on native targets"。
++/// **在 React Native 上这句不成立**，而且两种失效方式差别很大（2026-09-21 实测）：
++///
++/// | 依赖 | RN 上 | 表现 |
++/// |---|---|---|
++/// | `document.*` | `document` **未定义** | **抛** `ReferenceError` |
++/// | `window.location` / `.history` | `window` 存在（`global.window = global`）但没有这些属性 | **抛** `TypeError` |
++/// | `window.innerWidth` / `scrollY` | 属性是 `undefined` | **不抛，静默给 0** ← 最难发现 |
++///
++/// 所以**最该先修的不是"无替代物"那几个，而是"静默给错值"的那两个**
++/// （`on_resize` / `on_scroll`）。完整的「哪端可用 + 替代物 + 失效形态」表在
++/// `tools/cap_platform.mjs`，**那张表是机器校验的**（代码变了表没改 → 门红）。
++///
++/// 走通了的路子：`on_visibility_change` —— 先问宿主能力（`MOBILE_HOST.native`），
++/// 问不到再回退 DOM（见 `cmd/host_native.mbt`）。
+ enum Sub {
+   Custom(String, Scope, Error, SubLoader)
+   Batch(Array[Sub])
+@@ -54,6 +71,43 @@
+ }
+ 
+ ///|
++/// 宿主给 resize 用的载荷形状（`native.geometry` 的 `subscribe` 推过来的 JSON）。
++///
++/// 为什么在这里定义而不是给 `@common.Viewport` 加 `derive(FromJson)`：
++/// **这个形状是宿主契约的一部分**，归用它的人管；`Viewport` 是应用可见的类型，
++/// 不该为了内部通道挂上一个序列化派生。
++priv struct HostViewport {
++  width : Int
++  height : Int
++} derive(FromJson)
++
++///|
++/// **严格**解 `{"width":Int,"height":Int}`；解不出来给 `None`。
++///
++/// 调用方拿到 `None` 时**必须报错，不能取默认值** —— 取默认值（0×0）恰好复现了
++/// 本通道要消灭的那个毛病：**静默给错值**（见 `cmd/host_native.mbt` 的
++/// `HostCapability::subscribe_json` 说明）。
++fn viewport_of_payload(payload : String) -> Viewport? {
++  try @json.from_json(@json.parse(payload)) catch {
++    _ => None
++  } noraise {
++    (v : HostViewport) => Some({ width: v.width, height: v.height })
++  }
++}
++
++///|
++/// 宿主给的 resize 载荷不合形状时的报错 —— 带上"收到的是什么"，别只说"解析失败"。
++fn abort_bad_viewport(payload : String) -> Unit {
++  abort(
++    "moobile/sub: 宿主能力 `geometry` 推来的载荷不是 {width, height} 形状。\n" +
++    "  收到：\{payload}\n" +
++    "  期望：如 {\"width\":320,\"height\":640}（键名必须正好是 width / height）\n" +
++    "  参考实现：npm/moobile-host/native-rn.js 的 dimensions.subscribe\n" +
++    "  为什么直接报错而不取 0：取 0 就是「静默给错值」，那正是这条通道要消灭的东西。",
++  )
++}
++
++///|
+ #cfg(target="js")
+ fn builtin_sub_loader(payload : Error, scheduler : &Scheduler) -> RunningSub? {
+   match payload {
+@@ -155,28 +209,72 @@
+     }
+     Resize(cmd) => {
+       let mut tagger = cmd
+-      let listener : @dom.Listener = event => {
+-        ignore(event)
+-        scheduler.add(
+-          tagger({
+-            width: @dom.window().inner_width(),
+-            height: @dom.window().inner_height(),
+-          }),
+-        )
+-      }
+-      let unload = _ => {
+-        @dom.window()
+-        .as_event_target()
+-        .remove_event_listener("resize", listener)
+-      }
+       let update_tagger = self => {
+         guard self is BuiltinSub::Resize(new_cmd) else { return }
+         tagger = new_cmd
+       }
+-      @dom.window().as_event_target().add_event_listener("resize", listener)
+-      Some({ unload, update_tagger })
++      // 宿主能力优先（RN：`Dimensions`）；问不到 / 形状不对 → 回退 DOM（Web）。
++      //
++      // ⚠️ 这一条是**先修的那一个**：它原来在 RN 上是**静默失效**（`window` 存在，
++      // 但 `innerWidth/innerHeight` 是 `undefined` → 按 `Int` 接住就是 0×0，
++      // **不抛**），比 `on_key_down` 那类"会抛"的危险得多。判定依据见
++      // `npm/moobile-host/native-rn.js` 与 `tools/cap_platform.mjs` 的 `rnFails`。
++      let host_sub = match @cmd.host_capability("geometry") {
++        Some(cap) =>
++          cap.subscribe_json(payload => {
++            match viewport_of_payload(payload) {
++              Some(v) => scheduler.add(tagger(v))
++              // 契约不匹配 = 作者错误（宿主字段名写错了）→ 立刻报错。
++              // **绝不退化成 0×0**：那正是这条通道要消灭的"静默给错值"。
++              None => abort_bad_viewport(payload)
++            }
++          })
++        None => None
++      }
++      match host_sub {
++        Some(sub) => {
++          let unload = _ => sub.cancel()
++          Some({ unload, update_tagger })
++        }
++        None => {
++          let listener : @dom.Listener = event => {
++            ignore(event)
++            scheduler.add(
++              tagger({
++                width: @dom.window().inner_width(),
++                height: @dom.window().inner_height(),
++              }),
++            )
++          }
++          let unload = _ => {
++            @dom.window()
++            .as_event_target()
++            .remove_event_listener("resize", listener)
++          }
++          @dom.window().as_event_target().add_event_listener("resize", listener)
++          Some({ unload, update_tagger })
++        }
++      }
+     }
+     Scroll(cmd) => {
++      // ⚠️ 这条在 RN 上**不是"待接宿主能力"，是语义不成立**：
++      // Web 的 `on_scroll` 报的是**文档级**滚动；RN 没有文档级滚动，
++      // 滚动发生在每个 `ScrollView` **内部**，事件是那个组件的 `onScroll` prop。
++      // 也就是说它的替代物在**组件通道**（I 轨道），不在宿主能力通道。
++      //
++      // 老行为是**静默给 0**（`window` 存在但 `scrollY` 是 `undefined`）—— 最难发现的一类。
++      // 现在改成**当场报错**：与 `on_key_down` 那类"会抛"的行为对齐，
++      // 宁可在开发期炸一次，也不要上线后滚动位置永远是 0。
++      if !@cmd.host_has_dom() {
++        abort(
++          "moobile/sub: `on_scroll` 在当前运行时不可用。\n" +
++          "  Web 上它报的是**文档级**滚动；这个运行时没有文档级滚动（RN 的滚动在 ScrollView 内部）。\n" +
++          "  替代做法：给 `scroll_view` 挂组件级回调取载荷，再喂回 Model —— 走的是**组件通道**，\n" +
++          "  不是宿主能力通道（宿主能力换不掉一个不存在的语义）。\n" +
++          "  为什么直接报错：老行为是静默给 0（`window.scrollY` 是 undefined 却不抛），\n" +
++          "  那种失效要上线很久才会被发现。",
++        )
++      }
+       let mut tagger = cmd
+       let listener : @dom.Listener = event => {
+         ignore(event)
+@@ -207,27 +305,50 @@
+         }
+       })
+ 
+-      let listener : @dom.Listener = _ => {
+-        let cmd = scheduler.inject_url_changed(@dom.window().current_url())
+-        scheduler.add(cmd)
+-      }
+-      let unload = _ => {
+-        scheduler.set_url_changed_injector(_ => @cmd.none)
+-        @dom.window()
+-        .to_event_target()
+-        .remove_event_listener("popstate", listener)
+-      }
+       let update_tagger = self => {
+         guard self is BuiltinSub::UrlChanged(new_cmd) else { return }
+         tagger = new_cmd
+       }
+-      @dom.window().to_event_target().add_event_listener("popstate", listener)
+-      Some({ unload, update_tagger })
++      // 两条驱动方式，按**运行时有没有 DOM** 分（不是按宿主有没有登记能力）：
++      //   · 有 DOM（Web）→ 自己挂 `popstate`，变化时读地址栏并注入（老行为，一字不变）；
++      //   · 没有 DOM（RN / Node）→ **一个 DOM API 都不碰**，只把注入器留在宿主手里，
++      //     由宿主在它自己的"URL 变化"时机调 `inject_url_changed`。
++      //
++      // ⚠️ 修的是"直接抛"：老代码无条件 `@dom.window().add_event_listener("popstate", …)`，
++      // 而 RN 上 `window` 存在、`addEventListener` 不存在 → TypeError。
++      // 注意这里**不是**"宿主没登记能力就回退 DOM" —— 有没有 DOM 是运行时事实，
++      // 不需要谁声明（见 `cmd/host_native.mbt` 的 `host_has_dom`）。
++      if @cmd.host_has_dom() {
++        let listener : @dom.Listener = _ => {
++          let cmd = scheduler.inject_url_changed(@dom.window().current_url())
++          scheduler.add(cmd)
++        }
++        let unload = _ => {
++          scheduler.set_url_changed_injector(_ => @cmd.none)
++          @dom.window()
++          .to_event_target()
++          .remove_event_listener("popstate", listener)
++        }
++        @dom.window().to_event_target().add_event_listener("popstate", listener)
++        Some({ unload, update_tagger })
++      } else {
++        // 宿主接管：它调 `inject_url_changed` 时注入器就会跑。
++        let unload = _ => scheduler.set_url_changed_injector(_ => @cmd.none)
++        Some({ unload, update_tagger })
++      }
+     }
+     UrlRequest(cmd) => {
+       let mut tagger = cmd
+       scheduler.set_url_request_injector(href => {
+-        let curr = try! @url.parse(@dom.window().current_url())
++        // 判断同源需要一个"当前地址"。
++        // 有 DOM → 读地址栏（老行为）；没有 DOM（RN）→ 问宿主（`Context::get_origin`，
++        // `ReactHost` 已实现）。**不读 `window.location`** —— RN 上它不存在，会抛。
++        let base = if @cmd.host_has_dom() {
++          @dom.window().current_url()
++        } else {
++          scheduler.get_origin()
++        }
++        let curr = try! @url.parse(base)
+         let next = try! @url.parse(href)
+         let request = if curr.protocol == next.protocol &&
+           curr.host == next.host &&
+@@ -250,22 +371,40 @@
+     }
+     VisibilityChange(cmd) => {
+       let mut tagger = cmd
+-      let listener : @dom.Listener = _ => {
+-        scheduler.queue_command(tagger(@dom.document().hidden()))
+-      }
+-      let unload = _ => {
+-        @dom.document()
+-        .as_event_target()
+-        .remove_event_listener("visibilitychange", listener)
+-      }
+       let update_tagger = self => {
+         guard self is BuiltinSub::VisibilityChange(new_cmd) else { return }
+         tagger = new_cmd
+       }
+-      @dom.document()
+-      .as_event_target()
+-      .add_event_listener("visibilitychange", listener)
+-      Some({ unload, update_tagger })
++      // 宿主能力优先：RN 上用 AppState，Web 上宿主不登记 → 落到下面的 DOM 回退。
++      // 为什么要两条路：`#cfg(target="js")` 区分不了 Web 与 RN（同一个 target），
++      // 而 `document` 在 RN 上**不存在** —— 老实现在原生端是直接抛，不是静默失效。
++      // 契约见 `cmd/host_native.mbt`；宿主登记的 `visibility.subscribe(cb)` 里，
++      // `cb` 收到的是"是否隐藏"，与 DOM 的 `document.hidden()` 同义。
++      let host_sub = match @cmd.host_capability("visibility") {
++        Some(cap) =>
++          cap.subscribe_bool(hidden => scheduler.queue_command(tagger(hidden)))
++        None => None
++      }
++      match host_sub {
++        Some(sub) => {
++          let unload = _ => sub.cancel()
++          Some({ unload, update_tagger })
++        }
++        None => {
++          let listener : @dom.Listener = _ => {
++            scheduler.queue_command(tagger(@dom.document().hidden()))
++          }
++          let unload = _ => {
++            @dom.document()
++            .as_event_target()
++            .remove_event_listener("visibilitychange", listener)
++          }
++          @dom.document()
++          .as_event_target()
++          .add_event_listener("visibilitychange", listener)
++          Some({ unload, update_tagger })
++        }
++      }
+     }
+     _ => None
+   }
+@@ -362,6 +501,10 @@
+ 
+ ///|
+ /// Repeatedly enqueue `cmd` every `ms` milliseconds.
++///
++/// **平台**：Web ✅ · RN ✅ —— `setInterval` 是**标准 JS 全局**，不是什么 DOM 能力。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn every(ms : Int, cmd : @cmd.Cmd) -> Sub {
+   custom_sub("every(\{ms})", Local, Every(ms, cmd), builtin_sub_loader)
+ }
+@@ -370,6 +513,16 @@
+ /// Subscribe to window resize events.
+ ///
+ /// The handler receives the latest viewport width and height.
++///
++/// **平台**：Web ✅（走 DOM 回退）· RN ✅（走**宿主能力** `native.geometry` → `Dimensions`）。
++///
++/// ⚠️ 它原来是**静默失效**那一类：`window` 存在（RN 做了 `global.window = global`），
++/// 但 `window.innerWidth` 是 `undefined` → 按 `Int` 接住就是 **0×0 且不抛** ——
++/// 所以先修的是它（`tools/cap_platform.mjs` 会把"静默给错值"这类单独报出来）。
++/// 载荷经 `subscribe_json` **严格解**：宿主字段名写错会**当场报错**，不会退化成 0。
++/// ⚠️ 真机**未**验（visibility 那条验过了，这条只到逻辑层测试）。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_resize(msg : @cmd.Emit[Viewport]) -> Sub {
+   custom_sub("on_resize", Local, Resize(msg), builtin_sub_loader)
+ }
+@@ -379,6 +532,10 @@
+ ///
+ /// The handler receives the browser timestamp for each frame while the
+ /// subscription is active.
++///
++/// **平台**：Web ✅ · RN ✅ —— `requestAnimationFrame` 也是标准 JS 全局。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_animation_frame(msg : @cmd.Emit[Double]) -> Sub {
+   custom_sub(
+     "on_animation_frame",
+@@ -392,6 +549,12 @@
+ /// Subscribe to document `keydown` events.
+ ///
+ /// The handler receives a normalized `Keyboard` value from `@common`.
++///
++/// **平台**：Web ✅ · RN ❌ **Web-only** —— 移动端没有全局键盘。
++/// RN 上会抛 `ReferenceError: document is not defined`（**会抛，不是静默**，
++/// 所以它比 `on_resize` 那类好查）。要键盘/手势请走 RN 的 responder 或手势通道。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_key_down(msg : @cmd.Emit[Keyboard]) -> Sub {
+   custom_sub("on_key_down", Local, Keydown(msg), builtin_sub_loader)
+ }
+@@ -400,6 +563,10 @@
+ /// Subscribe to document `keyup` events.
+ ///
+ /// The handler receives a normalized `Keyboard` value from `@common`.
++///
++/// **平台**：Web ✅ · RN ❌ **Web-only**（同 `on_key_down`，会抛）。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_key_up(msg : @cmd.Emit[Keyboard]) -> Sub {
+   custom_sub("on_key_up", Local, Keyup(msg), builtin_sub_loader)
+ }
+@@ -409,6 +576,13 @@
+ ///
+ /// The handler receives `true` when the document is hidden, and `false`
+ /// when it becomes visible again.
++///
++/// **平台**：Web ✅（走 DOM 回退）· RN ✅（走**宿主能力** `native.visibility` → `AppState`）。
++/// 这是**第一条走宿主能力通道的订阅**：两端同一份应用代码，真机验过（`PLAN.md` §3.6 的 N2）。
++/// 语义近似处（RN 的 `inactive` 算作不可见、只在变化时推送不补发当前值）见
++/// `npm/moobile-host/native-rn.js` 的文件头。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_visibility_change(msg : @cmd.Emit[Bool]) -> Sub {
+   custom_sub(
+     "on_visibility_change",
+@@ -422,6 +596,12 @@
+ /// Subscribe to document `mousemove` events.
+ ///
+ /// The handler receives a normalized `Mouse` value from `@common`.
++///
++/// **平台**：Web ✅ · RN ❌ **Web-only** —— 触屏没有"指针移动"这回事
++/// （`onHoverIn/Out` 只在 Web/桌面有意义）。RN 上会抛（`document` 不存在）。
++/// 拖拽类交互请走 RN 的手势通道，不要复用这条。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_mouse_move(msg : @cmd.Emit[Mouse]) -> Sub {
+   custom_sub("on_mouse_move", Local, MouseMove(msg), builtin_sub_loader)
+ }
+@@ -432,6 +612,19 @@
+ /// This reports page-level scrolling on `window`, not scrolling of an inner
+ /// element. The handler receives the current scroll offset and document scroll
+ /// size as a `Scroll` value.
++///
++/// **平台**：Web ✅ · RN ❌ **语义不成立**（注意：不是「待接」）。
++///
++/// Web 上它报的是**文档级**滚动；RN 没有文档级滚动 —— 滚动发生在每个 `ScrollView`
++/// **内部**，事件是那个组件的 `onScroll` prop。所以它的替代物在**组件通道**（I 轨道），
++/// **不是在宿主能力通道**：宿主能力换的是"某个能力的平台实现"，
++/// 而这里换不掉的是"一个不存在的语义"。
++///
++/// ⚠️ 老行为是**静默给 0**（`window` 存在但 `scrollY` 是 `undefined`，不抛）——
++/// 最难发现的一类。现在装载时**明确 `abort`** 并给出替代做法，与 `on_key_down` 那类
++/// "会抛"的行为对齐：宁可在开发期炸一次。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_scroll(msg : @cmd.Emit[Scroll]) -> Sub {
+   custom_sub("on_scroll", Local, Scroll(msg), builtin_sub_loader)
+ }
+@@ -442,6 +635,20 @@
+ /// This is an app-scoped subscription. It is only active when returned from
+ /// the root cell's `subscriptions` callback; if a non-root cell returns it,
+ /// the subscription is ignored.
++///
++/// **平台**：Web ✅ · RN ✅ **机制已通**（宿主驱动）。
++///
++/// 驱动方式是**既有的** Scheduler 注入器：sub 把注入器交给宿主
++/// （`Scheduler::set_url_changed_injector`），宿主在它自己的"URL 变化"时机调
++/// `Context::inject_url_changed`（`ReactHost` 已实现）。
++///
++/// ⚠️ 原来 RN 上**装载就抛**：老代码无条件又去挂 `popstate`
++/// （`@dom.window().to_event_target().add_event_listener(...)`），
++/// 而 RN 上 `window` 存在、`addEventListener` 不存在 → TypeError。
++/// 现在按 `@cmd.host_has_dom()` 分两条路：有 DOM 照旧自己挂 popstate（Web 一字不变），
++/// 没有 DOM 就**一个 DOM API 都不碰**，只把注入器留给宿主。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_url_changed(msg : @cmd.Emit[@url.Url]) -> Sub {
+   custom_sub("on_url_changed", Global, UrlChanged(msg), builtin_sub_loader)
+ }
+@@ -452,6 +659,15 @@
+ /// This is an app-scoped subscription. It is only active when returned from
+ /// the root cell's `subscriptions` callback; if a non-root cell returns it,
+ /// the subscription is ignored.
++///
++/// **平台**：Web ✅ · RN ✅ **机制已通**（宿主驱动，同 `on_url_changed`）。
++///
++/// 同源判断需要一个"当前地址"当基准：有 DOM 时读地址栏（老行为），
++/// **没有 DOM 时问宿主**（`Context::get_origin` —— `ReactHost` 已实现）。
++/// 原来那一句无条件读 `@dom.window().current_url()`（= `window.location.href`），
++/// 而 RN 上没有 `location`，注入一发生就会抛。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
+ pub fn on_url_request(msg : @cmd.Emit[@url.UrlRequest]) -> Sub {
+   custom_sub("on_url_request", Global, UrlRequest(msg), builtin_sub_loader)
+ }
