@@ -90,8 +90,9 @@
 | **C 库可用性与回归** | demo 改用远端包、离线检查入口、CI、安卓断言脚本 | 近期 |
 | **H 接入收敛** | 把宿主胶水（~40 行 JS）与应用样板（~30 行 MoonBit）压成"1 行 MoonBit + 3 行 JS"；宿主收成 npm 包 `moobile-host` + 注册表生成器 | 近期（**E 的前置**） |
 | **N 原生能力** | 补 `Cmd` / `Sub` 接线 → 能力包样板 → 能力可用性诚实标注 | 近期—中期 |
+| **I 生态接入** | 第三方 React 组件库当标签用（antd 已端到端跑通）；事件载荷 → prop 清单生成 → 平台矩阵 → 适配器目录 | 近期—中期（机制已落地，见 §3.8） |
 | **D 性能** | 建立基线 → 定位热点 → 优化 → 回归 | 中期 |
-| **E 脚手架** | `moobile create`（多端 + 模板 + 交互选择） | 远景（依赖 A/B/C + H） |
+| **E 脚手架** | `moobile create`（多端 + 模板 + 交互选择）；**接好 I 的组件库生成命令**（E8）；**从既有 rabbita 项目迁移的入口**（E9，依赖 F） | 远景（依赖 A/B/C + H + **I 的命令形态** + **F**） |
 | **F 迁移工具链** | 迁移动检报告 + 样式层半自动改造 + 指南 | 远景（F1 可提前） |
 | **G（待定）真实应用移植** | 原 P1–P5：把 yi 搬上来，作为"真实应用验证" | 待决策，见 §6 |
 
@@ -100,6 +101,12 @@
 否则等于把 40 行宿主胶水复制进每个新项目）；
 **N1 与 H2 是同一次 API 变更**（都动 L3 签名与导出面，合并发 0.2.0，见 §3.6 / §3.7）；
 **F 依赖 A + style 层 API 冻结**（迁移工具一旦生成代码，改 API 就是双倍成本）。
+
+**I 与 H 是同一套机制的两面**：都动宿主契约（`components` / `events` / `wrapRoot`）——
+所以 I 的契约扩展与 H 的契约校验**必须同代发布**（契约 `1 → 2` 就是这个原因，见 §3.8）。
+**I1（事件载荷）与 F1（迁移报告）互相独立，可并行**；**I3 依赖 I2**（没有 manifest 就没有类型化 setter）。
+**E 依赖 I 的"命令形态"**（不是反过来）：组件库生成器必须先是**能重跑的应用侧命令**，
+脚手架只在 `create` 时接线（E8）；把 I2/I3 排到 E 后面，等于让便宜又高价值的收益等远景。
 
 ---
 
@@ -413,6 +420,77 @@ MoonBit 没有 Kotlin/Swift 后端。
 
 ---
 
+### 3.8（I）生态接入：第三方 React 组件库
+
+> **轨道定位**：H 解决"**我们**的接入要几行"，I 解决"**别人生态里的组件**能不能用"。
+> 两者共用同一套机制（组件表 + 契约 + fail-fast），但诉求相反：H 要**少写**，I 要**能写**。
+>
+> **设计与证据**：[`docs/design/DESIGN-COMPONENT-LIBRARY.md`](docs/design/DESIGN-COMPONENT-LIBRARY.md)（机制 N1–N7）
+> ｜试金石 [`examples/apps/antd-spike/`](examples/apps/antd-spike/)（怎么跑、20 条判据）
+
+**现状（2026-09 实测）**：机制已落地并端到端跑通 —— antd 6.6.4 的组件在 MoonBit 视图里
+以 `@html.node("antd:Button", …)` 可用；`bash tools/verify_all.sh` 的
+"组件库接入（antd 试金石，26 项）"在门内。**I1（事件载荷）也已落地** ——
+受控组件（antd `Input` 打字 → Model 收到该文本 → 回填 DOM）有了自己的断言，
+所以现在能说的是"**能画、能点、能用**"（表单一类的受控组件可用）。
+
+| # | 任务 | 现状 | 判据 |
+|---|---|---|---|
+| **I1** | **事件载荷**：`Attrs::on_raw(event, f : (Payload) -> Cmd)` + `Payload::text/json/num/bool/field`（vendor patch **27**，`html/payload.mbt`） | ✅ **已落地** | 试金石 3 条断言：打字 → 回显**该文本** / `input.value` 等于 Model 的值（受控回填）/ 第二次输入同样到达。**判据是"值对上了"，不是"事件触发了"** |
+| **I2** | **prop 清单生成（manifest）**：从组件库的类型定义抽"组件 → prop 名 + 类别"（string/bool/number/json/event/reactnode/unsupported） | ❌ 未做（`jsonProps` / `events` 现在**手写**） | ① 宿主侧不再手写 `jsonProps`/`events`；② 用到清单外的 prop 名 → **首次渲染就点名**（写 `tpy` 而不是 `type` 必须报）；③ 生成器入库 + `--check` 可 diff 漂移（与 `regen`、`gen_forwarders` 同规矩） |
+| **I3** | **生成"与 `@svg` 平级的组件库 DSL 包"**（可选，见决策点 13）：目标是让组件在写法上与 `@html` 平起平坐，而不是让用户写 `@html.node("antd:Button", …)` | 🟡 **形状已实测**（`examples/apps/antd-spike/generated_shape_probe.mbt`，`moon check` 0 错误）；**生成器本身未做** | 由 manifest 生成：① 调用点写成 `@antd.button(type_="primary", danger=true, on_click=…, "加一条")` —— 与 `@html.button(...)` **同款形状**（具名可选参数 + children），且能直接塞进 `@html.div([...])`；② typo 变**编译错误**、有 IDE 补全；③ **生成包的组件名集合 == 宿主注册表的键集合**（两边同源于一份 manifest，不许各写一份）。⚠️ 名字必须**小写** —— `pub fn Button(...)` 实测是 parse error（大写开头是类型名），要大写只能 `Button::new(...)`，反而更长 |
+| **I4** | **平台矩阵**：同一 `库名:` 命名空间按平台注册不同实现（Web→`antd`，Android/iOS→`@ant-design/react-native`） | 🟡 机制有（`platforms` 闸门 + 同一命名空间可多处注册），**未实测第二个实现** | 同一份 MoonBit 视图在 Web 与 Android 上分别用两套库渲染；**漏注册的那一端启动时报错**（不是渲染成空白） |
+| **I5** | **适配器目录**：`npm/moobile-host/libraries/<lib>.js`（与 `capabilities/db.js` 同构）+ `regen` 自动接 | ❌ 未做（试金石里约 20 行适配写在验证脚本中） | 新项目 `npm install antd` + `regen` 之后，MoonBit 侧直接写 `antd:Button` 就能跑，**宿主侧零手写** |
+| **I6** | **样式交集量化**：typed style 在 DOM/antd 上到底哪些属性有效 | ❌ 未做 | 给 `@style.Style` 的每个属性标一列"DOM 是否有效"，产出**数字**（不是感觉）；做法参照 `docs/evidence/r1/style_gap.md` |
+| **I7** | **真浏览器 / 真机实测**（antd 的 CSS-in-JS 是否真的生效、移动端表现） | ❌ 未做（试金石只验结构，不验样式） | headless Chrome 断言**计算样式**（不是类名）；真机另算 |
+
+**成本与边界（免得把它想成"再来一遍 H"）**：I 不需要新依赖、不需要动渲染架构 ——
+机制部分是 ~120 行库代码 + 宿主包一次拆分，**已经做完**。剩下的是 I1（小而关键）
+与 I2（小而收益高）；I3/I4 属于"看需求再上"。
+
+**I2 的难度已量测**（`node examples/apps/antd-spike/host/manifest_probe.mjs`，可复现；2026-09，antd 6.6.4）：
+- 规模很小：**79** 个组件目录 / **73** 个 Props 接口 / **1260** 个直接 prop（平均 17.3 个/组件）——
+  清单总量是"一份 JSON"，不是"一个项目"。
+- 浅解析（正则 + 花括号配对，**不需要 TypeScript**）能分类 **~88%**：直接落通道的 863 个
+  （`scalar` 248 / `bool` 160 / `union` 111 / `reactnode` 109 / `function` 108 / `css` 69 / `array` 31 / `event` 24 / `object` 3）
+  + "命名类型"桶 397 个里 **230 个一跳可分类**（antd 本地 564 个 `type` 别名 + 503 个 `interface`）
+  + 16 个需拆工具类型（`NonNullable` / `Partial` / `LiteralUnion`）。剩下 ~12% 是**跨组件/外部类型**
+  （`ButtonProps` / `Locale` / `ComponentStyleConfig`）→ 标 `unsupported` **并在报告里点名**（不是失败）。
+- **真正的坑是"继承"**：**33/73** 个组件的 Props 接口 `extends` 了别处，
+  而 `onClick` / `href` / `className` / `style` / `aria-*` 这些**最常用的 prop 根本不在场** ——
+  它们定义在 `@types/react` 里，而 **antd 不依赖它、纯 JS 应用也不会有**（实测三者皆不存在）。
+  → 必须自备一份"React 公共属性"小表（`on*` + `className`/`style`/`id`/`title`/`href`/`aria-*`/`data-*`），
+  并**对清单外的名字放行**（清单本身不完整，严报会大面积误报 —— 这正是 I2 判据里
+  "`onClick` / `href` 必须**不**被误报"那条的由来）。
+
+
+
+**I2 / I3 / I5 收敛成同一条应用侧命令**（暂名 `npx moobile-host libgen`），三段一条流水线：
+
+```
+应用装好的组件库（node_modules/**/*.d.ts）
+        │  ① 抽"组件 → prop 名 + 类别"        ← I2
+        ▼
+   manifest（JSON，入库、可 diff、可手改兜底）
+        │  ② 生成宿主侧注册调用（components / jsonProps / events / wrap / platforms）   ← I5
+        │  ③ 生成 MoonBit DSL 包（@antd.button(...) 这种"平级 DSL"）                    ← I3
+        ▼
+   应用侧生成物（入库 + `--check`，与 registry.generated.js / 转发包同规矩）
+```
+
+**为什么必须是"一条命令、一份 manifest、两个产物"**：宿主侧认的是**名字**
+（`MOBILE_HOST.components["antd:Button"]`），MoonBit 侧发的也是**名字**（标签字符串）——
+两边各写一份清单就是等着漂。让它俩同源于一份 manifest，是"生成物之间不会对不上"的**机制保证**，
+而不是靠人记得同步。**判据**：`--check` 能同时发现两侧任一边被手改。
+
+**落地形态（决策点 15）**：生成器住在**应用侧工具链**（Node，与 `moobile-host` 的 CLI 同一个包），
+**不**是我们预先发布 `XiLaiTL/moobile-antd` 包；脚手架（E）只负责在 `create` 时把它接好（E8）。
+
+**位置必须是 Node 侧的一条硬理由**：它的输入是 `.d.ts`（决策点 12 里 (b) 那条路要用 TypeScript
+编译器 API）与 `node_modules` —— 这两样只有 Node 侧拿得到，MoonBit CLI 拿不到。
+
+---
+
 ## 4. 中期：轨道 D（性能）
 
 ### 4.1 先建基线（没有基线就没有优化）
@@ -446,9 +524,9 @@ MoonBit 没有 Kotlin/Swift 后端。
 
 ### 5.1（E）`moobile create`
 
-- **E0 前置**：先落 H1–H3（§3.7）。脚手架的生成物必须是**已经收敛过的接入形态**
-  （宿主包 + 1 行 App.js + 1 个导出）——否则每生成一个项目，就把 40 行宿主胶水复制一份，
-  等于把债固化进模板。
+- **E0 前置**：先落 H1–H3（§3.7）**与 I2/I3 的"命令形态"（§3.8）**。脚手架的生成物必须是
+  **已经收敛过的接入形态**（宿主包 + 1 行 App.js + 1 个导出）——否则每生成一个项目，就把 40 行宿主胶水复制一份，
+  等于把债固化进模板。组件库那部分同理：**E 消费 I 的命令，不自己实现生成逻辑**（理由见 E8）。
 - **E1 技术选型**（决策点，见 §7-5）
   - 方案一：**MoonBit CLI** —— `moon install XiLaiTL/moobile-cli` 分发，与生态一致，
     但交互式 CLI 与模板管理要自己写
@@ -463,7 +541,27 @@ MoonBit 没有 Kotlin/Swift 后端。
 - **E5 诚实标注**：iOS 标注"只生成、未在本机验证"；桌面原生要说明"需要第二个宿主（不带 Expo、pin RNW 要求的 RN 版本），当前未提供"
 - **E6（前置验证，约半天）**：先用 Tauri 或 PWA 把现有 web 产物包起来跑通一次，证明"桌面壳"这条路成立，再决定要不要进模板 —— **本机可验证**，所以风险低
 - **E7 跨平台产物**：桌面/移动的原生产物**不能交叉编译**（Windows 上只能出 Windows 桌面与 Android APK；macOS、Linux 桌面与 iOS 要在各自系统上构建）。可行的做法是脚手架直接生成 **GitHub Actions 构建矩阵**（windows / macos / ubuntu 三个 runner），这样"我们没 Mac 也能验证 iOS 与 macOS 产物能不能构建"
-- **判据**：干净机器上 `moon install … && moobile create demo-app` → 选 Android → 能在 Expo Go 里跑起来
+- **E8 组件库接线（消费 I，不实现 I）**：脚手架要生成的是**"接好这条流水线"**，而不是生成代码本身 ——
+  ① `package.json` 里一条命令（暂名 `npx moobile-host libgen`，产出 manifest + MoonBit DSL 包 + 宿主注册调用）；
+  ② 那条命令进 `scripts` 与 CI 的 `--check`（生成物入库、可 diff，与 `registry.generated.js` 同规矩）；
+  ③ README 一行"**升级组件库之后重跑它**"。
+  ⚠️ **为什么生成逻辑不能写在脚手架里**：脚手架只在 `create` 那一刻存在，而升级 antd 之后**还要重跑**；
+  把逻辑藏在脚手架里 = 用户升级后生成物悄悄漂掉。**依赖方向是 E → I，不是 I → E** ——
+  否则 I2/I3（便宜、马上能用）会被远景的 E 卡住。
+- **E9 第三类输入：从既有 rabbita 项目迁移（远期）** ——
+  `npx moobile-host create --from-rabbita <既有项目路径> my-app`。
+  **为什么是我们的天然能力**：moobile 是 rabbita 的**换后端** fork（TEA 与 `@html` DSL 同构），
+  所以迁移**不是重写视图**，而是改四处边界（入口/宿主、样式、能力、构建目标）——
+  视图与 TEA 那两行是**照搬**，成本集中在样式与"无等价物标签"上。
+  **产出三件东西**：① F1 的动检报告（会静默失效的项逐条点名）② 新项目（视图尽量原样搬运，
+  编不过就留 `TODO`，不做"猜意图"的改写）③ 指向 F2/F3/I 的 TODO 清单。
+  **一条硬约束**：迁移是**换依赖**，不是两个 rabbita 并存（两边的 `Html`/`VNode` 是不同类型，混用编不过）。
+  **判据是"报告零遗漏"，不是"自动改对了多少"**（S9-1…S9-5 见 `docs/design/SCAFFOLD.md` §3.7）。
+  **依赖与顺序**：`F1 → I → C → E9`，所以 **E9 天然最后一个做**，但今天就能定形态与判据。
+- **判据**：干净机器上 `moon install … && moobile create demo-app` → 选 Android → 能在 Expo Go 里跑起来；
+  **外加组件库那半条**：`create` 时勾一个组件库 → 项目开箱能写 `@antd.button(...)`（编译通过），
+  升级该库版本后重跑生成命令 → `--check` 能 diff 出变化（而不是静默漂移）；
+  **迁移那半条**（远期，S9）：真实 rabbita 项目迁完 → 动检零遗漏 + `moon check` 0 错误 + Web 上跑得起来。
 
 ### 5.2（F）迁移工具链
 
@@ -474,6 +572,11 @@ MoonBit 没有 Kotlin/Swift 后端。
 | F3 迁移指南 | 逐条对照表 + 手工步骤（含 `details`/`summary`、`canvas`、表格等结构性差异） | 成本低，必须做 |
 | F4 与 `postadd` 结合 | `moon add` 之后自动打印体检清单入口 | 成本低 |
 | **判据** | 拿一个真实 rabbita 项目跑 F1，**静默失效项零遗漏**（与手工清点对照） |
+
+> **F 不只是"给用户一个报告"，它还是 E9（从 rabbita 项目迁移）的前置**：
+> E9 的报告就是 F1，样式那半就是 F2。顺序上 **F1 必须先于 E9** ——
+> 没有动检，"哪些会静默失效"没有答案，迁移器只能瞎猜（`docs/design/SCAFFOLD.md` §3.7.5）。
+> 反过来，**F1 可以今天就单独做**：它成本最低、价值最高，且不依赖脚手架。
 
 ---
 
@@ -537,6 +640,49 @@ MoonBit 没有 Kotlin/Swift 后端。
     + `subscriptions?`）与导出面。**倾向现在就做** —— 现在只有一个使用者（我们自己），
     等有人用了再改就是双倍成本；且这条同时也修好了"声称对齐 elmish 却没对齐"的对外诚实性问题。
 
+12. **prop 清单（I2）的真相源**：组件的 prop 名与类别从哪里来？
+    - (a) **浅解析 `.d.ts`**（antd 装了 **1988** 个 `.d.ts`，`BaseButtonProps` 是干净接口）—— 零新依赖，
+      但 `interface ButtonProps extends BaseButtonProps, MergedHTMLAttributes` 这种**跨文件继承会漏**
+      （`onClick` / `href` 这类继承来的 prop 抽不到，而它们恰恰是常用的）；
+    - (b) **用 TypeScript 编译器 API 真解析** —— 准，但引入 `typescript` 依赖 + 要处理 `Omit<…>` / 联合类型 / 泛型；
+    - (c) **手写 / 半自动清单**（先覆盖常用组件，清单外"未知即放过"）。
+    **倾向**：**(a) 打底 + 跟着 `extends` 上溯（浅解析也能走继承链）+ (c) 兜底清单**；
+    (b) 只在 (a) 的漏检被证明是真问题时才上。**判据**：写 `tpy`（`type` 的 typo）必须被点名，
+    而 `onClick` / `href` 这类继承来的 prop 必须**不**被误报。
+13. **要不要生成 MoonBit 类型化 setter（I3）**：
+    - (a) **不做**：`prop_str("type", …)` 就够用，代价是 typo 没有编译期检查（靠 I2 的运行期点名兜底）；
+    - (b) **生成"常用子集"**（`Button` / `Card` / `Table` / `Input` / `Select` 这类高频组件，约 20 个）；
+    - (c) **全量生成**（每个组件每个 prop 都精确类型）。
+    **倾向**：**(b)**。(c) 面对 `ReactNode` / 联合类型 / `React.HTMLAttributes` 的几百个继承属性，
+    映射过来是一个独立项目、且大半在 MoonBit 里表达不了；(a) 则让"用第三方库"一直带着
+    "写错了没人告诉你"的隐患。**代价必须先看清**：(b) 是**跟着 antd 版本走的生成物**
+    （入库 + `--check`），跟版成本要算进去（参照 `gen_forwarders.py` 的规矩）。
+14. **跨平台承诺到哪一档**：① **只承诺 Web**（`antd` 这类 react-dom 库），原生上直接报错；
+    ② 承诺"同名组件两端都有"（同一命名空间按平台注册两套实现，RN 侧要 `@ant-design/react-native`
+    + `gesture-handler` + `reanimated` 两个原生依赖）；③ 不承诺，交应用自己按平台分支。
+    **倾向**：**① 作默认**（诚实、零成本，`registerLibrary` 的 `platforms` 闸门已经实现这条）；
+    ② 等真有需求时按 §3.8 的 I4 验一次再决定。
+15. **组件库生成器（I2/I3/I5）的落地形态**：
+    - (a) **应用侧命令**（`npx moobile-host libgen`，产出 manifest + 宿主调用 + MoonBit DSL 包，生成物入库 + `--check`）；
+    - (b) **我们预先生成并发布** `XiLaiTL/moobile-antd` 之类的 MoonBit 包；
+    - (c) **只在脚手架里跑一次**（`create` 时生成好就完事）。
+    **倾向 (a)**，理由三条：
+    ① **它不依赖脚手架** —— (c) 会把"写错 prop 会编译报错"这种便宜又高价值的收益，绑到远景的 E 上；
+    ② **它必须能重跑** —— 升级 antd 之后清单会变，命令跑一次就完事的形态必然漂；生成逻辑尤其不能藏在脚手架里
+    （脚手架只在 `create` 那一刻存在）；
+    ③ **输入只有 Node 侧拿得到**（`.d.ts` + `node_modules`；决策点 12 的 (b) 还要 TypeScript 编译器 API）。
+    (b) 的代价是"每个库 × 每个版本"都要我们发一个包，且版本耦合到我们的发版节奏 ——
+    **留作后手**：真出现某个库被大量使用时再预生成发布，不冲突（生成器本来就产出同样的代码）。
+    配套：生成物**入库、可 diff、可手改**（手改要在标记区外，`--check` 会看见），
+    并给生成器一个**自己的版本号**写进产物头部 —— 我们改命名约定时，用户重跑会立刻看见 diff 而不是静默变样。
+
+16. **rabbita 项目迁移（E9）的野心到哪一档**：① **只做"新项目 + 报告 + TODO"**（一行用户代码都不改写）；
+    ② 在 ① 上加**样式层的机械映射**（F2）；③ 连视图/逻辑一起自动改写。
+    **倾向 ① 起步、② 作为增量**：迁移的价值在**把"静默失效"变成显式清单**，不在替用户猜意图；
+    ③ 猜错的代价是把 bug 埋进用户代码，而用户不会知道。② 的边界要写死 ——
+    机械映射出的 `Style` 与原 CSS **不等价**（伪类 / 媒体查询 / 后代选择器无对应物），必须逐条标"有损"。
+    配套见 `docs/design/SCAFFOLD.md` §8 的 **D8**（野心档位）与 **D9**（用哪个真实项目验收：以 `interest/yi` 为主）。
+
 ---
 
 ## 8. 建议顺序与里程碑
@@ -548,7 +694,11 @@ P8  近期    N1 + H2 API 对齐（一次改完，发 0.2.0）→ H1 + H6 宿主
 P9  近期—中期 N2 能力契约（文档）→ N3 打通一个真能力 → N4 Sub 打通 → H4 构建胶水
             →（可选）H3 命名空间方案（先测包体积）
 P10 中期    D1/D2 性能基线 → D3–D5 优化 →（可选）D6 升级演练
-P11 远景    E 脚手架（依赖 A/B/C + H）  ∥  F1 迁移动检（可提前，成本低）
+P11 远景    E 脚手架（依赖 A/B/C + H + I 的命令形态 + F；E8 只接线不实现）
+            → E9 从既有 rabbita 项目迁移（= E × F 的收口，天然最后做）  ∥  F1 迁移动检（可提前，成本最低）
+P12 近期—中期 I1 事件载荷（受控组件可用）→ I2 prop 清单 → I5/I3 同一条 `libgen` 命令的两个产物
+            （生成物入库 + `--check`）→ I6/I7 样式与真机测量
+            →（可选，看需求）I4 平台矩阵 ∥ 决策点 13(b) 的类型化程度 ∥ 决策点 15(b) 预生成发布
 ```
 
 > 为什么 N1/H2 排在最前：它是**唯一的破坏性变更窗口** —— 越早做越便宜，且它同时解掉
@@ -562,7 +712,9 @@ P11 远景    E 脚手架（依赖 A/B/C + H）  ∥  F1 迁移动检（可提�
 | **M2** | 对外叙事到位：description/keywords/首屏改完，搜索能命中 |
 | **M3** | demo 以"用户视角"跑通（远端包 + 真机） |
 | **M4** | 性能基线 + 至少一项实质优化 |
-| **M5** | `moobile create` 可用 |
-| **M6** | 迁移动检报告可用 |
+| **M5** | `moobile create` 可用（**含 E8**：勾一个组件库 → 开箱能写 `@antd.button(...)`，且生成命令可重跑、`--check` 能 diff） |
+| **M6** | 迁移动检报告可用（F1，**E9 的前置**，可提前单独做） |
+| **M10** | **迁移入口可用（E9）**：真实 rabbita 项目（`interest/yi`）跑 `create --from-rabbita` → 动检报告**与人工清点零遗漏** + 生成项目 `moon check` 0 错误 + Web 宿主上跑得起来 + 报告里每项都有下一步指向（判据 S9-1…S9-5，见 `docs/design/SCAFFOLD.md` §3.7） |
 | **M7** | 接入收敛达成：一个新 app 的非视图代码 = 1 行 MoonBit + 3 行 JS，宿主来自 `npm install moobile-host`（H 的轨道级判据） |
 | **M8** | 原生能力打通：一个真能力在真机上可复现（N3），且持续流订阅可用（N4） |
+| **M9** | **生态接入可用**：第三方组件库的组件在 MoonBit 视图里"**能用**"而不只是"能画" —— 受控组件（I1）在真浏览器里回填正确、props 清单由生成器产出（I2）、门里有断言（轨道级判据见 §3.8） |

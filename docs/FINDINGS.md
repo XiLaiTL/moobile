@@ -1700,3 +1700,30 @@ moon ide find-references <sym>   # 所有引用
 换成 `2>/dev/null` 再看，`args 4 条：[node, single.js, hello, world]` —— 参数一直是通的。
 
 > 又是同一个形状：**先确认"我看的是不是那一行"**。这次是我把 stderr 的噪声当成了 stdout 的结论。
+
+---
+
+## 补记（I1 事件载荷）：生成式 vendor 的 patch 对**文件末尾换行**敏感
+
+给 `html/` 加事件载荷通道时新增了 `vendor/rabbita/html/payload.mbt`，写完 `tools/vendor_sync.sh --capture`
+一切正常，但 `--check` 直接红：
+
+```
+patch unexpectedly ends in middle of line
+patch: **** malformed patch at line 174:
+ERROR: patch 打不上：27-new-html-payload.mbt.patch
+```
+
+**真因**：那个文件**末尾没有换行**（`0x0A`）。我用一次编辑把它删掉了 —— 而 `patch` 要求每个 hunk 的
+上下文行以换行结尾，最后一行缺换行就成了"畸形 patch"。**报错完全没提"换行"**，看起来像 patch 生成器的 bug。
+
+**解法**：`printf '\n' >> <file>` 再重跑 `--capture`；并且把"新文件必须有末尾换行"加进自查清单：
+
+```bash
+for f in $(git status --porcelain | awk '{print $2}'); do
+  [ "$(tail -c 1 "$f" | xxd -p)" = "0a" ] || echo "缺末尾换行: $f"
+done
+```
+
+**为什么值得记**：这条错的形状与 R7/R8 同一类 —— *报错信息指向的地方（patch 生成器）不是真因所在
+（文件末尾换行）*。而且它只在"新增文件 + 生成式 vendor"这个组合下出现，正常改代码不会碰到。

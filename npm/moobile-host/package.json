@@ -9,6 +9,7 @@
   },
   "files": [
     "index.js",
+    "core.js",
     "capabilities/",
     "bin/",
     "README.md",
@@ -24,11 +25,15 @@
   ],
   "peerDependencies": {
     "react": ">=18",
+    "react-dom": ">=18",
     "react-native": ">=0.70"
   },
   "peerDependenciesMeta": {
     "react-native": {
-      "optional": false
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
     }
   },
   "repository": {

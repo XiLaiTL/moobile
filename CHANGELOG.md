@@ -5,6 +5,81 @@
 
 ---
 
+## 未发布 —— 第三方 React 组件库接入（**契约 `1 → 2`，破坏性**）
+
+**新能力：React 生态的组件库能当 moobile 的标签用**
+
+```moonbit
+@html.node("antd:Button", @html.Attrs::build()
+  .prop_str("type", "primary")
+  .prop_bool("danger", true)
+  .on_click(_ => emit(Bump)), "加一条")
+```
+
+- **标签命名空间直通**（`库名:组件名`）：`map_tag` 变三档 —— 命中原 42 条表 → 老行为；
+  **含冒号** → 原样直通给宿主组件注册表；其余 → 回落 `View` + 计数（迁移诊断不变）。
+  写错名字或库没装**在启动时点名报错**（列出已注册的名字），不再回落成空盒子。
+- **通用 prop 通道**（vendor `html/attrs.mbt`，落进 patch 01）：新增
+  `prop_str` / `prop_bool` / `prop_int` / `prop_num` / `prop_json` 五个公开方法。
+  此前 `attribute`/`property` 是**包内私有**，于是 `danger` / `loading` / `columns`
+  这类组件库词汇一个都传不进去。结构化值走 **JSON 文本**，由宿主按 `jsonProps` 白名单解析。
+- **事件落点改由宿主决定**（三级优先：精确标签 → `库:*` → `*` → 默认表）。
+  顺带修掉一个真 bug：兜底从 `"on" + event` 改成 camelCase —— 原来的 `onchange` 被 React
+  **明确拒绝**（`Invalid event handler property`），那些处理器根本不会被接上。
+- **空样式不再写 `style` 键**（以前无条件写 `style: {}`）。
+
+**新能力：事件载荷通道 —— 受控组件可用了（`PLAN.md` 的 I1）**
+
+```moonbit
+@html.node("antd:Input",
+  @html.Attrs::build()
+    .prop_str("value", model.draft)                     // 出：Model → 组件
+    .on_raw("change", e => emit(SetDraft(e.text()))),   // 回：组件 → Model（**真实值**）
+  [])
+```
+
+- 新增 `Attrs::on_raw(event, f : (Payload) -> Cmd)` 与提取器
+  `Payload::text/json/num/bool/field`（vendor patch **27**：`html/payload.mbt`，整文件限定 js）。
+  在此之前 `onChange` **会触发但读不到值**（透传表填零值），所以 `Input`/`Select` 这类
+  受控组件"能画、能点、**不能用**"。
+- **旧的 `on_*` 签名一个都没动** —— 它们是对 DOM 的承诺；这是**平行**通道。
+- 提取器覆盖三种真实形态：直接给字符串（RN 的 `onChangeText`）、事件对象（`target.value`）、
+  业务值（`json()`）；形状对不上给空值而**不抛错**。
+- 顺带厘清一条行为：`change` 这类**单词回调靠 camelCase 兜底就能通**，
+  只有落点语义不同的（`click` → 默认 RN 的 `onPress`）才必须在宿主声明覆盖 —— 试金石的
+  对照断言把这条钉住了。
+- ⚠️ **已知限制**：回调**只取第一个参数**（`onChange(value, option)` 只拿得到 `value`）。
+
+**宿主包：拆成「平台无关核心 + RN 预设」**
+
+- 新增 `npm/moobile-host/core.js`：`MOBILE_HOST` 契约的装配、`registerLibrary()`、
+  `mountRoot()`、`mountAppCore()`；`index.js` 变薄，只留 RN 的组件表与 `Platform.OS`。
+  理由：`import 'react-native'` 一出现，这个包就只能给 RN 用 —— 而契约本身与 RN 无关。
+- `react-native` 与 `react-dom` 改为**可选** peer（用 `core.js` 的宿主不必装平台）。
+- `registerLibrary()` 一个调用管四件事：组件登记（antd 自动挑出 71 个导出）、
+  结构化 prop、事件覆盖、Provider 包裹 + **平台闸门**（不匹配当场抛，而不是渲染成空白）。
+
+**契约 `1 → 2`（破坏性）**：`components` 键空间开放 + 新增可选 `events` / `wrapRoot` / `platform`。
+库与宿主包各自声明版本，宿主挂载时比对，不等就**同时报出两个版本号**。
+⚠️ **发版时 `moon.mod` 与 npm 包必须同代抬到 `0.3.0`**（本次只改了代码，没有动版本号）。
+
+**证据**（都是可复现的命令，见设计稿附录）：
+
+- `bash tools/verify_all.sh` → **10/10 通过**（新增一项"组件库接入（antd 试金石，26 项）"）。
+- antd 6.6.4 端到端：`node examples/apps/antd-spike/host/verify.mjs` → **26/26**
+  —— SSR 断言 antd 自己的类名与 Table 数据、jsdom 真实点击回到 `update` 并重渲染、
+  **受控组件打字后值对上了**（3 条）、四个负例/对照（写错名字点名报错 / 不给事件覆盖则点击无效 /
+  全局覆盖能兜住 / `change` 不靠覆盖也能通而 `click` 不行）。
+  离线可跑：不需要浏览器、不需要 Metro、不需要后端。
+
+**设计文档**：[`docs/design/DESIGN-COMPONENT-LIBRARY.md`](docs/design/DESIGN-COMPONENT-LIBRARY.md)
+（机制 N1–N7、被否掉的方案、缺口清单）。**未做**：结构化 prop 的类型化（T2/T2b）、
+真浏览器/真机实测与样式交集量化（T3）。
+生成器（组件库 DSL 包）那半：难度已量测（设计稿 §5 **T7**：**~88% 的 prop 可自动分类**），
+落地形态见决策点 15（应用侧命令），**未实现**。
+
+---
+
 ## 未发布 —— 工具链改用 MoonBit（不影响库的 API 与产物）
 
 - 新增 `tools/mbtools/`（**独立嵌套模块**，不污染库的 `moon.mod`）+ `tools/mb.sh`，

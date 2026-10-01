@@ -1,0 +1,17 @@
+{
+  "name": "antd-spike-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "antd 试金石的宿主：纯 react-dom（没有 RN），用 moobile-host/core 的契约装配 + registerLibrary 接 antd",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "antd": "^6.6.4",
+    "jsdom": "^26.1.0",
+    "moobile-host": "file:../../../../npm/moobile-host",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  }
+}

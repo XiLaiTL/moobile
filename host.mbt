@@ -72,8 +72,61 @@ extern "js" fn js_arr_push(a : JsValue, v : JsValue) -> Unit =
 ///
 /// 分工：**"哪个 HTML 标签映射到哪个组件"是 MoonBit 的决定（见 `render.mbt`
 /// 的 `map_tag`）**，这一行只负责把名字翻成宿主手里的那个对象。
+///
+/// ★ 0.3.0 起它还负责**点名报错**：查不到就抛，并把已注册的名字列出来。
+/// 为什么不能再返回 `undefined` 了事：`undefined` 到了 React 那里只会变成
+/// `Element type is invalid`（看不出是谁的错），而 `antd:Botton` 这种手滑
+/// 或者"宿主忘了注册"，会一路渲染成白屏 + 一句与组件名无关的报错。
+/// 这与宿主能力注册表的做法一致（`installCapabilities` 也是点名报错）。
+///
+/// 注意分界：**只有带命名空间的标签会抛**。表外的普通标签（`img`/`table`…）
+/// 仍按老规矩回落 `View` 并计数 —— 那是迁移诊断，不能变成崩溃。
 extern "js" fn js_host_component(name : String) -> JsValue =
-  #| (n) => globalThis.MOBILE_HOST.components[n]
+  #| (n) => {
+  #|   const h = globalThis.MOBILE_HOST;
+  #|   const table = h && h.components ? h.components : null;
+  #|   const c = table ? table[n] : undefined;
+  #|   if (c === undefined) {
+  #|     const names = table ? Object.keys(table) : [];
+  #|     const shown = names.slice(0, 10).join(', ');
+  #|     throw new Error(
+  #|       'moobile: 宿主没有注册组件 "' + n + '"（MOBILE_HOST.components 里没有这个键）。' +
+  #|         '\n  已注册 ' + names.length + ' 个：' + shown + (names.length > 10 ? ', …' : '') +
+  #|         '\n  · 内置标签（div / span / button …）由 render.mbt 的标签表映射，不需要注册；' +
+  #|         '\n  · 带命名空间的标签（如 antd:Button）要由宿主注册：mountApp 的 components 选项，' +
+  #|         '或 moobile-host 的 registerLibrary()。'
+  #|     );
+  #|   }
+  #|   return c;
+  #| }
+
+///|
+/// 宿主的事件名覆盖查询，**三级优先**：
+/// 1. `events[标签]`（精确到组件，如 `antd:Button`）；
+/// 2. `events["<库>:*"]`（整个组件库一把，如 `antd:*`）—— 同一库的组件
+///    往往遵守同一套 prop 命名，逐个写是重复劳动；
+/// 3. `events["*"]`（整个宿主一把）。
+///
+/// 返回 `""` 表示"宿主没有意见，按默认表来"。
+///
+/// 为什么这层必须在宿主：`click` 落在 RN 的基础组件上是 `onPress`、落在 Web 组件上是
+/// `onClick` —— 这不是"事件语义"的差别，而是"**手里这个组件对象接受什么 prop**"的差别，
+/// 只有拿着组件对象的宿主回答得了（我们这边只有个组件名，见 `render.mbt` 的 `map_tag`）。
+extern "js" fn js_event_override(tag : String, event : String) -> String =
+  #| (tag, e) => {
+  #|   const ev = globalThis.MOBILE_HOST && globalThis.MOBILE_HOST.events;
+  #|   if (!ev) return '';
+  #|   const pick = (m) => (m && typeof m[e] === 'string' ? m[e] : '');
+  #|   const exact = pick(ev[tag]);
+  #|   if (exact) return exact;
+  #|   const i = tag.indexOf(':');
+  #|   if (i > 0) {
+  #|     const lib = pick(ev[tag.slice(0, i) + ':*']);
+  #|     if (lib) return lib;
+  #|   }
+  #|   return pick(ev['*']);
+  #| }
+
 
 ///|
 extern "js" fn js_fragment() -> JsValue =

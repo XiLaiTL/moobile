@@ -66,7 +66,7 @@
 
 ### 2.1 宿主侧契约（JS）
 
-`globalThis.MOBILE_HOST` 必须有四个成员（`examples/apps/todo-app/host/App.js` 是参考实现，约 30 行）：
+`globalThis.MOBILE_HOST` 必须有四个成员（`npm/moobile-host/core.js` 是参考实现）：
 
 ```js
 globalThis.MOBILE_HOST = {
@@ -79,7 +79,16 @@ globalThis.MOBILE_HOST = {
 
 ⚠️ **必须提供的组件恰好是这 5 个**（`View` `Text` `Pressable` `TextInput` `ScrollView`）——
 它是 `render.mbt`（模块根包） 标签表的**值域**：42 条标签全部映射到这 5 个名字上，少一个，
-对应标签就会变成 `undefined`。
+对应标签就会在渲染时**点名报错**（`host.mbt` 的 `js_host_component`，不再返回 `undefined`）。
+
+> **契约版本 2（未发布，2026-09）**：`components` 的键空间**开放**了（第三方组件库的组件
+> 以 `antd:Button` 这种命名空间键注册），并新增三个**可选**成员：`events`（按标签覆盖事件
+> prop 名）、`wrapRoot`（Provider 包裹）、`platform`（平台闸门）。
+> 库与宿主各自声明版本，挂载时比对，不等就同时报出两个版本号。
+> 设计与证据见 [`design/DESIGN-COMPONENT-LIBRARY.md`](design/DESIGN-COMPONENT-LIBRARY.md)。
+>
+> 顺带一条给宿主作者的提醒：**契约本身与 React Native 无关** ——
+> `npm/moobile-host/core.js` 只依赖 React，RN 的组件表在 `index.js` 里当**预设**。
 
 ### 2.2 应用侧契约（MoonBit → JS 的链接导出）
 
@@ -111,6 +120,14 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 而在 React 后端下，`Mouse`/`Keyboard`/`Scroll` 这些载荷**一律是零值**
 （`html/event_decoders.mbt` 的透传表，见 `FORK.md` §2.5）。
 含义：**能写、不崩、坐标拿不到**。要真实手势数据得走 RN 手势通道（旧计划 `docs/plan/PLAN-2026Q3-yi-port.md` 的 T3.4）。
+
+> **2026-09 补两笔**（都与"载荷是零值"不同层面）：
+> 1. **事件 prop 名**不再写死：`map_event` 变成"宿主覆盖（精确标签 → `库:*` → `*`）→ 默认表"，
+>    兜底也从 `"on" + event` 改成 camelCase —— 原来的 `onchange` 被 React **明确拒绝**
+>    （`Invalid event handler property`），也就是那些处理器**根本不会被接上**，比"载荷是零值"更严重。
+> 2. **载荷本身仍未打通**：`onChange` 现在会触发，但取不到用户输入的值 ——
+>    受控组件因此还不能用。这是 [`design/DESIGN-COMPONENT-LIBRARY.md`](design/DESIGN-COMPONENT-LIBRARY.md)
+>    §5 T1 那件事（设计已给，未实现）。
 
 ---
 

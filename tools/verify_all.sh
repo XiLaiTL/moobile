@@ -65,12 +65,38 @@ run "外部模块可用性（check_external）" bash tools/check_external.sh
 # 改了 vendor/rabbita/** 或升级 fork 之后忘了重跑生成器，就会在这里红。
 run "转发包与 mbti 一致（gen_forwarders --check）" bash tools/py.sh tools/gen_forwarders.py --check
 
+# React 组件库接入（antd 试金石）—— **离线可跑**：SSR 出 HTML 断言 + jsdom 真实点击，
+# 不需要浏览器、不需要 Metro、不需要后端。26 项判据见
+# `examples/apps/antd-spike/host/verify.mjs`，设计见 `docs/design/DESIGN-COMPONENT-LIBRARY.md`。
+#
+# 为什么值得进这个入口：组件库接入是本库少数"跨了四层（标签表 / 契约 / 宿主包 / 宿主预设）"
+# 的功能，任何一层退回去，这条门都会红 —— 而它跑起来只要几秒。
+if [ -d "$ROOT/examples/apps/antd-spike/host/node_modules" ]; then
+  run "组件库接入（antd 试金石，26 项）" \
+    bash -c "cd '$ROOT/examples/apps/antd-spike/host' && node verify.mjs"
+else
+  skip "组件库接入（antd 试金石）" "examples/apps/antd-spike/host/node_modules 没装（cd 进去跑 npm install）"
+fi
+
 # 能力注册表与依赖是否仍一致（生成物是入库的，所以能 diff）
 if [ -d "$ROOT/examples/apps/todo-app/host/node_modules/moobile-host" ]; then
   # ⚠️ 不要用 `( cd … && run … )`：run 里改的 PASS/FAIL 落在**子 shell**，
   #    父进程的计数会少一个（第一版就这么漏掉了这项，汇总显示 4 而实际过了 5）。
-  run "能力注册表一致性（moobile-host regen --check）" \
-    bash -c "cd '$ROOT/examples/apps/todo-app/host' && npx moobile-host regen --check"
+  #
+  # ⚠️⚠️ **必须跑源码，不能跑 `npx moobile-host`**（2026-09 修）。
+  #    原写法是 `npx moobile-host regen --check`，而 `npx` 解析到的是
+  #    `node_modules/moobile-host` —— 那是 `npm install` 时冻结的**副本**
+  #    （`file:` 依赖不是 symlink，实测两边 inode 不同）。
+  #    后果：门验的是副本、不是源码。曾出现「副本是好的、源码与**已发布的
+  #    npm 包**都是坏的，而门是绿的」—— 见 `tools/check_npm_fresh.mjs` 的说明。
+  #    跑源码脚本仍需 cwd = 应用根（它从 cwd 读**应用**的 package.json，
+  #    并按 cwd 解析 --out），所以保留 `cd`，只把 `npx` 换成源码的绝对路径。
+  run "能力注册表一致性（regen --check，跑源码）" \
+    bash -c "cd '$ROOT/examples/apps/todo-app/host' && node '$ROOT/npm/moobile-host/bin/cli.js' regen --check"
+
+  # 副本新鲜度：`node_modules/moobile-host` 必须是 `npm/moobile-host/` 的复制品。
+  # 副本陈旧 = 上面那条门与 e2e 都在验旧代码（本轮就是这么被骗过去的）。
+  run "宿主包副本新鲜度（check_npm_fresh）" node "$ROOT/tools/check_npm_fresh.mjs" --quiet
 else
   skip "能力注册表一致性（moobile-host regen --check）" "examples/apps/todo-app/host/node_modules 里没装 moobile-host"
 fi

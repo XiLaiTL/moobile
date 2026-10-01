@@ -1,13 +1,17 @@
 --- a/html/moon.pkg
 +++ b/html/moon.pkg
-@@ -1,18 +1,26 @@
+@@ -1,18 +1,29 @@
  import {
 +  "XiLaiTL/moobile/style",
    "XiLaiTL/moobile/internal/vdom",
-   "XiLaiTL/moobile/dom",
-   "XiLaiTL/moobile/common",
-   "XiLaiTL/moobile/cmd",
-   "XiLaiTL/moobile/variant",
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/common",
+-  "XiLaiTL/moobile/cmd",
+-  "XiLaiTL/moobile/variant",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/common",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/variant",
    "moonbitlang/core/debug",
 +  "moonbitlang/core/ref",
    "moonbitlang/core/immut/vector",
@@ -26,5 +30,8 @@
 +options(
 +  targets: {
 +    "event_decoders.mbt": [ "js" ],
++    // ★ moobile 扩展：载荷通道（`Attrs::on_raw` + `Payload` 提取器）——
++    // 它的实现建立在"载荷是宿主递过来的 JS 值"之上，其它目标上不存在这个前提。
++    "payload.mbt": [ "js" ],
 +  },
 +)

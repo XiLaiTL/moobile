@@ -1,0 +1,175 @@
+--- /dev/null
++++ b/html/payload.mbt
+@@ -0,0 +1,172 @@
++///|
++/// ★ moobile 扩展：**事件载荷通道**（`PLAN.md` 的 I1；设计见
++/// [`docs/design/DESIGN-COMPONENT-LIBRARY.md`](../../../docs/design/DESIGN-COMPONENT-LIBRARY.md) §5 T1）。
++///
++/// ⚠️ 本文件在 `moon.pkg` 里被限定为 **js** 目标（与 `event_decoders.mbt` 同款）：
++/// 它的全部实现都建立在"载荷是宿主递过来的 JS 值"之上，其它目标上不存在这个前提。
++///
++/// ## 为什么需要它
++///
++/// 这个包原有的处理器签名是**DOM 味**的：`on_change : (InputEvent) -> Cmd`。
++/// 在 React 后端下那些载荷由 `event_decoders.mbt` 的**透传表**填充 ——
++/// 换来的是"不崩、可降级"，代价是**读不到值**：`onChange` 会触发，但用户输入的内容拿不到，
++/// 于是 `Input` / `Select` 这些**受控组件用不了**（"能画、能点，不能用"）。
++///
++/// ## 设计取舍
++///
++/// 1. **不碰旧的 `on_*` 签名**：它们是对 DOM 的承诺，改了会波及 `svg/`、所有标签助手与既有应用。
++///    这里新增一条**平行的**通道：`Attrs::on_raw(event, f : (Payload) -> Cmd)`。
++/// 2. **载荷是不透明的**：`Payload` 只提供少数**提取器**（`text` / `json` / `num` / `bool` / `field`），
++///    而不是把某个后端的类型泄漏出去 —— 因为同一个回调在 DOM 上给的是事件对象、
++///    在 RN 上给的可能**直接就是字符串**（`onChangeText`）、在组件库里给的是业务值。
++///    提取器把这三种形态都覆盖掉，于是**同一份视图代码两端可用**。
++/// 3. **提取器永不抛错**：形状对不上时给 `""` / `0` / `false`。
++///    理由：载荷形状是运行时才知道的事（还取决于宿主与组件库的版本），
++///    让它把界面崩掉，等于把"库版本不匹配"变成"白屏"。
++///
++/// ⚠️ **已知限制（写清楚，不假装完整）**：回调**只取第一个参数** ——
++/// 处理器在 vdom 侧的形态是 `(v) => f(v)`，所以 antd `onChange(value, option)` 这类
++/// 多参数回调这里只拿得到第一个。需要更多参数时，在宿主侧用适配器把它们拼成一个值。
++pub struct Payload {
++  raw : Event
++}
++
++///|
++/// 注册一个**任意事件键**的处理器，载荷原样交给回调。
++///
++/// 与 `on_click` / `on_change` 那批的区别：那批的载荷类型是写死的 DOM 类型（于是被透传表填零值），
++/// 这里的载荷是 `Payload`（**真实值**）。
++///
++/// ```moonbit
++/// @html.node("antd:Input",
++///   @html.Attrs::build()
++///     .prop_str("value", model.draft)
++///     .on_raw("change", e => emit(SetDraft(e.text()))),
++///   [])
++/// ```
++///
++/// 事件键 → 真正的 prop 名由宿主决定（`MOBILE_HOST.events`，见
++/// `../../../../render.mbt` 的 `map_event`）：`change` 在 antd 上落 `onChange`、
++/// 在 RN 的 `TextInput` 上落 `onChangeText`。
++pub fn Attrs::on_raw(
++  self : Attrs,
++  event : String,
++  msg : (Payload) -> Cmd,
++) -> Attrs {
++  self.handler(event, (raw, scheduler) => {
++    scheduler.add(msg({ raw: raw }))
++  })
++}
++
++///|
++/// 载荷 → 文本。
++///
++/// 覆盖三种真实形态：
++/// - **字符串 / 数字 / 布尔**：原样（或转成文本）—— RN 的 `onChangeText` 走这条；
++/// - **事件对象**：读 `target.value`（DOM）/ `nativeEvent.text`（RN）；
++/// - 其余：`""`。
++extern "js" fn payload_text_ffi(raw : Event) -> String =
++  #| (e) => {
++  #|   if (e === null || e === undefined) return '';
++  #|   if (typeof e === 'string') return e;
++  #|   if (typeof e === 'number' || typeof e === 'boolean') return String(e);
++  #|   const t = e.target ?? e.currentTarget ?? e.nativeEvent ?? null;
++  #|   if (t) {
++  #|     if (typeof t.value === 'string') return t.value;
++  #|     if (typeof t.value === 'number') return String(t.value);
++  #|     if (typeof t.text === 'string') return t.text;
++  #|   }
++  #|   if (typeof e.value === 'string') return e.value;
++  #|   if (typeof e.value === 'number') return String(e.value);
++  #|   if (typeof e.text === 'string') return e.text;
++  #|   return '';
++  #| }
++
++///|
++/// 见 `Payload::text`。
++pub fn Payload::text(self : Payload) -> String {
++  payload_text_ffi(self.raw)
++}
++
++///|
++/// 载荷 → JSON 文本。
++///
++/// 用途：组件库回调递过来的**业务值**（数组、对象）—— 例如 `Select` 的选项对象、
++/// `Table` 的选中行。于是结构化数据不必靠 `Attrs::prop_json` 的字符串约定绕一圈
++/// （那条是"出"的方向，这条是"回"的方向）。
++extern "js" fn payload_json_ffi(raw : Event) -> String =
++  #| (e) => {
++  #|   if (e === undefined) return 'null';
++  #|   try {
++  #|     const s = JSON.stringify(e);
++  #|     return s === undefined ? 'null' : s;
++  #|   } catch (err) {
++  #|     return '';
++  #|   }
++  #| }
++
++///|
++/// 见 `Payload::text`。
++pub fn Payload::json(self : Payload) -> String {
++  payload_json_ffi(self.raw)
++}
++
++///|
++/// 载荷 → 数值。事件对象上优先读 `target.value`（表单元素），否则把载荷本身当数值解析。
++extern "js" fn payload_num_ffi(raw : Event) -> Double =
++  #| (e) => {
++  #|   const num = (v) => {
++  #|     if (typeof v === 'number') return v;
++  #|     if (typeof v === 'string' && v.trim() !== '') {
++  #|       const n = Number(v);
++  #|       return Number.isNaN(n) ? 0 : n;
++  #|     }
++  #|     return 0;
++  #|   };
++  #|   if (e === null || e === undefined) return 0;
++  #|   if (typeof e === 'number' || typeof e === 'string') return num(e);
++  #|   const t = e.target ?? e.nativeEvent ?? null;
++  #|   if (t && t.value !== undefined) return num(t.value);
++  #|   if (e.value !== undefined) return num(e.value);
++  #|   return 0;
++  #| }
++
++///|
++/// 见 `Payload::text`。
++pub fn Payload::num(self : Payload) -> Double {
++  payload_num_ffi(self.raw)
++}
++
++///|
++/// 载荷 → 布尔。表单元素读 `target.checked`（复选框/开关），否则按 JS 真值语义。
++extern "js" fn payload_bool_ffi(raw : Event) -> Bool =
++  #| (e) => {
++  #|   if (e === null || e === undefined) return false;
++  #|   if (typeof e === 'boolean') return e;
++  #|   const t = e.target ?? e.nativeEvent ?? null;
++  #|   if (t && typeof t.checked === 'boolean') return t.checked;
++  #|   if (t && typeof t.value === 'boolean') return t.value;
++  #|   if (typeof e.checked === 'boolean') return e.checked;
++  #|   if (typeof e.value === 'boolean') return e.value;
++  #|   return !!e;
++  #| }
++
++///|
++/// 见 `Payload::text`。
++pub fn Payload::bool(self : Payload) -> Bool {
++  payload_bool_ffi(self.raw)
++}
++
++///|
++/// 取载荷的一个属性，仍以 `Payload` 返回（于是可以继续 `field` 下去）。
++///
++/// 典型用途：`e.field("target").field("value").text()` —— 当某个提取器没覆盖到目标形状时，
++/// 用它可以自己走下去，而**不必**要求库再开一个方法。
++extern "js" fn payload_field_ffi(raw : Event, name : String) -> Event =
++  #| (e, n) => (e === null || e === undefined ? null : e[n])
++
++///|
++/// 见 `Payload::text`。
++pub fn Payload::field(self : Payload, name : String) -> Payload {
++  { raw: payload_field_ffi(self.raw, name) }
++}

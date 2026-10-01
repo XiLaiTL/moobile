@@ -60,11 +60,11 @@ bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配
 
 ---
 
-## 2. patch 系列（15 个，按应用顺序）
+## 2. patch 系列（27 个，按应用顺序）
 
 | # | patch | 触及 | 一句话 |
 |---|---|---|---|
-| 01 | `01-html-attrs-style-api` | `html/attrs.mbt` | 删 `Attrs::style(key, value)`，换成类型化的 `Attrs::styles(@style.Style)` |
+| 01 | `01-html-attrs-style-api` | `html/attrs.mbt` | 删 `Attrs::style(key, value)`，换成类型化的 `Attrs::styles(@style.Style)`；**2026-09 追加**：新增 `prop_str/prop_bool/prop_int/prop_num/prop_json` 五个公开方法 —— `attribute`/`property` 此前是包内私有，于是**外部组件库的 props 一个都传不进去**（见 [`docs/design/DESIGN-COMPONENT-LIBRARY.md`](docs/design/DESIGN-COMPONENT-LIBRARY.md) N3） |
 | 02 | `02-html-attrs-event-decode-table` | `html/attrs_event.mbt` | 13 处事件解码改成**查表**（可替换策略），不再直接 `to_xxx_event().unwrap()` |
 | 03 | `03-html-html-utils-form-value` | `html/html_utils.mbt` | 表单取值与 `prevent_default/target` 走同一张表 |
 | 04 | `04-html-readme-doctest` | `html/README.mbt.md` | README 里的**文档测试**样例跟着 01 改（它是会参与编译的测试文件） |
@@ -79,6 +79,8 @@ bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配
 | ~~13~~ | ~~`13-server-moon-pkg-rabbita-root`~~ | — | **已随 `server/` 一起裁掉（2026-09）**，见 §2.5 |
 | 14 | `14-new-html-event-decoders` | `html/event_decoders.mbt` | **新增文件**（122 行）：解码表 + `dom_decoders()` + `passthrough_decoders()` |
 | 15 | `15-new-runtime-react-host` | `internal/runtime/react_host.mbt` | **新增文件**（224 行）：moobile 的 React 后端 |
+| 16–26 | `16-new-clipboard-moon.pkg` … `26-new-websocket-moon.pkg` | 11 个包的 `moon.pkg` | **搬迁补录**（2026-09）：`XiLaiTL/moobile/<pkg>` → `XiLaiTL/moobile/vendor/rabbita/<pkg>` 的 import 改写，覆盖 R3 搬迁时漏记的那些包（`clipboard` `cmd` `dialog` `dom` `html/canvas` `http` `internal/duplix` `internal/rabbita` `nav` `sub` `websocket`）。**是机械改写、无语义变化** —— 落盘前它们一直是"未捕获的工作区改动"，`vendor_sync --check` 因此不可能绿 |
+| **27** | **`27-new-html-payload.mbt`** | `html/payload.mbt`（**新增文件**）+ `html/moon.pkg` 的一行 `targets` | **事件载荷通道**：`Attrs::on_raw(event, f : (Payload) -> Cmd)` + `Payload::text/json/num/bool/field`。原有的 `on_*` 载荷在 React 后端是**零值**（`event_decoders.mbt` 的透传表），于是 `Input`/`Select` 这类受控组件"能画、能点、不能用"；这条通道把**真实值**交回应用。⚠️ 旧的 `on_*` 签名**一个都没动**（它们是对 DOM 的承诺）—— 这是**平行**通道。设计见 [`docs/design/DESIGN-COMPONENT-LIBRARY.md`](docs/design/DESIGN-COMPONENT-LIBRARY.md) §5 T1 |
 
 ### 2.5 有意裁掉的包：`server/`
 

@@ -16,13 +16,69 @@
  
  ///|
  struct Attrs(Props)
-@@ -60,9 +57,19 @@
+@@ -60,9 +57,75 @@
  }
  
  ///|
 -/// Set a style declaration.
 -pub fn Attrs::style(self : Attrs, key : String, value : String) -> Attrs {
 -  self.0.styles[key] = value
++/// ★ moobile 扩展：**通往任意 prop 的公开通道**。
++///
++/// 为什么必须有它：这个包的公开面是**几百个按 HTML 属性命名的方法**
++/// （`accept` / `disabled` / `title` …），它们覆盖得住 HTML，覆盖不住
++/// **React 组件库的 props** —— `danger`、`loading`、`block`、`columns`、`dataSource`
++/// 这些名字在 HTML 里根本不存在，于是外面写 `antd:Button` 时**一个属性都传不进去**。
++/// 而 `attribute` / `property` 两个通用入口此前是**包内私有**的
++/// （`Attrs(Props)` 的字段也不对外，所以别的包绕不过去自己拼一个）。
++///
++/// 设计取舍：
++/// - **只开"写"的口，不开"读"的口** —— 外部仍然只能通过 `Attrs` 构造属性，
++///   不引入第二个 `Props` 构造路径（`to_props` 依旧私有）；
++/// - **不引入新的值类型** —— 值域就是 vdom 已有的 4 个 `Variant` 构造器，
++///   于是 `render.mbt` 不必改，RN 与 DOM 两个后端的行为也天然一致；
++/// - 结构化数据（对象 / 数组）**不在值域里**，走 `prop_json` 的字符串约定
++///   （解析由宿主侧的库适配器负责，见 `npm/moobile-host` 的 `jsonProps`）。
++///
++/// 与 `Attrs::attribute` 的关系：在 React 后端里两者产出**完全一样**
++/// （都是 props 上的一个键），区别只在 rabbita 自己的 DOM 后端
++/// （属性 vs property 的 diff 语义）。所以这里统一走 `property`。
++pub fn Attrs::prop_str(self : Attrs, key : String, value : String) -> Attrs {
++  self.property(key, String(value))
++}
++
++///|
++/// 见 `Attrs::prop_str`。布尔 prop —— React 组件库里最常见的形态
++/// （`danger` / `loading` / `block` / `hoverable`）。
++pub fn Attrs::prop_bool(self : Attrs, key : String, value : Bool) -> Attrs {
++  self.property(key, Boolean(value))
++}
++
++///|
++/// 见 `Attrs::prop_str`。整数 prop（RN 的 `numberOfLines`、枚举下标）。
++pub fn Attrs::prop_int(self : Attrs, key : String, value : Int) -> Attrs {
++  self.property(key, Integer(value))
++}
++
++///|
++/// 见 `Attrs::prop_str`。浮点 prop（尺寸、比例）。
++pub fn Attrs::prop_num(self : Attrs, key : String, value : Double) -> Attrs {
++  self.property(key, Floating(value))
++}
++
++///|
++/// 见 `Attrs::prop_str`。**结构化 prop**：值是 JSON 文本，由宿主适配器
++/// `JSON.parse` 之后交给组件库。
++///
++/// 与 `prop_str` 在**表示上完全相同**（边界上都是一段字符串），分开命名是为了
++/// 在调用点就把"这个键会被解析"写清楚 —— 否则 `columns="[{…}]"` 在 MoonBit 侧
++/// 看起来只是个普通字符串，而它的合法性（是不是合法 JSON、schema 对不对）
++/// 编译期无从检查，只能由宿主侧兜（这也是它必须被 `jsonProps` 白名单约束的原因）。
++pub fn Attrs::prop_json(self : Attrs, key : String, value : String) -> Attrs {
++  self.property(key, String(value))
++}
++
++///|
 +/// 合并一份**类型化**样式 —— 这是唯一的结构化样式入口。
 +///
 +/// ★ moobile 改造：原来的 `Attrs::style(key : String, value : String)` 已删除。

@@ -8,15 +8,15 @@
 
 ///|
 // 转发 XiLaiTL/moobile/vendor/rabbita/html 的公开面。
-pub using @vendor {type Attrs, type AutoComplete, type EventDecoders, type Html, type InputType, type Scope, type Target, type Keyboard, type Mouse, type Scroll, trait IsChildren, a}
-pub using @vendor {abbr, address, area, article, aside, audio, b, base, bdi, bdo, blockquote, body}
-pub using @vendor {br, button, canvas, caption, cite, code, col, colgroup, data, datalist, dd, del}
-pub using @vendor {details, dfn, dialog, div, dl, dom_decoders, dt, em, embed, event_decoders, fencedframe, fieldset}
-pub using @vendor {figcaption, figure, footer, form, form_value_from_event, fragment, geolocation, h1, h2, h3, h4, h5}
-pub using @vendor {h6, head, header, hgroup, hr, html, i, iframe, img, input, ins, kbd}
-pub using @vendor {label, legend, li, link, main_, map, mark, math, menu, meta, meter, nav}
-pub using @vendor {node, noscript, nothing, object, ol, optgroup, option, output, p, passthrough_decoders, picture, pre}
-pub using @vendor {progress, q, rp, rt, ruby, s, samp, script, search, section, select, selectedcontent}
-pub using @vendor {slot, small, source, span, strong, style_tag, sub, summary, sup, svg, table, tbody}
-pub using @vendor {td, template, text, textarea, tfoot, th, thead, time, title, tr, track, u}
-pub using @vendor {ul, var_, video, wbr}
+pub using @vendor {type Attrs, type AutoComplete, type EventDecoders, type Html, type InputType, type Payload, type Scope, type Target, type Keyboard, type Mouse, type Scroll, trait IsChildren}
+pub using @vendor {a, abbr, address, area, article, aside, audio, b, base, bdi, bdo, blockquote}
+pub using @vendor {body, br, button, canvas, caption, cite, code, col, colgroup, data, datalist, dd}
+pub using @vendor {del, details, dfn, dialog, div, dl, dom_decoders, dt, em, embed, event_decoders, fencedframe}
+pub using @vendor {fieldset, figcaption, figure, footer, form, form_value_from_event, fragment, geolocation, h1, h2, h3, h4}
+pub using @vendor {h5, h6, head, header, hgroup, hr, html, i, iframe, img, input, ins}
+pub using @vendor {kbd, label, legend, li, link, main_, map, mark, math, menu, meta, meter}
+pub using @vendor {nav, node, noscript, nothing, object, ol, optgroup, option, output, p, passthrough_decoders, picture}
+pub using @vendor {pre, progress, q, rp, rt, ruby, s, samp, script, search, section, select}
+pub using @vendor {selectedcontent, slot, small, source, span, strong, style_tag, sub, summary, sup, svg, table}
+pub using @vendor {tbody, td, template, text, textarea, tfoot, th, thead, time, title, tr, track}
+pub using @vendor {u, ul, var_, video, wbr}

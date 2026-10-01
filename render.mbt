@@ -104,12 +104,38 @@ pub fn unmapped_tag_names() -> String {
 }
 
 ///|
-/// 查表。**没有默认兜底成 `View`** —— 未收录会被计数并回报。
+/// **外部组件库的命名空间分隔符**（`antd:Button`、`paper:Card`）。
+///
+/// 为什么用冒号，而不是 `x-` 这种前缀：`x-foo` 在 HTML 里是**自定义元素**的既有写法，
+/// 而本层的取舍恰恰是"表外的 HTML 语义一律回落 `View` 并计数"（迁移诊断的依据就在这个计数上）。
+/// 冒号在 HTML 标签名里不合法 —— 于是"这是不是外部组件"**看一眼就知道**，
+/// 也不必去动那 42 条表的语义。
+pub let component_namespace_sep : String = ":"
+
+///|
+/// 这个标签是不是"外部组件库的组件"。判据只有一条：**含冒号**。
+pub fn is_library_tag(tag : String) -> Bool {
+  tag.contains(component_namespace_sep)
+}
+
+///|
+/// 查表 → 外部组件直通 → 计数回落。
+///
+/// 三档的顺序是刻意的：
+/// 1. **命中原表**（42 条）→ 老行为，交出宿主基础组件名；
+/// 2. **带命名空间**（`antd:Button`）→ **原样直通**，交由宿主的组件注册表解析
+///    （`MOBILE_HOST.components["antd:Button"]`）。名字写错、或那个库没装，
+///    由宿主**点名报错**（见 `host.mbt` 的 `js_host_component`），而不是悄悄回落成 `View`
+///    —— 后者的表现是"渲染出一个空盒子"，最难查；
+/// 3. **其余**（`img` / `table` 这类）→ 回落 `View` + 计数：不崩，但计数会暴露它。
 pub fn map_tag(tag : String) -> String {
   for entry in tag_table() {
     if entry.0 == tag {
       return entry.1
     }
+  }
+  if is_library_tag(tag) {
+    return tag
   }
   g_unmapped.n = g_unmapped.n + 1
   if g_unmapped.names.length() < 20 {
@@ -120,10 +146,73 @@ pub fn map_tag(tag : String) -> String {
 }
 
 ///|
-/// 事件映射。**必须知道目标标签**，不能只看事件名：
-/// 同一个 `click` 落到 `Pressable` 上是 `onPress`，落到别处未必；
-/// 而 `input` 落到 `TextInput` 上是 `onChangeText`。
-fn map_event(tag : String, event : String) -> String {
+/// 多词事件名 → React prop 名。
+///
+/// **为什么必须逐个列名**：rabbita 的事件键是 `mouseleave` 这种小写无分隔的写法，
+/// 词边界信息已经丢了 —— `mouseleave` 恢复不出 `onMouseLeave`。单词事件（`change`）
+/// 可靠首字母大写救回来，多词事件不能猜，只能列。
+fn multi_word_event_props() -> Array[(String, String)] {
+  [
+    ("dblclick", "onDoubleClick"),
+    ("contextmenu", "onContextMenu"),
+    ("mousedown", "onMouseDown"),
+    ("mouseup", "onMouseUp"),
+    ("mousemove", "onMouseMove"),
+    ("mouseenter", "onMouseEnter"),
+    ("mouseleave", "onMouseLeave"),
+    ("mouseover", "onMouseOver"),
+    ("mouseout", "onMouseOut"),
+    ("keydown", "onKeyDown"),
+    ("keyup", "onKeyUp"),
+    ("beforeinput", "onBeforeInput"),
+    ("compositionstart", "onCompositionStart"),
+    ("compositionupdate", "onCompositionUpdate"),
+    ("compositionend", "onCompositionEnd"),
+    ("dragstart", "onDragStart"),
+    ("dragend", "onDragEnd"),
+    ("dragenter", "onDragEnter"),
+    ("dragleave", "onDragLeave"),
+    ("dragover", "onDragOver"),
+    ("pointerdown", "onPointerDown"),
+    ("pointermove", "onPointerMove"),
+    ("pointerup", "onPointerUp"),
+    ("pointercancel", "onPointerCancel"),
+    ("touchstart", "onTouchStart"),
+    ("touchmove", "onTouchMove"),
+    ("touchend", "onTouchEnd"),
+    ("long_click", "onLongPress"),
+  ]
+}
+
+///|
+/// 兜底：事件键 → React 的 camelCase prop 名。
+///
+/// ⚠️ 这里曾经是 `"on" + event`，也就是**原样小写拼上去**。实测代价很具体：
+/// `change` 产出 `onchange`，而 React 对这种情况是**明确拒绝**的
+/// （`react-dom` 的文案：`Invalid event handler property \`onchange\`. Did you mean \`onChange\`?`）
+/// —— 也就是说那些处理器**根本不会被接上**，不是"载荷是零值"那么轻。
+fn fallback_event_prop(event : String) -> String {
+  for entry in multi_word_event_props() {
+    if entry.0 == event {
+      return entry.1
+    }
+  }
+  if event.length() == 0 {
+    return "on"
+  }
+  "on" +
+  event.unsafe_substring(start=0, end=1).to_upper() +
+  event.unsafe_substring(start=1, end=event.length())
+}
+
+///|
+/// **默认事件映射**（`@html` 的事件键 → React 的 prop 名）。
+///
+/// ⚠️ 这是**默认策略，不是唯一策略**：宿主可以按 (标签, 事件) 覆盖它 —— 见 `map_event`。
+/// 为什么必须能覆盖：同一个 `click`，落到 RN 的基础组件上是 `onPress`，
+/// 落到 Web / antd 的组件上却是 `onClick`；而"手里这个组件是哪种"**只有宿主知道**
+/// （组件对象就在它手上，我们这边只有组件名）。
+fn default_event_prop(tag : String, event : String) -> String {
   match (tag, event) {
     ("input", "input") => "onChangeText"
     ("input", "change") => "onChangeText"
@@ -131,8 +220,23 @@ fn map_event(tag : String, event : String) -> String {
     ("input", "blur") => "onBlur"
     (_, "click") => "onPress"
     (_, "long_click") => "onLongPress"
-    (_, other) => "on" + other
+    (_, other) => fallback_event_prop(other)
   }
+}
+
+///|
+/// 事件映射。**必须知道目标标签**，不能只看事件名。
+///
+/// 三段式，前一段优先：
+/// 1. **宿主覆盖**（`MOBILE_HOST.events`，支持 `'*'` 通配）—— 组件库的落点由宿主/适配器声明；
+/// 2. **默认表**（`default_event_prop`）—— RN 基础组件的语义；
+/// 3. 默认表内部再兜底到 camelCase。
+pub fn map_event(tag : String, event : String) -> String {
+  let host_prop = js_event_override(tag, event)
+  if host_prop != "" {
+    return host_prop
+  }
+  default_event_prop(tag, event)
 }
 
 ///|
@@ -227,7 +331,13 @@ fn render_props(
     g_handlers.n = g_handlers.n + 1
     js_obj_set(o, map_event(tag, event), js_as_handler(f))
   })
-  js_obj_set(o, "style", styles_to_js(props.styles_map()))
+  // 空样式**不写 `style` 键**：以前无脑写 `style: {}`，对 RN 无害，
+  // 但对第三方组件库是"凭空多一个 prop"（有的库会拿 `style != null` 做判断，
+  // 有的库会把它当受控样式覆盖自己的默认值）。少一个键，少一类边界情况。
+  let styles = props.styles_map()
+  if !styles.is_empty() {
+    js_obj_set(o, "style", styles_to_js(styles))
+  }
   o
 }
 

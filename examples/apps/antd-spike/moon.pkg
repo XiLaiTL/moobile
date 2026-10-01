@@ -1,0 +1,24 @@
+supported_targets = "+js"
+
+import {
+  // ★ 这里刻意全部走**公开路径**（`XiLaiTL/moobile/html` 等转发包），而不是
+  //   `vendor/rabbita/...` —— 消费者看到的就是这些名字，试金石必须和消费者同路。
+  //   todo-app 用的是 vendor 路径（它是"我们自己人"），两者都成立，但证明力不同。
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style" @style,
+  "XiLaiTL/moobile/html" @html,
+  "XiLaiTL/moobile/cmd" @cmd,
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+        // 负例入口：故意写错组件名，用来验证"查不到就点名报错"。
+        "app_typo",
+      ],
+    },
+  },
+)

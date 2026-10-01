@@ -4,7 +4,13 @@
 /// 宿主（npm 包 `moobile-host`）与库各自声明自己实现的契约版本，宿主在启动时比对，
 /// 不等就**直接抛错并同时报出两个版本号** —— 否则"npm 包与 mooncakes 包两条版本线各走各的"
 /// 会表现成"某个函数莫名其妙是 undefined"，极难查。**改 `MOBILE_HOST` 的形状时必须 +1。**
-pub let host_contract_version : Int = 1
+///
+/// 版本史：
+/// - `1` —— 四件套：`react` / `components` / `scheduleTask` / `scheduleFrame`（+ `apiBase` / 能力键）。
+/// - `2` —— **组件库接入**：`components` 的键空间允许命名空间名（`antd:Button`），
+///   新增可选的 `events`（按标签覆盖事件 prop 名），新增可选的 `wrapRoot`（Provider 包裹）。
+///   库侧对应行为：带命名空间的标签**直通**、查不到就点名报错（`render.mbt` / `host.mbt`）。
+pub let host_contract_version : Int = 2
 
 ///|
 /// 把一次挂载打包成**一张句柄表**交给宿主 —— 这是 H2「单导出」的实现（PLAN §3.7）。

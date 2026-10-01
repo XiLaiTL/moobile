@@ -37,6 +37,7 @@
 | [`design/DESIGN.md`](design/DESIGN.md) | 设计文档（**草案 / 待验证**状态，保留原始判断） |
 | [`design/SCAFFOLD.md`](design/SCAFFOLD.md) | **脚手架设计**：生成什么、工具用什么语言写（对外的 `.mjs` / 对内的 MoonBit）、验收判据"零 Python" |
 | [`design/DESIGN-FEASIBILITY.md`](design/DESIGN-FEASIBILITY.md) | 设计期的可行性实测（写代码之前做的那些验证） |
+| [`design/DESIGN-COMPONENT-LIBRARY.md`](design/DESIGN-COMPONENT-LIBRARY.md) | **第三方 React 组件库接入设计**（antd 已端到端跑通）：机制 N1–N7、被否掉的方案、缺口清单。判据在 [`../examples/apps/antd-spike/`](../examples/apps/antd-spike/) |
 | [`design/DESIGN-README.md`](design/DESIGN-README.md) | 设计阶段的草案 README —— **已过时**，现行版本是 [`../README.md`](../README.md) |
 | [`../PLAN.md`](../PLAN.md) | 当前生效的计划：轨道 A–N、决策点、里程碑 |
 | [`plan/PLAN-2026Q3-yi-port.md`](plan/PLAN-2026Q3-yi-port.md) | 归档的旧计划（**T0.x–T7.x 编号只在那份文件里有效**） |

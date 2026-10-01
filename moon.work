@@ -1,9 +1,14 @@
-// 工作区：把库本体与 Todo 演示应用连起来，让 demo 直接吃**本地源码**（而不是已发布的 0.2.0）。
+// 工作区：把库本体与示例应用连起来，让它们直接吃**本地源码**（而不是已发布的包）。
 // —— 开发时改库代码立刻生效；发版前想验"用户视角"，跑 `tools/check_published.sh`。
+//
+// `antd-spike` 是**React 组件库接入**的试金石（设计稿 docs/design/DESIGN-COMPONENT-LIBRARY.md）：
+// 它用了 `antd:Button` 这类命名空间标签，所以必须吃本地源码 —— 否则会拿已发布的旧库，
+// 而"标签直通"这件事恰恰是新加的。
 //
 // ⚠️ 示例后端（`examples/services/todo-server/`）**刻意不在这个工作区里**：
 //    它只支持 native 目标，拉进来会让默认的 `moon check` 依赖 MSVC 工具链。
 members = [
   ".",
   "examples/apps/todo-app",
+  "examples/apps/antd-spike",
 ]
