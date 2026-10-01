@@ -234,6 +234,58 @@ def launch():
     adb('shell', 'monkey', '-p', PKG, '-c', 'android.intent.category.LAUNCHER', '1')
 
 
+def resume():
+    """把已经切到后台的应用**恢复**到前台 —— 与 `launch()` 的关键差别是**不 force-stop**。
+
+    为什么必须是恢复而不是重启：可见性计数存在 Model 里（内存），force-stop 会把它归零，
+    于是"切后台 → 回前台"前后的计数根本没法比较（第一版就是这么写错的）。
+    """
+    adb('shell', 'monkey', '-p', PKG, '-c', 'android.intent.category.LAUNCHER', '1')
+
+
+def size_state(xml):
+    """从界面文本里取 `尺寸 WxH#N`；拿不到就 None。
+
+    为什么断言**数值**而不只是"收到过事件"：`on_resize` 原来在 RN 上是
+    **静默给 0**（`window.innerWidth` 是 undefined 却不抛），
+    只断言"事件到了"完全拦不住"解出来是 0"。
+    """
+    if xml is None:
+        return None
+    for t in texts(xml):
+        m = re.search(r"尺寸 (\d+)x(\d+)#(\d+)", t)
+        if m:
+            return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    return None
+
+
+def set_wm_size(spec):
+    """改显示尺寸（`400x800` 或 `reset`）。
+
+    ⚠️ **为什么不用旋转**：这个 app 在 `app.json` 里锁了 `"orientation": "portrait"`，
+    旋转永远不会产生 `Dimensions` change —— 第一版断言就是照着"转屏幕"写的，
+    结果 FAIL 了两轮，查了才发现是**断言前提错了，不是实现错了**。
+    `wm size` 改的是窗口尺寸，与方向无关，锁竖屏照样生效，而且**能断言精确数值**。
+    """
+    adb('shell', 'wm', 'size', spec)
+
+
+def vis_state(xml):
+    """从界面文本里取 `可见 N{显|隐}`；拿不到就 None。
+
+    为什么断言一个**界面上的**计数与方向，而不是只断言"订阅触发了"：
+    只断言"收到了"会漏掉映射写反那类 bug —— `native_rn_check.mjs` 的证伪就是这么抓到的
+    （把 `state !== 'active'` 写成 `===`，10 项里红 1 项）。
+    """
+    if xml is None:
+        return None
+    for t in texts(xml):
+        m = re.search(r'可见 (\d+)([显隐])', t)
+        if m:
+            return int(m.group(1)), m.group(2) == '隐'
+    return None
+
+
 def finish():
     passed = sum(1 for _, ok, _ in results if ok)
     print('\n================ 汇总 ================')
@@ -402,6 +454,65 @@ def main():
     )
     check('界面与服务器最终一致', total(dump()) == len(api('/todos')),
           f'界面={total(dump())} 服务器={len(api("/todos"))}')
+
+    # ---------- N2 真机判据：可见性变化走的是宿主能力通道（`PLAN.md` §3.6） ----------
+    #
+    # 这条断言的是**两层东西**，缺一层就抓不到 bug：
+    #   ① 事件真的到了（计数增加）—— 证明宿主登记的能力被用上了（而不是静默回退到
+    #      不存在的 `document`，那会直接抛）；
+    #   ② **载荷方向对**（回前台 = `显`）—— 证明 `state !== 'active'` 这个映射没写反。
+    # 只断言 ① 的话，"映射写反"这种 bug 照样绿。
+    before = vis_state(dump())
+    check('界面上有可见性计数（N2 真机判据的载体）', before is not None,
+          f'读到 {before}（没读到就是界面改了、或这条断言该跟着改）')
+    if before is not None:
+        n0, _ = before
+        adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+        time.sleep(3)
+        resume()
+        xml_v = wait_for_app(120)
+        after = vis_state(xml_v)
+        check('按 Home 再回前台后，可见性事件至少多了一次',
+              after is not None and after[0] > n0,
+              f'计数 {n0} -> {None if after is None else after[0]}')
+        check('回前台后最近一次可见性是「显」（载荷方向没写反）',
+              after is not None and after[1] is False,
+              f'最近一次 = {None if after is None else ("隐" if after[1] else "显")}')
+
+    # ---------- N5b 真机判据：on_resize 走宿主能力（`native.geometry` ← Dimensions） ----------
+    #
+    # 断言**精确数值**，不只是"事件到了"。原因：`on_resize` 原来在 RN 上是
+    # "静默给 0" 那一类（`window` 存在但 `innerWidth` 是 `undefined`，不抛）——
+    # 只断言"收到过事件"根本拦不住"解出来是 0"。
+    # 断言精确值还能顺带证明 JSON 载荷**没被解歪**（键名对错了会立刻现形）。
+    set_wm_size('reset')
+    time.sleep(3)
+    before_size = size_state(dump())
+    check(
+        '改尺寸之前界面上没有尺寸 token（这条订阅不补发初始值，与 DOM 语义一致）',
+        before_size is None,
+        f'实得 {before_size}',
+    )
+    set_wm_size('400x800')
+    time.sleep(5)
+    after_size = size_state(wait_for_app(120))
+    check(
+        '改尺寸后收到宿主能力推来的载荷，且**数值精确**（400x800，不是 0）',
+        after_size is not None and after_size[0] == 400 and after_size[1] == 800,
+        f'实得 {after_size}（期望 (400, 800, n)）',
+    )
+    set_wm_size('reset')
+    time.sleep(5)
+    back_size = size_state(wait_for_app(120))
+    check(
+        '还原尺寸后又收到一次变化（计数 +1，值回到 320x640）',
+        back_size is not None
+        and back_size[0] == 320
+        and back_size[1] == 640
+        and (after_size is None or back_size[2] > after_size[2]),
+        f'实得 {back_size}（期望 (320, 640, n+1)）',
+    )
+
     finish()
 
 

@@ -6,8 +6,12 @@
 #   · 发布后验证（tools/check_published.sh）：要"已经发出去的那一版"，属于发版流程。
 # 这几类在本地一条命令跑：`bash tools/verify_all.sh --with-e2e`、`python3 tools/verify_android.py`。
 #
-# 这里跑的 `tools/verify_all.sh` 恰好是本地同一个入口（6 项）：
-#   moon check / 行尾规范 / 文档链接 / vendor 一致性 / 外部模块可用性 / 能力注册表一致性
+# 这里跑的 `tools/verify_all.sh` 恰好是本地同一个入口（13 项）：
+#   moon check / 行尾规范 / 文档链接 / 公开内容泄漏 / vendor 一致性 / 外部模块可用性 /
+#   转发包一致性 / antd 试金石 / 脚手架模板 / 脚手架承载真应用 / 模板同源 T1 /
+#   能力注册表一致性 / 宿主包副本新鲜度
+#
+# ⚠️ **项数会漂，别抄这个数** —— 现状一律看 `docs/STATUS.md`（唯一来源）。
 #
 # ⚠️ vendor 一致性与外部模块那两项需要网络（拉 pristine 制品、`moon add`）。
 

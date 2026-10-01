@@ -1,0 +1,23 @@
+{
+  "name": "moobile-template",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "build": "moon build --target js && moobile-host build",
+    "start": "npm run build && expo start",
+    "android": "npm run build && expo run:android",
+    "ios": "npm run build && expo run:ios",
+    "web": "npm run build && expo start --web",
+    "regen": "moobile-host regen"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.16",
+    "expo": "~57.0.24",
+    "moobile-host": "^0.2.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "^0.21.2"
+  }
+}

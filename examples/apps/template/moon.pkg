@@ -1,0 +1,30 @@
+// 只有 5 条 import —— 这是**模板的下限**，不是全部能力。
+//
+// ⚠️ 加能力 = 加一条 import + 对应 npm 包（+ 重跑 `npx moobile-host regen`）。
+//    例：本地库加 `XiLaiTL/moobile/sqlite`（配 `expo-sqlite`），
+//    网络加 `XiLaiTL/moobile/vendor/rabbita/http`。
+//    参考实现（本地库 + 网络同步 + 多页面）见仓库的 examples/apps/todo-app/。
+//
+// ⚠️ `vendor/rabbita/*` 这几条看着别扭（为什么要写 vendor？）—— 它们是库**转发出来的**包：
+//    moobile 是 rabbita 的换后端 fork，`html` / `cmd` / `sub` 由库转发，所以 import 路径
+//    必须长这样。写 `XiLaiTL/moobile/html` 是**错的**（历史上发过一版这样的 README，踩过）。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/sub" @sub,
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)

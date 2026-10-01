@@ -1,0 +1,86 @@
+# deltas.txt —— 生成物与 demo 之间**允许的差异**（T1 的唯一判据清单）
+#
+# 比对方：`moobile-host init <临时目录>` 生成出来的项目   vs   `examples/apps/todo-app/`
+# 比对规则：demo 的 `host/<x>` 映射到生成物的 `<x>`（SCAFFOLD §3.1：**生成物平铺**，
+#           没有 `host/` 这一层 —— 那是 `create-expo-app` 强加的定位）
+#
+# 门（T1）已经装上：`node tools/template_compare.mjs`（在 `bash tools/verify_all.sh` 里）。
+# 这份文件是**判据**，那条命令是**执行**。
+#
+# ── 每行格式 ────────────────────────────────────────────────────────────────────
+#
+#   <类别> | <路径 或 路径:字段> | <为什么允许>
+#
+#   类别 file-extra   只在 demo 里有（demo 长满了的那部分）
+#        file-missing 只在生成物里有
+#        content      两边都有、但内容不同 —— **只允许下面逐条写明的差异**
+#
+# ── 字段怎么读（比对器实现的就是下面这几条，别只当注释看）──────────────────────
+#
+#   · `.json` 文件（package.json / app.json）—— 字段是 **JSON 路径**，如
+#     `dependencies.moobile-host`。判据：**把两侧这些路径都删掉之后，剩下的 JSON 必须
+#     逐键相同**。于是"没登记的键变了、少了、多了"都会红 —— 这是这份清单最硬的一档。
+#   · `注释` —— 两侧去掉注释、忽略行首尾空白与空行之后，必须**逐字相同**。
+#     它兑现的是"代码/配置一模一样，只有注释不同"这句断言（App.js / index.js）。
+#   · `import`（moon.pkg）—— import 块允许不同，但**生成物里的每一条都必须也在 demo 里**
+#     （demo = 模板 + 能力：只许多、不许少），且去掉 import 块与注释后其余部分必须相同。
+#   · 其它字段（moon.mod 的 `name` / `description`）—— 按 `键 = 值` 删掉那一行，其余同上。
+#   · **不写字段**的条目 —— 整份文件允许不同，不再逐行比对。这是**最弱**的一档，
+#     只该给"两份本来就各写各的"文件用（下面只有 3 条：registry / metro / .gitignore）。
+#     ⚠️ 它只保证"这份文件可以不一样"，**保证不了"为什么"那句话还是真的**。
+#
+# ⚠️ 忽略清单（两侧都不比）是判据的一部分，所以它住在这里 —— **下面这一行是机器读的**，
+#    改它等于改判据。别在别处再维护一份（抄一份就会漂一份）。
+# @ignore node_modules android ios .expo dist .claude assets _build package-lock.json moobile.js CLAUDE.md AGENTS.md LICENSE expo-env.d.ts
+#
+# ⚠️ 这份是**量出来的**清单，不是设计稿里那 8 条推测：2026-09-20 手量首版，
+#    2026-09-21 装上 T1 门时机器又核了一遍，**当场核出 3 处漏登、1 处多登**
+#    （见下面对应的三行与 docs/FINDINGS.md 的 T1 补记）。量法见本文件末尾。
+#
+# ⚠️ **条数别抄在这里**：`node tools/template_compare.mjs` 会把条数与**死条目**一起打出来。
+
+# ── 1. demo 独有：网络同步与本地库那条链路 ────────────────────────────────────
+file-extra    | model.mbt      | demo 的状态机带同步状态、页面枚举；模板是最小 Todo（一条链路）
+file-extra    | ui.mbt         | 同上（demo 的视图分三个 screen）
+file-extra    | main.mbt       | demo 的入口文件叫 main.mbt；模板把入口写在 app.mbt 里
+file-extra    | r1.mbt         | R1 排版样本（interest/yi 的真实 CSS 移植）—— 只有 demo 有
+file-extra    | todo_db.mbt    | 本地库（expo-sqlite）那条链路
+file-extra    | todo_api.mbt   | 网络同步那条链路
+
+# ── 2. 生成物独有 ─────────────────────────────────────────────────────────────
+file-missing  | app.mbt        | 模板的入口 + 最小 Todo 全在这一个文件里（demo 拆成了 main/model/ui/…）
+file-missing  | README.md      | 生成物的 README 是**给使用者**的（三条命令 + 环境要求）；demo 没有工程级 README
+
+# ── 3. 两边都有、内容不同 ─────────────────────────────────────────────────────
+content       | package.json:name                          | 参数化维度（应用名）—— demo 那份用的是 create-expo-app 起的名字 `host`
+content       | package.json:scripts                       | 生成物的 scripts **链上了 `npm run build`**（§3.4.3 修的那个洞：原来 `npm run web` 会在 `./moobile.js` 上当场解析失败）；demo 靠仓库里的 `tools/build.sh`
+content       | package.json:dependencies.moobile-host     | demo 是 `file:../../../../npm/moobile-host`（跟本地源码连）；生成物是 semver `^0.2.0`（从 registry 装）。**D6 要改的就是这一条**
+content       | package.json:dependencies.expo-sqlite      | demo 的本地库那条链路（"加能力"那条路的样板）
+content       | package.json:dependencies.expo-status-bar  | demo 才有
+content       | moon.mod:name                              | 参数化（模块名）：demo 是 `XiLaiTL/moobile-todo-app`，生成物是 `<应用名>`
+content       | moon.mod:description                       | 生成物讲"这是最小工程、是生成器的唯一真源"；demo 讲"Todo 演示应用（本地库 + 网络同步 + 多页面）"
+content       | moon.mod:注释                              | 两个读者：生成物的注释讲"占位符怎么替换、生成出去之后怎么解析依赖"；demo 的讲"为什么必须是独立模块"
+content       | moon.pkg:import                            | 生成物 **5 条**（模板的下限：库/style/html/cmd/sub）；demo **7 条**（多 `sqlite` 与 `vendor/rabbita/http`）。**这是"加能力"那条路的入口**
+content       | moon.pkg:注释                              | 模板讲"5 条是下限、加能力怎么加"；demo 讲 H2 的单导出历史
+content       | app.json:expo.name / expo.slug / expo.android.package | 参数化（生成物派生出 `com.anonymous.<紧凑名>`）
+content       | app.json:expo.icon / expo.android.adaptiveIcon / expo.web.favicon / expo.plugins | demo 有 Expo 生成的图标与 `expo-sqlite` 插件；生成物不带 assets（模板里没有二进制）。**⚠️ `web.favicon` 是 2026-09-21 补登的**（手量首版只写了 icon/adaptiveIcon/plugins，漏了它）
+content       | app.json:expo.newArchEnabled               | 生成物**显式**写 `newArchEnabled: true`（SDK 57 默认即新架构）；demo 是 create-expo-app 生成的、没写这一行。**⚠️ 2026-09-21 补登**（手量首版漏了）
+content       | registry.generated.js                      | 生成物是空注册表（没装能力）；demo 注册 `db ← expo-sqlite`。**两者都是 `regen` 的产物**，不是手写差异
+content       | metro.config.js                            | demo 为 `expo-sqlite` 的 Web 端加了 wasm 资源 + COOP/COEP 两道响应头；生成物的那份是空的，并在注释里写明"用 wasm 能力包时照抄 demo 那份"
+content       | App.js:注释                                | **代码完全相同**（4 行），只有注释不同
+content       | index.js:注释                              | **代码完全相同**，只有注释不同（demo 是 Expo 模板的英文原文）
+content       | .gitignore                                 | demo 是 `create-expo-app` 的默认那份（41 行）；生成物是精简版（27 行）并**多两条**：`moobile.js` 与 `_build/`（生成物不该提交构建产物 —— demo 那边 `host/moobile.js` 是入库的，那是它们各自的取舍）
+# 已删：`package.json:private`（手量首版登记为差异，2026-09-21 机器核出**两边都是
+#       `"private": true`** —— 它根本不是差异，是清单在骗人。这也是"死条目"那一节的由来）
+
+# ── 量法（可复现）──────────────────────────────────────────────────────────────
+# 1. node npm/moobile-host/bin/cli.js init <临时目录> --name <一个别的应用名>
+# 2. 两侧各自列出文件（跳过上面 `@ignore` 那一行里的清单），把 demo 的 host/ 前缀去掉
+# 3. 逐文件比内容（忽略行尾与行尾空白），差异逐条落进本文件
+# 4. 判据：**清单之外的任何差异 = 红** —— 2026-09-21 起由 `node tools/template_compare.mjs`
+#    执行（它同时报"死条目"：登记着、但实际已经不存在的差异）。
+#
+# ⚠️ 一条自查（SCAFFOLD §3.4.4 末段）：**清单一旦长到几十条，说明这条路没走通** ——
+#    那时应当老实回到"两份真源 + 一条独立闸门"，而不是继续往清单里加行。
+#    判断标准不是总条数，而是**语义差异有几条**：加能力会同时动 package.json 的依赖、
+#    moon.pkg 的 import、registry 与 metro 那几处，其余是注释、参数化与 assets。

@@ -34,6 +34,9 @@ import {
   mountRoot,
   registerLibrary,
 } from './core.js';
+// 平台替代物：浏览器 API 在 RN 上拿什么顶（`MOBILE_HOST.native`）。
+// Web 宿主不装这个 —— 库侧问不到就回退 DOM，所以 Web 行为不受影响。
+import { withNative } from './native-rn.js';
 
 export {
   CONTRACT,
@@ -78,10 +81,20 @@ export const DEFAULT_API_BASE =
  * 基础组件，也可以只加组件库的键。
  */
 export function installHost(options = {}) {
-  const { components, apiBase, platform, scheduleTask, scheduleFrame, ...rest } = options;
+  const {
+    components,
+    apiBase,
+    platform,
+    scheduleTask,
+    scheduleFrame,
+    native,
+    ...rest
+  } = options;
   return installHostCore({
     react: React,
     components: { ...COMPONENTS, ...(components || {}) },
+    // 平台替代物（`MOBILE_HOST.native`）—— 见 native-rn.js 与 vendor/rabbita/cmd/host_native.mbt
+    native: withNative(native),
     apiBase: apiBase || DEFAULT_API_BASE,
     platform: platform || Platform.OS,
     scheduleTask: scheduleTask || defaultScheduleTask,
