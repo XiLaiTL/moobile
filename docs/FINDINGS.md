@@ -1577,3 +1577,92 @@ PATH 上是 shim 就问一次 `pyenv which python3`，结果缓存到 `_build/.p
 
 > 结论：**换语言在速度上基本是白换**。要再快，该动的是"重复劳动"（基准包重放、重复的 moon check），
 > 不是换语言。若出于"一个仓库一种语言"（dogfooding）而想改，那是另一个理由，与性能无关。
+
+---
+
+# R8 —— 工具链改用 MoonBit 写（2026-09）
+
+## 为什么动这件事
+
+上一轮（R6 补记）量过：`verify_all.sh` 里 Python 那几项慢，**根因是 pyenv shim**（630ms/次），
+不是脚本本身；换成 MoonBit 在**速度上基本是白换**。但"一个仓库一种语言"本身是理由 ——
+本项目就是 MoonBit 写的，工具却全是 Python，改库的人得同时伺候两套工具链。
+所以这一轮按"**逐个迁移 + 每个都证明等价**"的方式做，先从最简单的 `cr-scan` 开始。
+
+## 形态
+
+```
+tools/mbtools/            ← **独立（嵌套）module**：不污染库的 moon.mod（库的依赖随包发布）
+├── moon.mod              name = "XiLaiTL/moobile-tools"，目标 js，依赖只有 moonbitlang/x
+└── src/
+    ├── moon.pkg          pkgtype(kind: "executable")
+    ├── main.mbt          子命令分发
+    └── cr_scan.mbt       cr-scan 的实现
+tools/mb.sh               ← 调用包装（`moon run` 必须在模块目录里跑）
+```
+
+- 目标是 **js**：`moon run --target js`（已构建）实测 **155–182ms**；native 要多一套 MSVC + 构建步骤。
+- **不需要** `exit` 的 core API：`extern "js" fn js_exit(code : Int) = "(code) => process.exit(code)"`。
+- 相对路径：`moon run` 改掉了进程 cwd，所以 `tools/mb.sh` 把调用者的 cwd 放进 `MBTOOLS_CWD`，
+  工具侧用它解析相对 `--root`。
+
+## 等价性怎么证明的（不是"看起来一样"）
+
+给两边都加了 `--mode list`（把候选文件**原样列出来**），然后逐行 diff：
+
+```
+Python  : 候选 166 个文本文件，带 CR 的 0 个
+MoonBit : 候选 166 个文本文件，带 CR 的 0 个
+候选清单逐行相同（166 个文件）      # diff 无输出
+```
+
+计时（同一份工作，都经各自的包装脚本）：
+
+| 实现 | 耗时 |
+|---|---|
+| Python（`tools/py.sh` 绕开 shim） | 246ms |
+| **MoonBit**（`tools/mb.sh` + `moon run`） | **299ms** |
+
+**MoonBit 略慢一点点** —— 诚实记下来：`moon run` 每次要确认构建是否最新。
+若哪天想抠掉这 ~50ms，可以把包装改成 `moon build` 一次 + 直接 `node` 跑产物，
+代价是"产物可能过期"这类经典坑。现在**不换**：永远自动重建更值。
+
+## 迁移过程中挖出的两个真问题
+
+### 1. 排除规则只认精确路径 → 嵌套构建产物被当成源码
+
+新建的 `tools/mbtools/_build/` 里有 **192 个构建产物**被算进了候选（候选数 2338 → 2531）。
+真因：排除表里写的是 `_build` 这个**精确相对路径**（对应早先 bash 的 `-path "$ROOT/_build"`），
+匹配不到 `tools/mbtools/_build`。
+
+**规则本来就该只覆盖"我们自己的文件"**：`--mode fix` 去改构建产物毫无意义，
+而第三方缓存里的 CRLF 也不是我们的问题。于是改成两条规则：
+
+| 规则 | 内容 | 为什么 |
+|---|---|---|
+| 按**路径段**（任意深度） | `.git` `_build` `target` `.mooncakes` `node_modules` | 版本控制 / 构建产物 / 第三方缓存 / 依赖 |
+| 按**精确相对路径** | `vendor/`、Expo 宿主下的 `android/dist/.expo` | fork 由 `vendor_sync.sh` 自己规范行尾；其余是宿主生成物 |
+
+效果：候选 **2531 → 166**（砍掉的 2364 个全是产物与第三方）。两个实现同步改，diff 仍为空。
+
+### 2. `--mode fix` 修完却返回 1（Python 版就有，一直没暴露）
+
+退出码原来两种模式共用"有没有找到 CR"，于是 `lf_normalize.sh` 的 apply 路径
+（`… || exit 1`）**在成功修复之后反而报失败**。之所以没被发现：我当时的验证命令走了管道
+（`bash tools/lf_normalize.sh | tail -3`），**退出码被 `tail` 吃掉了** —— 又一次"验证工具骗了我"。
+
+修法：按模式分语义 —— `check` 有 CR → 1；`fix` 干完活 → **0**。
+
+## 顺带发现：`moon ide`（官方 agent CLI）
+
+写这个工具时我一直在 `grep ~/.moon/lib/core` 猜 API（`String::rev_find`、`Bytes::from_array`、
+`StringBuilder` 的方法全是试出来的）。官方有专门的语义级 CLI：
+
+```bash
+moon ide doc "String::*rev*"     # 精确列出方法签名（比 grep core 快且准）
+moon ide outline src             # 包/文件的结构骨架
+moon ide peek-def <symbol>       # 定义位置 + 上下文
+moon ide find-references <sym>   # 所有引用
+```
+
+后面写 MoonBit 代码**先用 `moon ide doc` 查 API**，别再 grep 标准库。

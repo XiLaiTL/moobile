@@ -23,7 +23,21 @@ python3 tools/verify_android.py       # 真机 21 项（需要模拟器 + APK）
 动了 `vendor/rabbita/**` **必须**先 `tools/vendor_sync.sh --capture` 再 `--check` ——
 第三方目录是 gitignore 的，`git status` 不会提醒你漏了回写。
 动了 `vendor/rabbita/**` 之后还要 `python3 tools/gen_forwarders.py`（根上的转发包是从
-vendor 的 `.mbti` 生成的名字清单；忘了重跑，消费者 import 的 `XiLaiTL/moobile/html` 会缺名字）。
+vendor 的 `.mbti` 生成的名字清单；忘了重跑，消费者 import 的 `XiLaiTL/moobile/html` 会缺名字）
+
+### 工具链正在从 Python 迁到 MoonBit
+
+`tools/mbtools/` 是**独立嵌套模块**（不污染库的 `moon.mod`；`.moonignore` 排除了 `/tools/`），
+经 `bash tools/mb.sh <子命令>` 调用。已迁：`cr-scan`（行尾）。迁移规矩：**新实现必须与旧实现
+逐行对账**（两边都有 `--mode list`），并做证伪测试（塞 CRLF 诱饵 → 必须点名 + 非零退出）。
+
+### 写 MoonBit 代码时：用 `moon ide` 查 API，别 grep 标准库
+
+```bash
+moon ide doc "String::*rev*"      # 精确列出方法签名（比 grep ~/.moon/lib/core 快且准）
+moon ide outline <file|dir>       # 结构骨架
+moon ide peek-def <symbol>        # 定义 + 上下文
+```
 
 ## 3. 本仓库的硬性事实（代理最容易想当然的地方）
 

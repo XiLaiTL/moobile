@@ -5,6 +5,18 @@
 
 ---
 
+## 未发布 —— 工具链改用 MoonBit（不影响库的 API 与产物）
+
+- 新增 `tools/mbtools/`（**独立嵌套模块**，不污染库的 `moon.mod`）+ `tools/mb.sh`，
+  已迁第一个子命令 `cr-scan`（行尾检查/修复）；`lf_normalize.sh` 已切过去，`tools/cr_scan.py` 退役。
+  等价性是**逐行对账**证明的（两边都能 `--mode list`，diff 无输出），并做了证伪测试。
+- 顺带修掉两个真问题：排除规则只认精确路径 → 嵌套 `_build/` 里 192 个构建产物被当成候选
+  （候选 2531 → 166）；`cr-scan --mode fix` 修完仍返回 1 → `lf_normalize.sh` 在成功修复后报失败。
+- 写 MoonBit 请先用 `moon ide doc / peek-def / outline` 查 API，别 grep 标准库。
+  详见 [`docs/FINDINGS.md`](docs/FINDINGS.md) R8。
+
+---
+
 ## 0.2.2 —— 2026-09（已发布）
 
 **修：0.2.1 的包与它自己的 README 不符 —— 照 README 写的第一行就编不过**

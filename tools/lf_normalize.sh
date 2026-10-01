@@ -14,20 +14,24 @@
 #   bash tools/lf_normalize.sh --check    # 只报告哪些文件带 CR，退出码非 0 表示有
 #
 # ⚠️ 只处理**文本扩展名白名单**，二进制（png/zip/apk/…）一律不碰。
-#    白名单与排除目录、以及扫描逻辑，都在 `tools/cr_scan.py` 里（单一实现）。
 #
-# 为什么要独立成 Python 进程（性能，实测数据）：
-#   原写法是 `has_cr() { [ "$(tr -cd '\r' < "$1" | wc -c)" -gt 0 ]; }`，
-#   对每个候选文件起两个进程。本仓 ~2500 个候选文件 = ~5000 次 spawn，
-#   Windows 上每次几十毫秒 → **单这一项 260 秒**（verify_all.sh 因此要跑 9 分钟，
-#   而 vendor_sync.sh --check 内部还会再调一次本脚本，等于跑两遍）。
-#   改成一次进程扫完：**1 秒**，快 ~260 倍。
+# 扫描内核是 **MoonBit 写的** `tools/mbtools/src/cr_scan.mbt`（子命令 `cr-scan`），
+# 经 `tools/mb.sh` 调用。白名单、排除目录、判据都在那边（单一实现）。
 #
-# ⚠️ 也别改回 `grep -rlU $'\r'`：本机 Git Bash（MSYS）会把命令行参数里的裸 CR 弄坏，
-#   实测对一个 0 个 CR 的仓库报出 **2537 个假阳性**（而且它"很快"——
-#   因为匹配了所有文件）。**检查工具本身必须能被证伪**：换写法后一定要拿
-#   `python3 tools/cr_scan.py --root . --mode check` 的候选数对账，
-#   确认它真的在查东西，而不是永远说"通过"。
+# ## 性能这一路是怎么走过来的（都是实测）
+#
+#   · 最早：`has_cr() { [ "$(tr -cd '\r' < "$1" | wc -c)" -gt 0 ]; }` —— 对每个候选文件
+#     起两个进程。Windows 上每次 spawn 几十毫秒 → **单这一项 260 秒**，
+#     而 `vendor_sync.sh --check` 内部还会再调一次本脚本，`verify_all.sh` 全程 ≈ 9 分钟。
+#   · 中间试过 `grep -lU $'\r'`：**快（0.19s）但是坏的** —— 本机 Git Bash（MSYS）会把
+#     命令行参数里的裸 CR 弄坏，对一个 0 个 CR 的仓库报出 **2537 个假阳性**。
+#   · 然后：Python 一次进程按字节扫（~1s），并加了"候选文件数"输出 ——
+#     一个"什么都没查"的检查同样会报通过，这个数字是它真在查东西的证据。
+#   · 现在：MoonBit 版，实测 ~0.3s（含 `moon run` 的构建新鲜度检查）。
+#
+# ⚠️ **检查工具本身必须能被证伪**：换实现后一定要塞一个 CRLF 诱饵文件，
+#    确认它点名 + 非零退出；再跑 apply 确认真的改成了 LF。历史上有两次"检查看起来
+#    没问题其实什么都没查"（见 `docs/FINDINGS.md` R6/R7）。
 
 set -uo pipefail
 
@@ -41,7 +45,7 @@ case "$MODE" in
 esac
 
 if [ "$SCANMODE" = "check" ]; then
-  if bash "$ROOT/tools/py.sh" "$ROOT/tools/cr_scan.py" --root "$ROOT" --mode check; then
+  if bash "$ROOT/tools/mb.sh" cr-scan --root "$ROOT" --mode check; then
     echo "行尾检查通过：没有带 CR 的文本文件。"
     exit 0
   fi
@@ -50,6 +54,6 @@ if [ "$SCANMODE" = "check" ]; then
   exit 1
 fi
 
-bash "$ROOT/tools/py.sh" "$ROOT/tools/cr_scan.py" --root "$ROOT" --mode fix || exit 1
+bash "$ROOT/tools/mb.sh" cr-scan --root "$ROOT" --mode fix || exit 1
 echo "（若上面没有列出文件，说明所有文本文件已是 LF。）"
 echo "建议接着跑：bash tools/vendor_sync.sh --check"
