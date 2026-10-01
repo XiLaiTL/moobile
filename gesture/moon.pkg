@@ -1,0 +1,7 @@
+// 手势通道：挂在任意元素上的拖动/点按。与库其余部分一样只构建 js。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile/vendor/rabbita/html" @html,
+  "XiLaiTL/moobile/vendor/rabbita/cmd" @cmd,
+}

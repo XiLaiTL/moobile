@@ -318,6 +318,60 @@ const blank = blankRaw ? JSON.parse(blankRaw) : [];
 check('空白处拖动 → 没有任何手势事件（说明上面那些事件确实来自那两个方块）',
   blank.length === 0, `${blank.length} 条`);
 
+// ── 4) ★ 库自己的实现：契约断言（这一节才是"发出去的东西对不对"）──────────────────
+//
+// 前三节回答"RN 生态里有什么可用"；这一节回答"**我们发出去的那份实现**给出的载荷
+// 是否符合 `gesture/gesture.mbt` 里那张契约表"。判据按契约逐条来，不按实现来：
+// `x/y` 元素内、`dx/dy` **从按下起算**、`phase` 有始有终。
+// ⚠️ 与 RNGH 那条对比：它的 `translationX` 在 40px 拖动上只给 20（激活阈值），
+//    而**契约要求 40** —— 这正是"dx 由宿主算，不把别人的 translationX 漏出去"的意义。
+section('④ 库自己的实现（`moobile-host/gesture-rn.js`）：按契约逐条验');
+await evalJs('window.__log = []');
+{
+  const b = parsed['wrapped-box'];
+  const DX = 40;
+  await drag(b.x, b.y, DX, 0);
+  const raw = await evalJs('JSON.stringify(window.__log || [])');
+  const evs = (raw ? JSON.parse(raw) : []).filter((e) => e.kind.startsWith('wrapped.'));
+  const starts = evs.filter((e) => e.kind === 'wrapped.start');
+  const moves = evs.filter((e) => e.kind === 'wrapped.move');
+  const ends = evs.filter((e) => e.kind === 'wrapped.end');
+  console.log(`     ${evs.length} 条事件：start ${starts.length} / move ${moves.length} / end ${ends.length}`);
+
+  check('④-1 阶段齐全（start → move×N → end）',
+    starts.length === 1 && moves.length >= 3 && ends.length === 1,
+    `start ${starts.length} / move ${moves.length} / end ${ends.length}`);
+
+  const s0 = starts[0] || {};
+  const inBox = (v) => typeof v === 'number' && v >= -2 && v <= b.w + 2;
+  check('④-2 起点是**元素内**坐标，且 dx/dy 从 0 开始',
+    inBox(s0.x) && inBox(s0.y) && s0.dx === 0 && s0.dy === 0,
+    `x=${s0.x} y=${s0.y} dx=${s0.dx} dy=${s0.dy}（边长 ${Math.round(b.w)}）`);
+
+  // ★ 契约的核心一条
+  const lastMove = moves.at(-1) || {};
+  check(`④-3 ★ \`dx\` **从按下起算**（≈ ${DX}，不是"从激活点起算"）`,
+    typeof lastMove.dx === 'number' && Math.abs(lastMove.dx - DX) <= 3,
+    `end.dx=${(ends.at(-1) || {}).dx} move.dx=${lastMove.dx}（RNGH 默认在同一条拖动上只给 20）`);
+
+  check('④-4 屏幕坐标与元素内坐标分开给（ax/ay 有值且大于元素内坐标）',
+    typeof lastMove.ax === 'number' && lastMove.ax > lastMove.x,
+    `x=${lastMove.x} ax=${lastMove.ax}`);
+
+  // 点按：大幅拖动**不该**触发；轻点该触发
+  const tapsAfterDrag = evs.filter((e) => e.kind === 'wrapped.tap').length;
+  await evalJs('window.__log = []');
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y, button: 'none' });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', buttons: 1, clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x + 2, y: b.y + 1, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(300);
+  const tapRaw = await evalJs('JSON.stringify(window.__log || [])');
+  const tapEvs = (tapRaw ? JSON.parse(tapRaw) : []).filter((e) => e.kind === 'wrapped.tap');
+  check('④-5 大幅拖动**不**误触发点按，轻点**才**触发',
+    tapsAfterDrag === 0 && tapEvs.length === 1,
+    `拖动后 tap=${tapsAfterDrag}（应为 0）· 轻点后 tap=${tapEvs.length}（应为 1）`);
+}
+
 // ── 汇总 ─────────────────────────────────────────────────────────────────────
 const pass = results.filter((r) => r.ok).length;
 console.log(`\n================ 汇总 ================`);

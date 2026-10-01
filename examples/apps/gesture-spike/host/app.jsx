@@ -23,6 +23,8 @@ import {
   GestureDetector,
   Gesture,
 } from 'react-native-gesture-handler';
+// ★ 库自己的手势实现（宿主包默认装载的那一份）
+import { withGestureComponents } from 'moobile-host/gesture-rn.js';
 
 /** 事件日志：验证脚本从 `window.__log` 读（不靠截图猜）。 */
 const log = (kind, data) => {
@@ -65,6 +67,29 @@ function RNGHBox(props) {
   );
 }
 
+/**
+ * ★ **库自己的实现**：`moobile-host` 的 `withGestureComponents`（宿主的默认手势支持）。
+ *
+ * 这一盒是三者里最关键的 —— 前两盒证明"RN 生态里有什么可用"，
+ * 这一盒证明"我们**发出去的那份实现**给出的载荷符合契约"：
+ * `x/y` 是元素内坐标、`dx/dy` **从按下起算**（不是谁的 `translationX`）、`phase` 有始有终。
+ */
+const GestureView = withGestureComponents({ View }).View;
+
+function WrappedBox() {
+  return (
+    <View style={styles.col}>
+      <Text style={styles.label}>moobile-host</Text>
+      <GestureView
+        style={[styles.box, styles.wrapped]}
+        testID="wrapped-box"
+        onPan={(g) => log('wrapped.' + (g.phase === 'cancel' ? 'end' : g.phase), g)}
+        onTap={(g) => log('wrapped.tap', g)}
+      />
+    </View>
+  );
+}
+
 /** RN 内置的 responder 系统（**零新依赖**）。 */
 function PanResponderBox() {
   const responder = useRef(
@@ -96,6 +121,7 @@ function App() {
       <RNGHBox prefix="rngh" />
       <RNGHBox prefix="rngh0" minDistance={0} />
       <PanResponderBox />
+      <WrappedBox />
     </GestureHandlerRootView>
   );
 }
@@ -108,12 +134,13 @@ const styles = StyleSheet.create({
   rngh: { backgroundColor: '#b8902f' },
   rngh0: { backgroundColor: '#4a6fa5' },
   pan: { backgroundColor: '#8a2518' },
+  wrapped: { backgroundColor: '#2f7d5f' },
 });
 
 /** 三个**已知节点**的位置交给验证脚本（用 testID 定位，不靠猜坐标）。 */
 window.__boxes = () => {
   const out = {};
-  for (const id of ['rngh-box', 'rngh0-box', 'pan-box']) {
+  for (const id of ['rngh-box', 'rngh0-box', 'pan-box', 'wrapped-box']) {
     const el = document.querySelector('[data-testid="' + id + '"]');
     if (el) {
       const r = el.getBoundingClientRect();

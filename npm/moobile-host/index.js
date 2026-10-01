@@ -37,6 +37,9 @@ import {
 // 平台替代物：浏览器 API 在 RN 上拿什么顶（`MOBILE_HOST.native`）。
 // Web 宿主不装这个 —— 库侧问不到就回退 DOM，所以 Web 行为不受影响。
 import { withNative } from './native-rn.js';
+// 手势通道的默认实现：把内置组件包成"手势可用"的版本（契约见该文件头）。
+// 默认装载是刻意的 —— 决策点 19 的"库优先"判据要求**零配置**。
+import { withGestureComponents } from './gesture-rn.js';
 
 export {
   CONTRACT,
@@ -92,7 +95,12 @@ export function installHost(options = {}) {
   } = options;
   return installHostCore({
     react: React,
-    components: { ...COMPONENTS, ...(components || {}) },
+    // ★ 内置 5 个组件**默认包成"手势可用"的版本**（`gesture-rn.js`，PanResponder、零新依赖）。
+    // 理由（决策点 19 的"库优先"判据第 2 条 = 零配置）：`@gesture.attrs(on_pan=…)` 挂到任意
+    // 元素上就该直接有效，不该要求应用自己写 responder 胶水。
+    // 没挂手势的元素行为**一字不变**（包装只在真有 `onPan`/`onTap` 时才去抢响应者）；
+    // 包装出来的组件在模块级缓存里 —— 每次渲染新建会让 React 把子树卸载重挂。
+    components: withGestureComponents({ ...COMPONENTS, ...(components || {}) }),
     // 平台替代物（`MOBILE_HOST.native`）—— 见 native-rn.js 与 vendor/rabbita/cmd/host_native.mbt
     native: withNative(native),
     apiBase: apiBase || DEFAULT_API_BASE,

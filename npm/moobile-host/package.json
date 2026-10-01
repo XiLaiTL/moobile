@@ -8,6 +8,7 @@
     "moobile-host": "bin/cli.js"
   },
   "files": [
+    "gesture-rn.js",
     "canvas-skia.js",
     "canvas-ops.js",
     "index.js",
