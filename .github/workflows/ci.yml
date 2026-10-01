@@ -112,6 +112,19 @@ jobs:
             echo "::error title=日志尾巴::$(printf '%s' "$l" | sed 's/^ *//')"
           done
 
+          # ★ 但 12 行**不够**定位 —— 2026-10-01 实测：那次只看到一串 deprecated 警告，
+          #   看不出到底哪个 error 让门红的。所以再发**一条** annotation，装着**整份输出**
+          #   （换行转义成 `%0A`；annotation 是唯一不需要认证就能读到的出口）。
+          #   这样"CI 红了"对任何人都立刻变成"为什么红"。
+          python3 - "$LOG" <<'PY'
+          import sys, pathlib
+          raw = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8', errors='replace')
+          # 只留末尾 12000 字符：GitHub 对单条 annotation 有体积上限，超了会被截断甚至丢掉
+          body = raw[-12000:]
+          esc = body.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+          print(f"::error title=离线门完整输出（末尾 12000 字符）::{esc}")
+          PY
+
           {
             echo "### 离线门：失败"
             echo '```'
