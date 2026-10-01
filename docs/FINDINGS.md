@@ -3068,3 +3068,84 @@ git -c http.proxy= -c https.proxy= push origin main
 ⚠️ 这是**绕**不是**治**：配置在全局，换一个仓库、换一天还会再撞。
 根治要么删掉那两行全局配置（本机能直连时它们本来就没用），
 要么把代理真正跑起来 —— 别让"死代理 + 看起来像断网的报错"再骗一次。
+
+## 补记（CI：它为什么从落地起就不可能绿，2026-10-01）
+
+**症状**：CI（`.github/workflows/ci.yml`，PLAN 的 C3）从 13:52 就躺在仓库里、计划上标着
+"✅ 已落地" —— 但**从未运行过**：那些提交一直没推出去，而 GitHub 只在工作流文件进了远端
+才会跑它。第一次推上去，两次运行都是 `failure`；而本机同一个命令全绿。
+
+**为什么本机看不出来（这条最值钱）**：CI 每一次运行都是**一个新鲜克隆** —— 没有 `vendor/`、
+没有任何应用的 `node_modules`、没有 `_build`。所以"本机绿"**根本不构成**"CI 会绿"的证据。
+CI 的判据是"**新鲜克隆 + 按文档的配方**"，不是"我这台机器上能跑"。
+
+### 一：它漏了"新克隆"的第一步 —— 于是 8 条门连锁红
+
+`vendor/` 是 **gitignore 的生成物**（rabbita fork：`tools/vendor.lock` 的版本 + `tools/patches/*.patch`
+→ `tools/vendor_sync.sh` 生成）。新鲜克隆里没有它 → `moon check` 报
+
+```
+Cannot find import 'XiLaiTL/moobile/vendor/rabbita/vdom' in XiLaiTL/moobile@0.2.2
+```
+
+→ 行尾 / vendor 一致 / 转发包 / 能力矩阵 / 脚手架三条门**连锁全红**。
+`CONTRIBUTING.md` §1 明明写着这一步（"重建第三方（新克隆 / 换版本）"），而 CI 没做。
+**实测**：新鲜克隆 **4 通过 / 8 失败**；补上 `vendor_sync --apply` 后 **14 / 0 / 1、exit 0**。
+
+### 二：`continue-on-error` 把"装挂了"吞掉了
+
+npm 安装那一步写着 `continue-on-error: true` —— 装失败也报 success。
+而模板那三条门要从**已安装**的 node_modules 里取 `react` 与 `moobile-host`
+（`tools/verify_headless.mjs` 的 `pickNodeModules`）。于是"装挂了"与"门红了"之间的
+线索被抹平，只剩一个红叉。⇒ 去掉它：装了失败就是要红。
+
+### 三：顺带一个**对使用者成立**的坑（比 CI 更早咬人）
+
+`examples/apps/todo-app/host/package-lock.json` 里有**两条 404 的 `resolved` URL** ——
+镜像源把包名写成了畸形路径：
+
+```
+expo-server        →  .../expo-examples/services/todo-server/-/expo-server-57.0.3.tgz
+@expo/router-server →  .../@expo/router-examples/services/todo-server/-/router-server-57.0.10.tgz
+```
+
+**任何新鲜克隆的 `npm install` 都会挂在它们上面**（本机没感觉，是因为 node_modules 早装好了、
+npm 不必再取那两个 tarball）。修法**验证过**：把真 tarball 下下来算 sha512，与 lockfile 的
+`integrity` **逐字一致**（两条都比过）⇒ 只是 URL 错、制品没变，所以**只改 URL、不动 integrity**。
+
+顺带立了一条门：`tools/check_lockfile_urls.mjs` —— 纯结构判据（URL 尾巴必须是
+`<registry>/<包名>/-/<末段>-<版本>.tgz`）、**不联网**、8 份 lockfile 2088 个 URL 几十毫秒，
+**已用诱饵证伪过**（塞回一条坏 URL → 点名 + exit 1）。
+
+### 四：修完 vendor 与 npm 之后**仍有 4 条门红**（**未解决 —— 交接项**）
+
+四条**全是"要 moon 编译"的门**：`moon check --target js`、`gen_forwarders --check`、
+脚手架模板、脚手架承载真应用；其余 11 条全绿。这个形状本身在指路。
+
+**已有的证据链**：
+
+- CI 的 `moon check` 日志里出现 `Warning (implicit_impl_as_method)` 与 `Warning: [0079]`
+  （`vendor/rabbita/websocket/types.mbt:89` 那个 `impl Show for Snapshot`），
+  而**本机同一条命令不出现** ⇒ **CI 的 moon 比本机新**。
+- 本机 `moon version` = `0.1.20260827 (d0aaa07 2026-08-27)`，而 **`DEV.md` 记录的正是这个版本** ——
+  也就是说**仓库自己声明了期望的工具链**，而 CI 装的是安装脚本的默认值 `latest`。
+- `[0079]` 是 E0079（`implicit_impl_as_method`），按[官方文档](https://docs.moonbitlang.com/en/stable/_sources/language/error_codes/E0079.md)
+  它是**默认开启的警告**，所以它**未必**是让 `moon check` 失败的那一行 ——
+  **真正的 error 文本还没读到**（见下）。
+
+**为什么读不到（也记下来，免得下一个人重踩）**：公开仓库的 **job log 走 REST API 要认证**
+（`GET /actions/runs/<id>/logs` → **403**），运行页又是 JS 渲染的、curl 取不到内容。
+出路是 **annotation 不需要认证** —— CI 里已经加了"失败时把门名与日志尾巴打成 annotation"，
+读它用 `python3 tools/ci_status.py <sha>`。⚠️ 但**大 payload 会被 GitHub 丢掉**：
+试过把整份输出（12000 字符）塞进一条 annotation，那一条**根本没出现**（同一次运行其他 12 条都在），
+所以现在能读到的只是"门名 + 12 行尾巴"，更长的要走**运行页**（人肉可读）。
+
+**两条候选修法（都还没做）**：
+
+1. **钉住工具链**，让 CI 用 `DEV.md` 那个版本。⚠️ 实测**安装脚本钉不住具体版本**：
+   bucket 只提供 `latest` 与 `nightly`，带日期的路径一律 **403**
+   （`0.1.20260827`、`v0.1.20260827`、`0.1.20260827+d0aaa07` 都试过）。要钉就得另找分发渠道。
+2. **把代码升到能过新工具链**：E0079 那条要显式写成
+   `pub extend Snapshot with Show::{to_string, output}`（或给 `extend` 标 `#deprecated`）。
+   ⚠️ 那处在 `vendor/rabbita/**` 里，而 vendor 是**生成物** —— 改动必须落成
+   `tools/patches/*.patch`，再走 `--capture` / `--check` 才算数（见 `FORK.md` §0）。

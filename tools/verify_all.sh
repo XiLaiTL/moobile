@@ -74,6 +74,15 @@ run "外部模块可用性（check_external）" bash tools/check_external.sh
 # 改了 vendor/rabbita/** 或升级 fork 之后忘了重跑生成器，就会在这里红。
 run "转发包与 mbti 一致（gen_forwarders --check）" bash tools/py.sh tools/gen_forwarders.py --check
 
+# lockfile 里的 `resolved` URL 是否与包名对得上（**不联网**，纯结构判据）。
+#
+# 为什么必须有：这台机器的 npm 走 npmmirror，而它会把**畸形路径**写进 lockfile ——
+# 实测两条：`expo-server` 被写成 `expo-examples/services/todo-server/-/...`、
+# `@expo/router-server` 被写成 `@expo/router-examples/services/todo-server/-/...`，**都 404**。
+# 后果与"本机看不出来"的原因一样值得记：本机 node_modules 早就装好了，npm 不必再取那两个
+# tarball；而**任何新鲜克隆的 `npm install` 都会挂**（新贡献者、CI 都是新鲜克隆）。
+run "lockfile 的 resolved URL 与包名一致（check_lockfile_urls）" node "$ROOT/tools/check_lockfile_urls.mjs" --quiet
+
 # 宿主平台替代物（`MOBILE_HOST.native`）的 RN 侧实现。
 #
 # 为什么必须有这条门：`npm/moobile-host/native-rn.js` 里 `import 'react-native'`，

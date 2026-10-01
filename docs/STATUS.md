@@ -36,7 +36,8 @@
 
 | 门 | 命令 | 日期 | 结果 |
 |---|---|---|---|
-| 离线全集 | `bash tools/verify_all.sh` | 09-21 | **15 / 15 通过、0 失败、0 跳过**（约 20 秒；`--with-e2e` 再追加 Web 端到端 3 项，本轮未跑） |
+| 离线全集 | `bash tools/verify_all.sh` | 10-01 | **16 / 16 通过、0 失败、0 跳过**（约 20 秒；`--with-e2e` 再追加 Web 端到端 3 项，本轮未跑） |
+| ↳ 其中「lockfile 的 resolved URL 与包名一致」（**新增**） | `node tools/check_lockfile_urls.mjs` | 10-01 | 通过（8 份 lockfile、2088 个 `resolved` URL）。**立它的原因**：镜像源把两条 URL 写成了 404 的畸形路径（`expo-server` / `@expo/router-server`），而**任何新鲜克隆的 `npm install` 都会挂在它们上面**（本机因 node_modules 已存在而看不出来）。**已用诱饵证伪**：塞回一条坏 URL → 点名 + exit 1 |
 | ↳ 其中「宿主平台替代物」 | `node tools/native_rn_check.mjs` | 09-21 | **15 项**通过（`visibility` / `geometry` 的形状、取整、不补发初始值） |
 | ↳ 其中「能力包平台矩阵」 | `node tools/cap_platform.mjs` | 09-21 | 通过（29 个公开 API × 31 条 DOM 链路，「哪端可用 + 失效形态」齐全，漂了就红） |
 | ↳ 其中「组件库接入（antd 试金石）」 | （在离线全集里） | 10-01 | **26 项**通过 —— ⚠️ 这一条**原来是个假通过**：负例 (b)「不给事件覆盖时点 antd 按钮应当无效」之所以绿，是因为 `installHostCore` 把事件表**合并**进全局 `MOBILE_HOST`（为修"重复 install 会冲掉注册"），前面用例装的 `"*": {click:"onClick"}` 一直留着；而它被**一份陈旧的 `moobile-host` 副本**（整体替换语义，天然干净）掩盖了很久。补了 `installHostCore({reset:true})` 之后它才名副其实（并终于能看到 React 那句 `Unknown event handler property onPress`）。见 FINDINGS「陈旧副本掩盖了一条门的假通过」 |
@@ -150,13 +151,18 @@
 
 ---
 
-8. **有一个提交没推出去（2026-10-01）**：`237f792`（CI 修复 + lockfile 里两条 404 的镜像 URL）。
-   推送当时被网络挡住（`github.com` 的 HTTPS 有些边缘 IP 从这个网络不通），**CI 也就还没在远端验证过**。
-   接手时先推它、再看 GitHub 上 `offline-checks` 这次运行。
-   ⚠️ 那条 lockfile 修复是**对使用者成立**的坑：`expo-server` 与 `@expo/router-server` 的 `resolved`
-   被镜像源写成了 404 的路径，**任何新鲜克隆的 `npm install` 都会挂在它们上面**（本机看不出来，
-   因为 `node_modules` 早装好了）。修法经过验证：下真 tarball 算 sha512 与 lockfile 的 `integrity`
-   **逐字一致** → 只是 URL 错、制品没变，所以只改 URL、不动 `integrity`。
+8. **CI（C3）修到一半（2026-10-01）—— 这是当前最该接手的一件事**：它从落地起**从未运行过**
+   （提交一直没推），第一次跑就红。已修好并推上去的两处：① workflow 补上"新克隆"的第一步
+   `vendor_sync.sh --apply`（`vendor/` 是 gitignore 的生成物，而 **CI 每次都是新鲜克隆**）；
+   ② 去掉 npm 安装那步的 `continue-on-error`（装失败被吞掉了）。
+   现在 `重建 vendor` 与 `Install host deps` 两步**都绿**，但 `verify_all.sh` **仍红 4 条** ——
+   **全是"要 moon 编译"的门**（`moon check` / `gen_forwarders` / 脚手架两条）。
+   证据指向 **CI 的 moon 比 `DEV.md` 记的新**（CI 装 `latest`，仓库期望 `0.1.20260827`）；
+   但**真正的 error 文本还没读到**：公开仓库的 job log 走 API 要 403，只能靠 annotation
+   （`python3 tools/ci_status.py <sha>`，大 payload 会被 GitHub 丢掉）或运行页。
+   全过程、证据链与两条候选修法见 [`FINDINGS.md`](FINDINGS.md) 的 CI 补记。
+   ⚠️ 顺带修掉一个**对使用者成立**的坑：`todo-app/host/package-lock.json` 里两条 404 的
+   `resolved` URL 会让**任何新鲜克隆的 `npm install` 挂掉**（修法验过 integrity 一致）。
 
 ## 5. 维护这份文件的三条纪律
 

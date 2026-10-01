@@ -30,7 +30,7 @@ moobile 是给 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit
 
 ```bash
 bash tools/refresh_host_copies.sh     # ★ 先跑这个，见 §4-2（不跑的话下面那条门可能红）
-bash tools/verify_all.sh              # 离线全集（本地约 20 秒）
+bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒）
 ```
 
 两者都绿再往下走。**门红了先怀疑探针**，不要先改代码 —— 这个仓库里有好几条"红的是探针、
@@ -52,7 +52,7 @@ bash tools/verify_all.sh              # 离线全集（本地约 20 秒）
 | 项 | 状态 |
 |---|---|
 | **1 个提交没推**：`237f792`（CI 修复 + lockfile 坏 URL 修复） | 推送当时被网络挡住，见 §4-1 |
-| **CI 修好了，但没在远端验证过** | 它此前**从落地起就没跑过**（提交一直没推），第一次跑是红的；修法见 §3-1 |
+| **CI 修到一半，仍红 4 条** | 已修好并推上去：workflow 补了 `vendor_sync --apply`（CI 每次都是**新鲜克隆**）、去掉 npm 安装那步的 `continue-on-error`。现在那两步都绿，但 `verify_all.sh` 里**仍有 4 条红 —— 全是"要 moon 编译"的门**。证据指向 **CI 的 moon 比 `DEV.md` 记的新**；**真正的 error 文本还没读到**（公开仓库 job log 走 API 是 403）。详见 §3-1 与 `FINDINGS.md` 的 CI 补记 |
 | Metro | **已停**（交接时清掉了：占着 8081 会让接手的人拿到**别的应用**的 bundle，我这一轮就被坑过） |
 | Android 模拟器 | `emulator-5554` **还在跑**（无害，真机门要用） |
 | 一个待定的工具 | `.scratch/lockfile_url_scan.mjs`（被 gitignore）—— 扫 lockfile 里与包名对不上的 `resolved` URL，是本轮找到两条 404 的工具。**要不要提成正式门还没定**，见 §3-3 |
@@ -61,22 +61,44 @@ bash tools/verify_all.sh              # 离线全集（本地约 20 秒）
 
 ## 3. 立刻要做的三件事（按顺序）
 
-### 3-1 推那个提交，并确认 CI 真的绿
+### 3-1 CI：修到一半，**剩下这 4 条红需要一个能看日志的人**
 
-```bash
-git -c http.proxy= -c https.proxy= push origin main      # 为什么要绕代理，见 §4-1
-```
+**已修好并且推上去的两处**（`237f792` / `bc53f2c` / `52784e5`）：
 
-然后看 GitHub 上 `offline-checks` 这次运行。**CI 此前永远不可能绿**，原因与修法：
+1. workflow 补上 **`bash tools/vendor_sync.sh --apply`** —— `vendor/` 是 gitignore 的生成物，
+   而 **CI 每次运行都是一个新鲜克隆**。缺这一步时 `moon check` 连包都解不出来，8 条门连锁红。
+2. 去掉 npm 安装那步的 **`continue-on-error: true`** —— 否则"装挂了"与"门红"分不开。
+   （顺带修掉一个**对使用者成立**的坑：lockfile 里两条 404 的镜像 URL 会让**任何新鲜克隆的
+   `npm install` 挂掉**；修法验过 `integrity` 一致，并立了门 `tools/check_lockfile_urls.mjs`。）
 
-1. `vendor/` 是 **gitignore 的生成物**（rabbita fork：`tools/vendor.lock` 的版本 + `tools/patches/*.patch`
-   → `tools/vendor_sync.sh` 生成）。**CI 每次运行都是一个新克隆**，而 workflow 从没跑过那一步
-   → `moon check` 报 `Cannot find import 'XiLaiTL/moobile/vendor/rabbita/vdom'` → 8 条门连锁全红。
-   本机看不出来，只是因为 `vendor/` 早就铺好了。（不用 submodule 的理由见 `FORK.md` §0：
-   上游 0.15.4 **没有 tag**，能精确钉住的只有注册表版本号。）
-2. npm 安装那步写着 `continue-on-error: true` → 装失败也报 success，把线索抹掉了。
+**现在的状态**：`重建 vendor` 与 `Install host deps` **都绿**，`verify_all.sh` 仍红 **4 条**，
+而且**全是"要 moon 编译"的门**：`moon check --target js`、`gen_forwarders --check`、
+脚手架模板、脚手架承载真应用（其余 11 条全绿）。
 
-**复现证据**：新鲜克隆 4 通过 / 8 失败；补上 `vendor_sync --apply` 后 **14 通过 / 0 失败 / 1 跳过，exit 0**。
+**已有的证据链**（详见 `docs/FINDINGS.md` 的 CI 补记）：
+
+- CI 的 `moon check` 日志里出现 `Warning (implicit_impl_as_method)` / `Warning: [0079]`
+  （`vendor/rabbita/websocket/types.mbt:89` 的 `impl Show for Snapshot`），**本机不出现**
+  ⇒ **CI 的 moon 比本机新**。
+- 本机 `moon version` = `0.1.20260827`，而 **`DEV.md` 记录的就是这个版本** ——
+  仓库自己声明了期望工具链，CI 却装 `latest`。
+- `[0079]`（E0079）按官方文档是**默认开启的警告**，所以**未必**是让 `moon check` 失败的那一行。
+
+**接着怎么做**：**先拿到那份 error 文本**。三条路，按省事排：
+
+1. 打开运行页人肉看（公开仓库，任何人都能看到 job log）：
+   `https://github.com/XiLaiTL/moobile/actions`
+2. `python3 tools/ci_status.py <sha>` —— 读 annotation（**不需要认证**）。
+   ⚠️ 只能拿到"门名 + 12 行尾巴"：**大 payload 会被 GitHub 丢掉**（试过塞 12000 字符，那一条没出现）。
+3. 账号持有人用 token 走 REST：`GET /actions/runs/<id>/logs`。
+
+**然后两条候选修法（都还没做）**：
+
+- **钉住工具链**用到 `DEV.md` 那个版本。⚠️ 实测**安装脚本钉不住具体版本**：bucket 只提供
+  `latest` 与 `nightly`，带日期的路径一律 403。要钉得另找分发渠道。
+- **把代码升到能过新工具链**（E0079 那条要显式 `pub extend … with Show::{…}`）。
+  ⚠️ 那处在 `vendor/rabbita/**` 里，而 vendor 是**生成物** —— 改动必须落成
+  `tools/patches/*.patch`，再走 `--capture` / `--check`。
 
 ### 3-2 发一版（**需要账号持有人在 npm 上按 2FA**）
 
@@ -98,10 +120,10 @@ git -c http.proxy= -c https.proxy= push origin main      # 为什么要绕代理
 - **F1 迁移动检**（`PLAN.md` §5.1）：扫一个既有 rabbita 项目、出一份"迁移还差什么"的报告。
   工具已落地（`tools/mbtools` 的 `migrate-scan`），**报告本身从没对着 yi 跑过**。
   它成本最低、不依赖任何东西，而且它能**用数据回答**决策点 3。
-- 顺带一个待定的工具：`.scratch/lockfile_url_scan.mjs` 建议提成 `tools/check_lockfile_urls.mjs`
-  并接进 `verify_all.sh` —— 纯结构判据、不联网、2088 个 URL 几十毫秒。**理由**：这台机器的 npm
-  走 npmmirror，那个 bug 会**再次**把 404 的 `resolved` URL 写进 lockfile，而症状是
-  "新鲜克隆装不上、本机完全看不出来"。
+- ✅ 已落地：`tools/check_lockfile_urls.mjs` 已接进 `verify_all.sh`（**第 16 条门**，纯结构判据、
+  不联网、已用诱饵证伪）。**理由**：这台机器的 npm 走 npmmirror，那个 bug 会**再次**把 404 的
+  `resolved` URL 写进 lockfile，而症状是"新鲜克隆装不上、本机完全看不出来"。
+- ✅ 已落地：`tools/ci_status.py`（读 CI 状态与 annotation，**不需要认证**）—— 见 §3-1。
 
 ---
 

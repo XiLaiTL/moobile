@@ -18,7 +18,7 @@
 ## 2. 验证入口（只记这一条）
 
 ```bash
-bash tools/verify_all.sh              # 离线 15 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **宿主平台替代物** / **能力包平台矩阵** / antd 试金石 / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度）
+bash tools/verify_all.sh              # 离线 16 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物** / **能力包平台矩阵** / antd 试金石 / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
 python3 tools/verify_android.py       # 真机 27 项（当前 25/27，两条挂在既有问题上，见 docs/STATUS.md §2.2/§4-6；需要模拟器 + APK）
 ```
@@ -59,6 +59,7 @@ moon ide peek-def <symbol>        # 定义 + 上下文
 | "`files` 白名单里写了就一定会发出去" | ⚠️ **`.gitignore` 是例外**：`npm pack` 永远不打它（即使列了 `template/`）→ 所以 `files` 里必须单独列 `template/.gitignore`。⚠️ **但列了也不够**（2026-09-21 实测）：`npm install` 解包时会把包里的 `.gitignore` **改名成 `.npmignore`**，所以用户 `init` 出来的项目**还是没有 `.gitignore`** —— 这条我们这边复现不出来，只有"真打包 + 真安装 + 用装好的 CLI 生成"才看得见（`tools/package_check.mjs`，发布前必跑）。收口在 `lib/init.js`：它**永远写出 `.gitignore`** |
 | "web 上验过 = 真机也能跑" | ❌ **手势通道上三次栽在这条**（详见 `docs/FINDINGS.md` 的手势边界补记）：① Android 的 `onPanResponderGrant` 会被 RN **投机调用**（拿它的布尔返回值当判断，被拒时那个 `grant` 已经跑过了）—— web 宿主只在允许转移时才调，所以浏览器上**看不见**；② 原生的 `locationX/locationY` 是"手指底下**最深**那个 view"的、而且**会中途换**，契约要的"元素内坐标"得自己量原点；③ `onShouldBlockNativeResponder` 默认 `true` 会挡住原生 `ScrollView`。**改这条通道，web 与真机两套判据都要跑** |
 | "改了 `npm/moobile-host/**` 就完了" | ⚠️ 仓库里有 **7 份** `file:` 装出来的副本。改完**先** `bash tools/refresh_host_copies.sh`（不刷新的话门会红，更糟的是**验证脚本会悄悄测旧代码** —— 真发生过，表现是"两次跑出来一模一样"） |
+| "本机全绿 = CI 会绿" | ❌ **CI 每次运行都是一个新鲜克隆**：没有 `vendor/`（gitignore 的生成物）、没有各应用的 `node_modules`、没有 `_build`。所以本机绿**不构成**证据 —— CI 的判据是"新鲜克隆 + 按文档的配方"。实测：`.github/workflows/ci.yml` 漏了 `vendor_sync.sh --apply` 这一步，于是从落地起**永远不可能绿**（详见 `docs/FINDINGS.md` 的 CI 补记）。另：公开仓库的 **job log 走 API 要认证**（403）—— 但 **annotation 不用**，`python3 tools/ci_status.py <sha>` 就是读它的 |
 | "同步逻辑里 id 随便生成" | ⚠️ 本地新建必须是**负 id**（"服务器还不知道"的标记）。曾经用 `MIN(id)-1` 算成正 id → 被当成"服务器已有的行"去 PATCH → 404 |
 
 ## 4. 干活时的习惯
