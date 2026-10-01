@@ -5,8 +5,11 @@
 /// 需要**真的载荷对象** —— 而 `Payload` 是 JS FFI 类型，`moon test` 里没有宿主可问。
 /// 那半条由**试金石**覆盖：
 ///
-/// - 宿主侧：`examples/apps/gesture-spike/` 第 ④ 节（真 Chrome 真拖，按契约逐条断言
-///   `x/y` 元素内、`dx/dy` 从按下起算、`phase` 有始有终、点按阈值）；
+/// - 宿主侧（web，40 项）：`examples/apps/gesture-spike/` —— 真 Chrome 真拖，
+///   按契约逐条断言 `x/y` 元素内、`dx/dy` 从按下起算、`phase` 有始有终，外加一节**边界**
+///   （嵌套归属 / 深层子元素的参照系 / 多指 `pointers` / 滚动容器 / 同挂 / 无处理器）；
+/// - 宿主侧（真机，18 项）：`examples/apps/gesture-edges/` —— 验 web 上**压根问不出来**的四条
+///   （原生的 responder 协商、`locationX` 的真实参照系、滚动抢人、只挂 `on_tap` 的元素）；
 /// - 端到端（MoonBit 读载荷 → `Msg`）：见 `examples/apps/canvas-demo/` 的验证。
 ///
 /// 换句话说：**这里测"我们自己的映射表"，那里测"两边合起来对不对"**。

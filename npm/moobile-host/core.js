@@ -69,6 +69,19 @@ export function installHostCore(options = {}) {
     scheduleTask = defaultScheduleTask,
     scheduleFrame = defaultScheduleFrame,
     platform = detectPlatform(),
+    // ★ `reset: true` —— **从一份干净的宿主开始**，不与已装的那份合并。
+    //
+    // 为什么需要它（真机之外的一条门逼出来的）：合并是**全局**的（见下面那段），
+    // 于是"我想装一个**没有**事件覆盖的宿主"这件事**表达不出来** —— 上一次装进去的
+    // `"*": { click: "onClick" }` 还在，测试却以为自己装的是空表。
+    // 实测代价：`antd-spike` 的负例 (b)「不给事件覆盖时点 antd 按钮应当无效」一直是绿的 ——
+    // 不是因为设计生效，而是因为它跑在前面那些用例**已经**把覆盖装进去了；
+    // 而它之所以长期没被发现，是因为它的 `moobile-host` 副本是**陈旧的**（旧版是整体替换，
+    // 天然干净）。副本一刷新，这条门立刻红。（两件事都记在 `docs/FINDINGS.md`。）
+    //
+    // 语义上它就该存在：**应用**要的是"重复调用别把已注册的冲掉"（下面那段），
+    // **测试**要的是"每次从干净状态开始"。两个诉求方向相反，用一个开关分开才是诚实的。
+    reset = false,
     ...rest
   } = options;
   // ⚠️ **幂等：已经装过就合并，不能把 `MOBILE_HOST` 整个换掉。**
@@ -81,7 +94,7 @@ export function installHostCore(options = {}) {
   // 与实现不符（`index.js` 的注释一直这么写）。
   // 生成路径（`mountApp(app, { registry })`）不受影响：它的注册发生在 install **之后** ——
   // 所以只有"手写 registerLibrary"这条路会踩，而 `canvas-skia` 正是手写的。
-  const prev = globalThis.MOBILE_HOST;
+  const prev = reset ? null : globalThis.MOBILE_HOST;
   globalThis.MOBILE_HOST = {
     ...(prev || {}),
     react,

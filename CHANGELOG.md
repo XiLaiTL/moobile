@@ -5,6 +5,37 @@
 
 ---
 
+## 未发布 —— 手势通道的**边界**（三个真机才暴露的错误 + 一条契约收紧）
+
+**三个 bug 都是在真机上才露头的**（web 宿主 40 项全绿、一条都抓不到）：
+
+1. **`onPanResponderGrant` 在 Android 上不是"你拿到了"的信号**：RN 会**投机调用**候选者的
+   `onResponderGrant`（拿它的布尔返回值当判断），**然后**才问当前响应者让不让 ——
+   被拒时补一个 `responderReject`，可那个 `grant` 已经跑过了。
+   症状：父子都挂 `on_pan` 时**外盒收到 6 次 `start`、零 move**（应用会拿到一次没发生的手势开始）。
+   ⇒ `start` 改成"确认真的拿到响应者之后才吐"（`onPanResponderStart` + 数值快照）。
+2. **`x`/`y` 在原生上不是元素内坐标**：原生的 `locationX/locationY` 是"手指底下**最深**那个
+   view"的、而且**会中途换**（实测 `x` 序列 `[6, 7, 79, 89, …]`，契约要的是 `130 → 170`）。
+   ⇒ 原生侧自己量元素原点（`measure` 的 `pageX/pageY`）再减；web 保持原样
+   （RNW 的 `measure` 是视口坐标、与触摸的文档坐标不同源）。
+3. **`onShouldBlockNativeResponder` 默认 `true`**：原生 `ScrollView` 因此收不到触摸 ——
+   只挂 `on_tap` 的元素放进 `scroll` 里会把滚动**锁死**。
+   ⇒ `onShouldBlockNativeResponder: () => hasPan`（与终止权同一套策略）。
+
+**契约收紧（`gesture/`）**：`pointers` 从"v1 恒为 1"改成**诚实报数**（多指时 2、3……，
+`dx/dy` 锁在**按下那一根**手指上）；明确写下四条不变量（`start` 恰一次且在最先 /
+起点 `dx=0` / **整条手势同一参照系** / `cancel` = 这次不算）。
+
+**新增**：
+- `examples/apps/gesture-edges/` —— 手势**边界**的真机验证（18 项）。
+  ⚠️ 多指的真机行为**仍未验**（`adb shell input` 只能发单指）。
+- `tools/refresh_host_copies.sh` —— 刷新仓库里**所有** 7 份 `moobile-host` 副本。
+  `check_npm_fresh` 由"只守一份"改成**发现式**（有几份查几份）：陈旧副本曾让一轮探测
+  **测的是老实现**，还掩盖过一条门的假通过。
+- `installHostCore({ reset: true })` —— 从干净宿主开始（测试用；合并语义是给应用的）。
+
+---
+
 ## 未发布 —— canvas 通道（`<canvas>` 的平台替代物）
 
 **新能力：`<canvas>` 在原生端画得出来了 —— 走的是既有组件通道，不是新通道**

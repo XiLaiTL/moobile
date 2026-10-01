@@ -223,6 +223,41 @@ export default mountApp(app);          // 内部还会再装一次，注册保�
 
 形状真不对时，报错会说清两种合法写法 —— 而不是丢一个 `iterator method is not callable`。
 
+## 手势（挂在任意元素上的拖动 / 点按）
+
+**零配置**：`installHost()`（RN 预设）会把 5 个内置组件包成"手势可用"的版本，
+所以应用侧 `@gesture.attrs(on_pan=…)` 直接就有效，**不用装任何东西、不用注册**。
+（画布那条通道相反 —— Skia 是应用自己的依赖，必须显式 `registerSkiaCanvas`。）
+
+契约是**库侧**定义的（`gesture/gesture.mbt`），宿主只负责把它兑现出来：
+
+| 字段 | 语义 |
+|---|---|
+| `x` / `y` | **元素内**坐标 —— 相对**挂手势的那个元素** |
+| `dx` / `dy` | **从按下那一刻起算**的位移（不是谁的 `translationX`） |
+| `ax` / `ay` | 页面/窗口坐标（RN 的 `pageX/pageY`） |
+| `phase` | `start` / `move` / `end` / `cancel` |
+| `pointers` | 手指数（**诚实报数**，多指时是 2、3……） |
+
+不变量：`start` 恰一次且在最先（`end`/`cancel` 恰一次且在最后、互斥）、
+起点 `dx/dy` 恒为 0、**整条手势在同一个参照系里**。
+
+⚠️ 最后那条是**宿主侧做了归一化才成立**的，别以为它是白来的：
+
+- **原生**的 `locationX/locationY` 是"**手指底下最深那个 view**"的局部坐标，而且**会中途换**
+  （实测从子元素上按下：`x` 序列 `[6, 7, 79, 89, …]` —— 头两个是那个文字自身的坐标系）。
+  所以原生侧**自己量元素原点**（`measure` 的 `pageX/pageY`），用 `pageX/pageY − 原点` 算 `x/y`。
+- **web** 反而**不能**这么改：RNW 的 `measure` 给的是**视口**坐标、触摸的 `pageX/pageY` 是
+  **文档**坐标，页面一滚两者就不同源。所以 web 保持用 RNW 的 `locationX/locationY`（它本来就对）。
+
+**谁能让步**（同一条策略的两处体现，Android 上**两处都要**）：
+挂了 `on_pan` 的元素 → **不让**别人半途抢走（`onPanResponderTerminationRequest: false`
++ `onShouldBlockNativeResponder: true`）；只挂 `on_tap` → **让**（可点元素必须把滚动让给外层
+`ScrollView`，否则列表里放一个可点行就把滚动锁死了）。
+
+判据：web `examples/apps/gesture-spike/`（40 项，含边界）、真机 `examples/apps/gesture-edges/`（18 项）。
+**两端都要跑** —— 上面那条"原生参照系"的坑在 web 上完全看不见。
+
 ## 能力注册表（`registry.generated.js`）
 
 不要手写它，**从依赖生成**：

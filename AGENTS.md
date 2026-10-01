@@ -56,6 +56,8 @@ moon ide peek-def <symbol>        # 定义 + 上下文
 | "发布包 = 工作区" | ❌ 发布包是 `.moonignore` **过滤后的产物**。发版前**必须**看 `moon package --list` |
 | "`moon build` 的 JS 产物路径可以写死" | ⚠️ **不能**：它取决于**模块在构建根里的身份** —— 工作区成员是 `_build/js/<profile>/build/<作者>/<模块>/<模块>.js`，独立模块（空目录里 `moon new`）是平铺的 `_build/js/<profile>/build/<模块>.js`。所以搬运一律走 `moobile-host build`（**发现**产物），别写死 `cp`（实测见 FINDINGS 的 E 轨道补记） |
 | "`files` 白名单里写了就一定会发出去" | ⚠️ **`.gitignore` 是例外**：`npm pack` 永远不打它（即使列了 `template/`）→ 所以 `files` 里必须单独列 `template/.gitignore`。⚠️ **但列了也不够**（2026-09-21 实测）：`npm install` 解包时会把包里的 `.gitignore` **改名成 `.npmignore`**，所以用户 `init` 出来的项目**还是没有 `.gitignore`** —— 这条我们这边复现不出来，只有"真打包 + 真安装 + 用装好的 CLI 生成"才看得见（`tools/package_check.mjs`，发布前必跑）。收口在 `lib/init.js`：它**永远写出 `.gitignore`** |
+| "web 上验过 = 真机也能跑" | ❌ **手势通道上三次栽在这条**（详见 `docs/FINDINGS.md` 的手势边界补记）：① Android 的 `onPanResponderGrant` 会被 RN **投机调用**（拿它的布尔返回值当判断，被拒时那个 `grant` 已经跑过了）—— web 宿主只在允许转移时才调，所以浏览器上**看不见**；② 原生的 `locationX/locationY` 是"手指底下**最深**那个 view"的、而且**会中途换**，契约要的"元素内坐标"得自己量原点；③ `onShouldBlockNativeResponder` 默认 `true` 会挡住原生 `ScrollView`。**改这条通道，web 与真机两套判据都要跑** |
+| "改了 `npm/moobile-host/**` 就完了" | ⚠️ 仓库里有 **7 份** `file:` 装出来的副本。改完**先** `bash tools/refresh_host_copies.sh`（不刷新的话门会红，更糟的是**验证脚本会悄悄测旧代码** —— 真发生过，表现是"两次跑出来一模一样"） |
 | "同步逻辑里 id 随便生成" | ⚠️ 本地新建必须是**负 id**（"服务器还不知道"的标记）。曾经用 `MIN(id)-1` 算成正 id → 被当成"服务器已有的行"去 PATCH → 404 |
 
 ## 4. 干活时的习惯

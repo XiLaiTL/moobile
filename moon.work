@@ -26,4 +26,7 @@ members = [
   // canvas 试金石（PLAN §3.6 / P3 T3.2）：它走的是**组件通道**，
   // 而这条通道（标签直通 + jsonProps）是新加的 —— 不吃本地源码就会拿到旧库。
   "examples/apps/canvas-spike",
+  // 手势**边界**的真机验证（web 那半在 `gesture-spike` 里，40/40）：
+  // 它必须吃本地源码的理由与 canvas-demo 相同 —— 验的正是我们**还没发布**的那版手势实现。
+  "examples/apps/gesture-edges",
 ]

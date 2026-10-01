@@ -145,6 +145,15 @@ const ANTD_EVENTS = { click: "onClick", change: "onChange" };
 
 function install({ hostEvents = DOM_EVENTS, libraryEvents = ANTD_EVENTS } = {}) {
   core.installHostCore({
+    // ★ `reset: true` —— **每次从干净宿主开始**。
+    //
+    // 不加它的话，下面那些负例**根本不是负例**：`installHostCore` 是合并进全局
+    // `MOBILE_HOST` 的（那是为了修"重复 install 会冲掉已注册的组件"），
+    // 于是前面用例装进去的 `"*": { click: "onClick" }` 会**留到**后面，
+    // 而 (b) 以为自己装的是"没有任何事件覆盖的宿主"。
+    // 实测：这条 (b) 长期是绿的，直到它的 `moobile-host` 副本**被刷新** ——
+    // 旧副本是整体替换语义，天然干净，所以这个假通过被"陈旧的副本"掩盖了。
+    reset: true,
     components: { ...DOM_COMPONENTS },
     events: hostEvents,
     platform: "web",

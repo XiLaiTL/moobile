@@ -192,6 +192,12 @@ await send('Emulation.setDeviceMetricsOverride', { width: 480, height: 320, devi
 await send('Page.navigate', { url: URL_ });
 await sleep(1200);
 
+// 视口固定：`getBoundingClientRect` 与 `elementFromPoint` 都是**视口相对**的，
+// 窗口大小不确定的话，"按 rect 算出的点"落到哪里就不确定 —— 判据跟着飘。
+await send('Emulation.setDeviceMetricsOverride', {
+  width: 1000, height: 900, deviceScaleFactor: 1, mobile: false,
+});
+
 // ── 4) 挂载 ───────────────────────────────────────────────────────────────────
 section('① 两套实现都挂载成功');
 const boxes = await evalJs('JSON.stringify(window.__boxes ? window.__boxes() : null)');
@@ -206,6 +212,31 @@ if (!parsed || !parsed['rngh-box']) {
   console.log('\n（挂载失败就先看上面那条异常 —— 那是"RNGH 能不能用在我们宿主上"的答案。）');
   console.log(`\n================ 汇总 ================\n通过 ${results.filter((r) => r.ok).length}  失败 ${results.filter((r) => !r.ok).length}`);
   process.exit(1);
+}
+
+/**
+ * ★ **命中自检门**：下面每个"按下点"在浏览器里真的要落在那个元素上。
+ *
+ * 这条门是**被一次假结果逼出来的**：第二行 7 列挤在一行里互相压住，于是
+ * "拖 both-box"实际拖到了压在上面的另一个盒子 —— 日志是空的，而**空日志和"没实现"
+ * 长得一模一样**，一次跑出三个假结论（E3/E4/E6 全空、E7 的正对照也是假的）。
+ * 所以：**凡是按坐标发事件的地方，先证明坐标命中的是它自己。**
+ */
+section('①-补 命中自检（按坐标发事件的前提）');
+const HIT_POINTS = [
+  // [盒子 testID, dx, dy]；dx/dy 为 null 表示取中心
+  ['rngh-box', null, null], ['rngh0-box', null, null], ['pan-box', null, null], ['wrapped-box', null, null],
+  ['nested-inner', null, null], ['deep-box', 50, 30], ['multi-box', null, null],
+  ['both-box', null, null], ['plain-box', null, null], ['scrolldrag-box', null, null], ['scrolltap-box', null, null],
+];
+{
+  const bad = [];
+  for (const [id, dx, dy] of HIT_POINTS) {
+    const hit = await evalJs(`window.__hitAt ? window.__hitAt(${JSON.stringify(id)}, ${dx}, ${dy}) : '(无 __hitAt)'`);
+    if (hit !== 'ok') bad.push(`${id} → ${hit}`);
+  }
+  check('每个按下点都命中**它自己**（否则后面那些"零事件"全是假的）',
+    bad.length === 0, bad.join(' · ') || `${HIT_POINTS.length} 个点全部命中`);
 }
 
 // ── 5) 真拖 ───────────────────────────────────────────────────────────────────
@@ -372,8 +403,204 @@ await evalJs('window.__log = []');
     `拖动后 tap=${tapsAfterDrag}（应为 0）· 轻点后 tap=${tapEvs.length}（应为 1）`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⑦ 边界（README §7）—— 上面几节问"能不能用"，这一节问"**契约在边缘上怎么表态**"。
+//
+// 每一条都是**先写期望、再让探针去证伪**：期望来自"应用会怎么用"，
+// 不是来自"实现恰好怎么做"。红了才是收获 —— 说明实现与契约对不上，
+// 而应用会照着契约写逻辑，然后在那个边界上悄悄写错状态。
+// ═══════════════════════════════════════════════════════════════════════════════
+section('⑤ 边界：嵌套 / 深层子元素 / 多指 / 同挂 / 无处理器 / 状态机');
+
+const logAll = async () => {
+  const raw = await evalJs('JSON.stringify(window.__log || [])');
+  return raw ? JSON.parse(raw) : [];
+};
+const phaseOf = (kind) => kind.slice(kind.lastIndexOf('.') + 1);
+const byPrefix = (evs, p) => evs.filter((e) => e.kind.startsWith(p));
+
+/**
+ * 相位状态机不变量（契约里承诺的，应用可以照着写状态机）：
+ * `start` 恰好一次且在最前；`end`/`cancel` 最多一次且在最后；两者**互斥**。
+ */
+function checkStateMachine(label, evs) {
+  const ph = evs.map((e) => phaseOf(e.kind));
+  const starts = ph.filter((p) => p === 'start').length;
+  const terms = ph.filter((p) => p === 'end' || p === 'cancel').length;
+  const okOrder =
+    (ph.length === 0) ||
+    (ph[0] === 'start' &&
+      starts === 1 &&
+      (ph.length === 1 || (terms === 1 && ph[ph.length - 1] !== 'move' && ph[ph.length - 1] !== 'start')));
+  check(`${label}：相位状态机（start 恰一次且在最先，end/cancel 恰一次且在最后）`, okOrder, ph.join(' → ') || '(空)');
+  if (ph.length && ph[0] === 'start') {
+    check(`${label}：起点 \`dx/dy\` 为 0（"从按下起算"在第一个事件上就该成立）`,
+      evs[0].dx === 0 && evs[0].dy === 0, `dx=${evs[0].dx} dy=${evs[0].dy}`);
+  }
+  return ph;
+}
+
+/** 把正在滚动的位置读出来（E4/E5 用；观察值，浏览器里鼠标拖不动 `overflow` 容器，见正文）。 */
+const scrollY = async () => Number(await evalJs('window.__scroll ? window.__scroll() : 0'));
+
+// ── E1 嵌套：父子都挂 onPan ────────────────────────────────────────────────────
+{
+  await evalJs('window.__log = []');
+  const inner = parsed['nested-inner'];
+  await drag(inner.x, inner.y, 30, 0);
+  const evs = await logAll();
+  const outerEvs = byPrefix(evs, 'edge.nested.outer.');
+  const innerEvs = byPrefix(evs, 'edge.nested.inner.');
+  check('E1 嵌套：**子**拿走手势（收到完整相位）',
+    innerEvs.length >= 3, `子 ${innerEvs.length} 条 / 父 ${outerEvs.length} 条`);
+  check('E1 嵌套：**父一个事件都不收**（RN responder 从最深处往上问，子先答 yes；' +
+    '父想"也感知"得走别的机制）',
+    outerEvs.length === 0, `父收到 ${outerEvs.length} 条：${outerEvs.map((e) => e.kind).join(',') || '(无)'}`);
+  checkStateMachine('E1 子', innerEvs);
+  const s = innerEvs[0] || {};
+  check('E1 子元素自己的 `x/y` 相对**子元素**（48px 见方 → 起点 ≈ 24,24）',
+    Math.abs(s.x - 24) <= 3 && Math.abs(s.y - 24) <= 3, `x=${s.x} y=${s.y}`);
+}
+
+// ── E2 深层子元素被触摸：x/y 相对谁 ────────────────────────────────────────────
+//
+// 期望：仍相对**挂手势的元素**。这是"元素内坐标"这句话的全部意义 ——
+// 罗盘/滑杆那类交互拿 `x` 直接换算刻度，手指落在里面的文字上就换参照系的话，
+// 同一块区域的刻度会给出两个值。
+{
+  await evalJs('window.__log = []');
+  const b = parsed['deep-box'];
+  // 按下点选在**子元素内**且**偏移开**（子元素在父元素里的原点是 (20,10)）：
+  //   相对父元素 → (50,30)；相对子元素 → (30,20)。两个数不同，才分得出来。
+  await drag(b.left + 50, b.top + 30, 30, 0);
+  const evs = byPrefix(await logAll(), 'edge.deep.');
+  const s = evs.find((e) => e.kind === 'edge.deep.start') || {};
+  const moves = evs.filter((e) => e.kind === 'edge.deep.move');
+  const last = moves.at(-1) || {};
+  check('E2 ★ 深层子元素：`x/y` 相对**挂手势的元素**（起点 ≈ 50,30），' +
+    '不是相对被触摸的那个子元素（那会是 30,20）',
+    Math.abs(s.x - 50) <= 3 && Math.abs(s.y - 30) <= 3,
+    `x=${s.x} y=${s.y}（父参照系 50,30 / 子参照系 30,20）`);
+  check('E2 ★ 滑出子元素范围后 `x` 仍在**同一个参照系**里连续增长（≈80，不跳）',
+    Math.abs(last.x - 80) <= 4, `最后一条 move 的 x=${last.x}（期望 ≈80；父参照系）`);
+  check('E2 `dx` 不受参照系影响（≈30）', Math.abs(last.dx - 30) <= 3, `dx=${last.dx}`);
+  checkStateMachine('E2', evs);
+}
+
+// ── E4/E5 滚动容器抢响应者 ────────────────────────────────────────────────────
+//
+// ⚠️ **这一条在浏览器里测不出"滚动抢走"**：鼠标拖动不会滚 `overflow` 容器
+//    （滚动是触摸/滚轮行为），所以这里只锁**契约那半**：
+//    真被抢走时收到的是 `cancel`、且 `cancel` 是最后一次（不会再有 `end`）——
+//    应用据此才能安全地"回滚这次拖动"。**滚动那一半留真机**（见 README §7）。
+{
+  await evalJs('window.__log = []');
+  const b = parsed['scrolldrag-box'];
+  const before = await scrollY();
+  await drag(b.x, b.y, 0, -60);
+  const evs = byPrefix(await logAll(), 'edge.scroll.');
+  const ph = evs.map((e) => phaseOf(e.kind));
+  const after = await scrollY();
+  console.log(`     观察：拖动后 scrollY ${before} → ${after}（浏览器鼠标拖动**不**滚 overflow 容器）`);
+  check('E4 滚动容器：`cancel` 若出现，必是最后一次（不会 `cancel` 之后又 `end`）',
+    !ph.includes('cancel') || ph.lastIndexOf('cancel') === ph.length - 1, ph.join(' → ') || '(空)');
+  checkStateMachine('E4', evs);
+}
+
+// ── E6 同挂 onPan + onTap ─────────────────────────────────────────────────────
+{
+  await evalJs('window.__log = []');
+  const b = parsed['both-box'];
+  const hit = await evalJs(
+    `(() => { const e = document.elementFromPoint(${b.x}, ${b.y});` +
+    ` return e ? (e.getAttribute('data-testid') || e.tagName) : '(null)'; })()`,
+  );
+  console.log(`     诊断：both-box 中心 (${Math.round(b.x)},${Math.round(b.y)}) 命中的元素 = ${hit}`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y, button: 'none' });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: b.x, y: b.y, button: 'left', buttons: 1, clickCount: 1 });
+  // ⚠️ 这一口 `sleep` 不能省：按下与抬起之间不给一帧，responder 的 grant 还没落地，
+  //    release 就追上来把本次手势收掉了 —— 日志会是**空的**，而"空"看起来跟"功能没实现"
+  //    一模一样（第一次跑就吃到了这个假失败）。判据红的时候先怀疑探针，这条又应验一次。
+  await sleep(120);
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x + 1, y: b.y, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(300);
+  const evs = await logAll();
+  const pans = byPrefix(evs, 'edge.both.pan.');
+  const taps = byPrefix(evs, 'edge.both.tap');
+  console.log(`     诊断：本次日志 ${evs.length} 条 —— ${evs.map((e) => e.kind).join(', ') || '(空)'}`);
+  check('E6 同挂：一次轻点 → `pan` 与 `tap` **各触发一次**（文档已声明"二选一"，行为得与文档一致）',
+    pans.length >= 2 && taps.length === 1, `pan ${pans.length} 条 / tap ${taps.length} 条`);
+}
+
+// ── E7 无处理器：包装过但没挂手势 ─────────────────────────────────────────────
+//
+// ⚠️ **这条必须带正对照**：如果整条鼠标管线恰好是死的，"零事件"会**假通过** ——
+//    一个永远为空的日志能让任何"不该有事件"的断言都变绿。
+//    所以先拖 `both-box`（挂了处理器，必须有事件）证明管线是活的，再拖 `plain-box`。
+{
+  await evalJs('window.__log = []');
+  const live = parsed['both-box'];
+  await drag(live.x, live.y, 20, 0);
+  const control = (await logAll()).length;
+  await evalJs('window.__log = []');
+  const b = parsed['plain-box'];
+  await drag(b.x, b.y, 30, 0);
+  const evs = await logAll();
+  check('E7 无处理器：包装过、但一个手势 prop 都没给的元素**不抢响应者**（拖它没有任何事件）',
+    evs.length === 0 && control > 0,
+    `plain ${evs.length} 条 / 正对照（both-box）${control} 条${control === 0 ? ' ← 正对照也是 0，说明这条是假通过' : ''}`);
+}
+
+// ── E3 多指：诚实报手指数，位移锁在第一指 ─────────────────────────────────────
+//
+// ⚠️ 用 CDP 的**真触摸事件**（不是鼠标）：多指只有触摸能表达。
+// ⚠️ 而且**必须放在最后**并**用完就关**：`setTouchEmulationEnabled` 会把后续的鼠标事件
+//    也改造成触摸事件，实测开着它跑 E4/E6/E7 时日志**全空**（三节一起假通过/假失败）——
+//    "验证脚本要能识别自己拿到的是不是这次的"这条规矩，这里又应验一次。
+// 期望：`pointers` 报 2（契约里这个字段就是为多指留的，恒报 1 就是撒谎）；
+// 且 `dx/dy` **仍跟第一指** —— 所以这里**两根手指都动**（第二根反向动 40px）：
+// 若实现跟错了手指，`dx` 会立刻跳到另一根或两指中间，一眼能看出来。
+{
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await evalJs('window.__log = []');
+  const b = parsed['multi-box'];
+  const y = b.y;
+  const t = (id, x) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 });
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [t(1, b.x)] });
+  await sleep(60);
+  // 第二指落下（与第一指相隔 40px），此后**两根都动**：第一指 +30、第二指 −40
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [t(1, b.x), t(2, b.x + 40)] });
+  await sleep(60);
+  for (let i = 1; i <= 4; i++) {
+    await send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [t(1, b.x + (30 * i) / 4), t(2, b.x + 40 - (40 * i) / 4)],
+    });
+    await sleep(40);
+  }
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(200);
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  const evs = byPrefix(await logAll(), 'edge.multi.');
+  const pointers = evs.map((e) => e.pointers).filter((v) => typeof v === 'number');
+  const maxP = pointers.length ? Math.max(...pointers) : 0;
+  const lastMove = evs.filter((e) => e.kind === 'edge.multi.move').at(-1) || {};
+  console.log(`     ${evs.length} 条事件 · pointers 取值 ${[...new Set(pointers)].join('/') || '(无)'}`);
+  check('E3 ★ 多指：`pointers` **诚实报 2**（契约里这个字段就是为多指留的）',
+    evs.length > 0 && maxP === 2, `实测最大 pointers=${maxP}`);
+  check('E3 ★ 多指：两根手指都动、第一指 +30 第二指 −40 → `dx` 仍跟**第一指**（≈30）',
+    Math.abs(lastMove.dx - 30) <= 5,
+    `dx=${lastMove.dx}（跟错手指会变成 −40 或 −5）`);
+  checkStateMachine('E3', evs);
+}
+
 // ── 汇总 ─────────────────────────────────────────────────────────────────────
 const pass = results.filter((r) => r.ok).length;
 console.log(`\n================ 汇总 ================`);
 console.log(`通过 ${pass}  失败 ${results.length - pass}`);
-if (results.some((r) => !r.ok)) process.exit(1);
+// ⚠️ **全绿也要显式退出**：静态服务与 Chrome 都还活着，事件循环不会自己空 ——
+//    第一版就是这样"跑完了但进程不退"，被上层超时杀掉；而**被杀的进程不会执行清理**，
+//    于是 8098 端口与一个无头 Chrome 留在了机器上，下一次跑就报
+//    `EADDRINUSE: address already in use 127.0.0.1:8098`（看着像端口冲突，其实是上次没收尾）。
+killAll();
+process.exit(results.some((r) => !r.ok) ? 1 : 0);

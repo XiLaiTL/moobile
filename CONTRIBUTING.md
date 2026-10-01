@@ -23,8 +23,9 @@ python3 tools/verify_android.py       # 真机 27 项（需要模拟器 + APK，
 | demo / 宿主（`examples/**`） | `--with-e2e`；动了原生侧再加 `verify_android.py` |
 | **模板（`examples/apps/template/`）或生成器（`npm/moobile-host/lib/**`）** | `node tools/template_check.mjs` + `node tools/scaffold_probe.mjs`（`verify_all.sh` 里那两条门就是它们）。**模板是"用户会拿到什么"的唯一真源**，改它必须让这两条门全绿 —— 生成物编不过、跑不起来、名字没换干净，都在这里红 |
 | **demo（`examples/apps/todo-app/`）或 `tools/template/deltas.txt`** | `node tools/template_compare.mjs`（T1：生成物与 demo 的差异逐条对着清单判）。**模板与 demo 是"同源"关系**，改任何一边都可能让两边漂开 —— 漂了就红。⚠️ 加一条清单**不是**"修好"：先问那处差异是不是真该存在（清单越长说明这条路越没走通）。改了比对器本身再加跑 `bash tools/template_compare_falsify.sh` |
-| **宿主 npm 包（`npm/moobile-host/**`）** | `bash tools/verify_all.sh`（里面有"副本新鲜度"与"注册表一致性"两条）+ **`node examples/apps/host-swap-spike/verify.mjs`** —— 后者是 C0 那条实测：换掉宿主（零 Expo）之后，同一份产物还能不能渲染 + 交互（要 Chrome 与该目录的 `npm install`） |
+| **宿主 npm 包（`npm/moobile-host/**`）** | `bash tools/refresh_host_copies.sh`（**先跑这个**：仓库里有 7 份 `file:` 装出来的副本，不刷新的话门会红，更糟的是**验证脚本会悄悄测旧代码**）+ `bash tools/verify_all.sh`（里面有"副本新鲜度"与"注册表一致性"两条）+ **`node examples/apps/host-swap-spike/verify.mjs`** —— 后者是 C0 那条实测：换掉宿主（零 Expo）之后，同一份产物还能不能渲染 + 交互（要 Chrome 与该目录的 `npm install`） |
 | **宿主 npm 包要发版** | `bash npm/moobile-host/publish.sh --dry-run`（打包自检：`files` 白名单 + **包内模板齐全** + **打包形态自检**（真装一遍、用装好的 CLI 生成一个项目）；泄漏自检）。⚠️ `.gitignore` 这条踩过两次：`files` 里**必须单独列** `template/.gitignore`（不列，tarball 里一个 ignore 文件都没有），而**列了也不够** —— `npm install` 解包时会把它**改名成 `.npmignore`**，所以最后能不能到用户手里取决于 `init`（它现在负责还原）。详见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的 2026-09-21 补记 |
+| **手势通道（`gesture/` 或 `gesture-rn.js`）** | web：`node examples/apps/gesture-spike/host/verify.mjs`（40 项，含边界 20 项）；真机：`node examples/apps/gesture-edges/device_check.mjs`（18 项，要模拟器 + Metro + APK）。⚠️ **两端都要跑**：契约里那几条不变量里有一条（`x/y` 的参照系）在 web 上是对的、在原生上**原本是错的**，只跑一边看不出来 —— 见 `docs/FINDINGS.md` 的手势边界补记 |
 | 准备发版 | 下面 §3 |
 
 ---

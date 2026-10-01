@@ -30,11 +30,39 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "npm", "moobile-host");
-const HOST = join(ROOT, "examples", "apps", "todo-app", "host");
-const DST = join(HOST, "node_modules", "moobile-host");
+// ⚠️ 原来这里写死成 todo-app 一处。**这正好漏掉了本门该防的事**：
+//    实测仓库里同时有 **5 份**副本，而门只看 1 份 —— 另外 4 份里有两份早就漂了
+//    （antd-demo `20` 个文件、antd-spike `7` 个，都缺后来的 `gesture-rn.js` / `canvas-*.js`），
+//    门却一直是绿的。更贵的一次代价：`gesture-spike` 那份副本是旧的，
+//    于是"边界"那一轮探测**测的是老实现**，得出了三条关于旧代码的结论
+//    （发现得晚，是因为 E1 两次跑出来一模一样，一模一样本身就是线索）。
+//    所以改成**发现式**：有几份就查几份，一份都没有才算失败。
+const APPS = join(ROOT, "examples", "apps");
 
 const quiet = process.argv.includes("--quiet");
 const say = (...a) => { if (!quiet) console.log(...a); };
+
+/**
+ * 找出仓库里所有「另一份」副本。
+ *
+ * 两种形状都认：`<app>/node_modules/moobile-host`（应用直接依赖）与
+ * `<app>/host/node_modules/moobile-host`（`host/` 子目录里装依赖的应用）。
+ * **必须排除源码目录自己** —— 本仓库记过一次假通过：拿源码和源码比，永远"一致"。
+ */
+const isSource = (p) => resolve(p).toLowerCase() === resolve(SRC).toLowerCase();
+function findCopies() {
+  const out = [];
+  let apps = [];
+  try { apps = readdirSync(APPS); } catch { return out; }
+  for (const app of apps) {
+    for (const rel of ["node_modules/moobile-host", "host/node_modules/moobile-host"]) {
+      const dir = join(APPS, app, rel);
+      if (existsSync(dir) && !isSource(dir)) out.push({ app, dir });
+    }
+  }
+  return out;
+}
+
 
 /**
  * 已安装副本的位置。**必须是"另一份"，不能是源码自己。**
@@ -50,27 +78,6 @@ const say = (...a) => { if (!quiet) console.log(...a); };
  *    于是拿源码和源码比 → 永远"一致" → 副本根本不存在也报绿。
  *    同一个假通过形状（验证跑的不是被测物）在本仓库已记过三次，所以这层排除是必需的。
  */
-function findInstalled() {
-  const fromSpec = (() => {
-    try {
-      const pkg = JSON.parse(readFileSync(join(HOST, "package.json"), "utf8"));
-      const spec = (pkg.dependencies || {})["moobile-host"] || "";
-      return spec.startsWith("file:") ? resolve(HOST, spec.slice("file:".length)) : null;
-    } catch {
-      return null;
-    }
-  })();
-
-  const isSource = (p) => p !== null &&
-    resolve(p).toLowerCase() === resolve(SRC).toLowerCase();
-
-  // node_modules 副本优先；其次才是 `file:` 指向的目录，且必须不是源码本身
-  for (const cand of [DST, fromSpec]) {
-    if (cand && !isSource(cand) && existsSync(cand)) return cand;
-  }
-  return null;
-}
-
 /** 递归列出目录下的文件，返回相对路径（POSIX 分隔符）数组。 */
 function listFiles(dir, base = dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -111,11 +118,12 @@ function sha256(file) {
 }
 
 function main() {
-  const dst = findInstalled();
-  if (!dst) {
+  const copies = findCopies();
+  if (!copies.length) {
     console.error(
-      "check_npm_fresh: 找不到 " + relative(ROOT, DST) + "（真正的「另一份」副本）。\n" +
-      "  先在 examples/apps/todo-app/host 里跑一次 npm install。\n" +
+      "check_npm_fresh: 一份「另一份」副本都没找到（找的是 examples/apps/*/node_modules/moobile-host\n" +
+      "  与 examples/apps/*/host/node_modules/moobile-host）。\n" +
+      "  随便挑一个应用跑一次 npm install 即可（例如 examples/apps/todo-app/host）。\n" +
       "  ⚠️ 副本不存在时**不能**报「一致」—— 那正是本工具要防的假通过。",
     );
     process.exit(2);
@@ -123,34 +131,52 @@ function main() {
 
   const important = importantMatcher();
   const srcFiles = new Set(listFiles(SRC).filter(important));
-  const dstFiles = new Set(listFiles(dst).filter(important));
+  const bad = [];
 
-  const missing = [...srcFiles].filter((f) => !dstFiles.has(f)).sort();
-  const extra = [...dstFiles].filter((f) => !srcFiles.has(f)).sort();
-  const differing = [...srcFiles]
-    .filter((f) => dstFiles.has(f) && sha256(join(SRC, f)) !== sha256(join(dst, f)))
-    .sort();
+  for (const { app, dir } of copies) {
+    const dstFiles = new Set(listFiles(dir).filter(important));
+    const missing = [...srcFiles].filter((f) => !dstFiles.has(f)).sort();
+    const extra = [...dstFiles].filter((f) => !srcFiles.has(f)).sort();
+    const differing = [...srcFiles]
+      .filter((f) => dstFiles.has(f) && sha256(join(SRC, f)) !== sha256(join(dir, f)))
+      .sort();
+    if (missing.length || extra.length || differing.length) {
+      bad.push({ app, dir, missing, extra, differing });
+    }
+  }
 
-  if (!missing.length && !extra.length && !differing.length) {
-    say(`check_npm_fresh: 一致（${srcFiles.size} 个文件）`);
+  if (!bad.length) {
+    say(`check_npm_fresh: ${copies.length} 份副本全部一致（各 ${srcFiles.size} 个文件）`);
+    for (const { app } of copies) say(`  · ${app}`);
     return;
   }
 
   console.error("check_npm_fresh: 副本与源码不一致 —— 这条门就是为这件事存在的。");
   console.error("");
-  console.error("  源码   : " + relative(ROOT, SRC));
-  console.error("  已装副本: " + relative(ROOT, dst));
+  console.error("  源码 : " + relative(ROOT, SRC));
   console.error("");
-  for (const f of differing) console.error("  内容不同  " + f);
-  for (const f of missing) console.error("  副本里缺  " + f);
-  for (const f of extra) console.error("  副本里多  " + f);
+  for (const { app, dir, missing, extra, differing } of bad) {
+    console.error(`  ✗ ${app}  (${relative(ROOT, dir)})`);
+    for (const f of differing) console.error("      内容不同  " + f);
+    for (const f of missing) console.error("      副本里缺  " + f);
+    for (const f of extra) console.error("      副本里多  " + f);
+  }
   console.error("");
   console.error("  ⚠️ 别只改副本：副本是 `file:` 依赖装出来的，改了它源码不会变，");
   console.error("     而发布出去的、别人装到的是**源码**。改源码，然后刷新副本：");
   console.error("");
-  console.error("     cd examples/apps/todo-app/host");
-  console.error("     rm -rf node_modules/moobile-host && npm install");
+  console.error("     bash tools/refresh_host_copies.sh     # 把仓库里**所有**副本刷一遍，再自查一次");
   console.error("");
+  console.error("     （它按与本门相同的规则发现副本，所以两边不会各说各话。");
+  console.error("       想手工来也行 —— 在装着 node_modules 的那个目录里：");
+  for (const { app, dir } of bad) {
+    const rel = relative(join(APPS, app), dirname(dirname(dir))).split("\\").join("/");
+    console.error(`         cd examples/apps/${app}${rel ? "/" + rel : ""} && rm -rf node_modules/moobile-host && npm install）`);
+  }
+  console.error("");
+  console.error("  ⚠️ 副本陈旧**不只是卫生问题**：`gesture-spike` 那份旧副本曾让一轮边界探测");
+  console.error("     测的其实是老实现，得出了三条关于旧代码的结论 —— 而「两次跑出来一模一样」");
+  console.error("     就是当时的线索。");
   process.exit(1);
 }
 
