@@ -5,6 +5,7 @@
 ///
 /// 子命令：
 ///   cr-scan --root <目录> --mode check|fix     行尾（CR）检查/修复
+///   migrate-scan --root <项目> [--json]        F1 迁移动检报告
 ///
 /// 常用入口是 `bash tools/mb.sh <子命令> [参数…]`（省得记 `moon run` 的路径）。
 ///
@@ -40,6 +41,7 @@ fn main {
   let code = try {
     match sub {
       "cr-scan" => cr_scan_run(rest)
+      "migrate-scan" => migrate_scan_run(rest)
       "-h" | "--help" | "help" => {
         usage()
         0

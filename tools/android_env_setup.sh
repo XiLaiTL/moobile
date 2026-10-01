@@ -127,6 +127,33 @@ else
   printf '  [--]   缺 %s，跳过\n' "$PS"
 fi
 
+# ------------------------------------------------- 4.5) SDK 位置（local.properties）
+# 为什么要有这一步：`expo prebuild` 会把 `android/` 整个重建（它本来就被 gitignore），
+# 于是 `local.properties` 一起没了 —— 而 Gradle 找不到 SDK 时的报错是：
+#   "SDK location not found. Define a valid SDK location with an ANDROID_HOME
+#    environment variable or by setting the sdk.dir path in .../local.properties"
+# 实测（2026-09-21）：不补这一步，"prebuild → android_env_setup → gradlew"这条
+# **文档里写的流程**跑不通。写进 local.properties 而不是只依赖环境变量，
+# 是因为 Gradle 在 Android Studio 之外也常被直接调用（CI / 脚本），环境变量不一定传下去。
+# ⚠️ 这个文件是 gitignore 的（在 `android/` 里），所以写本机路径**不会**进仓库 ——
+# 而 `tools/check_public_leaks.py` 恰好就是挡"本机绝对路径"的，别把它放进受扫描的文件。
+echo "=== 4.5) SDK 位置（local.properties）"
+SDK_GUESS="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$LOCALAPPDATA/Android/Sdk}}"
+LP="$AND/local.properties"   # ⚠️ $AND 已经是 .../host/android，别再拼一层
+SDK_WIN="$(cygpath -m "$SDK_GUESS" 2>/dev/null || printf '%s' "$SDK_GUESS")"
+if [ -f "$LP" ] && grep -q "^sdk.dir=" "$LP"; then
+  ok "local.properties 已有 sdk.dir"
+else
+  if [ -d "$SDK_GUESS" ]; then
+    need "写 local.properties 的 sdk.dir=$SDK_WIN"
+    if [ "$MODE" = apply ]; then
+      printf "sdk.dir=%s\n" "$SDK_WIN" > "$LP"
+      printf '         （已写入 %s）\n' "$LP"
+    fi
+  else
+    die "找不到 Android SDK（试过 ANDROID_HOME / ANDROID_SDK_ROOT / %s）" "$LOCALAPPDATA/Android/Sdk"
+  fi
+fi
 # ------------------------------------------------------------------ 5) 依赖检查
 echo "=== 5) 外部依赖检查"
 [ -d "$ROOT/examples/apps/todo-app/host/node_modules/@react-native/gradle-plugin" ] && ok "node_modules 已安装" \

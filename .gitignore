@@ -56,3 +56,7 @@ examples/services/todo-server/todos.json.tmp
 
 # 生成的 API 快照：moon 按需重建，不入库、不进发布包（否则包内容不确定）
 pkg.generated.mbti
+
+# Python 字节码缓存（tools/ 下用过 py.sh 就会有）
+__pycache__/
+*.pyc

@@ -66,7 +66,7 @@ SKIP_DIRS = {"vendor", ".git", "node_modules", "_build", ".scratch", ".mooncakes
              ".expo", "android", "dist", "target"}
 # 生成物：里面的 URL 与本机无关，扫它只会淹掉真信号
 SKIP_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json"}
-TEXT_EXT = {".md", ".mbt", ".pkg", ".mod", ".json", ".js", ".py", ".sh", ".ps1",
+TEXT_EXT = {".md", ".mbt", ".pkg", ".mod", ".json", ".js", ".mjs", ".py", ".sh", ".ps1",
             ".yml", ".yaml", ".toml", ".work", ".txt", ".gitignore", ".moonignore"}
 # 这些文件只进仓库、不进发布包 —— 开发笔记式的本机信息写在这里是**有意的**
 DEV_ONLY = {"DEV.md", "AGENTS.md", "CONTRIBUTING.md", "PLAN.md", "FINDINGS.md",
