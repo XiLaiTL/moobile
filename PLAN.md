@@ -23,7 +23,7 @@
 > （本地数据库 `expo-sqlite` → `sqlite/`），并在 Web 与 Android 14 真机上验证。
 > 四道门：Web UI **27/27**（含订阅）、本地库 **8/8**、同步链路 **14/14**、真机 **14/14**（含订阅）。
 > 尚未做：N4 后半（`custom_sub` + RN emitter + 退订）、N5（能力可用性标注）、H3/H4、
-> 以及 **npm 发布（卡在 2FA：`npm publish` 需要一次性密码）** —— 月亮包 0.2.0 已发出。
+> 以及 **npm 发布（卡在 2FA：`npm publish` 需要一次性密码）** —— 月亮包 **0.2.2 已发出**（0.2.1 的"README 与产物不符"已在 0.2.2 修掉，见 `docs/FINDINGS.md` R7）。
 >
 > **接手要先读哪几份**：`README.md`（使用者视角：这是什么、怎么用、能力边界）→
 > `docs/ARCHITECTURE.md`（架构分层、发布体检、宿主契约）→ `FORK.md`（第三方 fork 与 patch 系列）→
