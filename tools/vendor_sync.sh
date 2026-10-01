@@ -65,6 +65,47 @@ trap 'rm -rf "$W"' EXIT
 
 echo "== vendor_sync: 基准 $UP_NAME@$VERSION  目标模块 $OUR_NAME"
 
+# ---------------------------------------------------------------- 0) 期望树的缓存
+#
+# `vendor_sync --check` 原本每次都要：拉基准（`moon add`，走网络/索引）→ 铺 BASE →
+# 重放 14 个 patch → 布局搬家，然后才做"与工作区逐文件比"。**实测 ~10 秒**，
+# 而其中真正"检查"的部分只占很小一块 —— 前面全是**重复劳动**（输入没变，产出必然一样）。
+#
+# 所以这里按输入做缓存：`expected/relocated` 树的唯一输入是
+#   · `tools/vendor.lock` 的基准版本（以及命令行 `--from` 覆盖的版本）
+#   · `tools/patches/*.patch` 的全部内容
+#   · 搬家参数（写在 vendor_sync.sh / vendor_relocate.py 里）
+# 键 = 上面这些内容的 sha256。**任一改变键就变**，缓存自然失效（不需要额外的过期逻辑）。
+#
+# ⚠️ 只缓存"期望树"，**不缓存比较结果** —— 工作区那一侧永远重新比。
+#    缓存坏了只会导致"报假漂移"（朝安全方向失败），不会导致"漏掉真漂移"。
+# ⚠️ `--capture` 不缓存：它不做 patch 重放（走的是 BASE），路径不同。
+CACHE_ROOT="$ROOT/_build/vendor-cache"
+cache_key() {
+  {
+    printf 'version=%s\n' "$VERSION"
+    printf 'forkdirs=%s\n' "$FORK_DIRS"
+    printf 'internals=%s\n' "$INTERNAL_SUBS"
+    cat "$ROOT/tools/vendor.lock"
+    cat "$ROOT/tools/vendor_sync.sh"
+    cat "$ROOT/tools/vendor_relocate.py"
+    for p in "$PATCHDIR"/*.patch; do [ -e "$p" ] && cat "$p"; done
+  } | sha256sum | cut -c1-16
+}
+CACHE_KEY="$(cache_key)"
+CACHE_DIR="$CACHE_ROOT/$CACHE_KEY"
+
+if [ "$MODE" = "--capture" ]; then
+  CACHE_DIR=""   # 见上：capture 不走 patch 重放
+fi
+
+RELOCATED=""
+if [ -n "$CACHE_DIR" ] && [ -d "$CACHE_DIR/relocated" ]; then
+  RELOCATED="$CACHE_DIR/relocated"
+  echo "   期望树：命中缓存 $CACHE_KEY（跳过拉基准与 patch 重放）"
+else
+  echo "   期望树：缓存未命中（$CACHE_KEY），重建…"
+
 # ---------------------------------------------------------------- 1) 拉 pristine
 printf 'name = "vendor/fetch"\n\nversion = "0.1.0"\n' > "$W/moon.mod"
 if ! (cd "$W" && moon add "$UP_NAME@$VERSION" >"$W/add.log" 2>&1); then
@@ -104,13 +145,27 @@ fi
 # 具体逻辑（摊平 internal/* + 改写 import + 自检）见 tools/vendor_relocate.py。
 bash "$ROOT/tools/py.sh" "$ROOT/tools/vendor_relocate.py" to-vendor   "$W/expected" "$W/relocated" "$OUR_NAME" $FORK_DIRS --internal $INTERNAL_SUBS || exit 1
 [ -d "$W/relocated" ] || { echo "ERROR: 布局搬家失败"; exit 1; }
+RELOCATED="$W/relocated"
+
+# 存缓存（先写临时目录再原子换名：中断不会留下半棵树 → 不会导致"报假漂移"）
+if [ -n "$CACHE_DIR" ] && [ ! -d "$CACHE_DIR/relocated" ]; then
+  mkdir -p "$CACHE_ROOT"
+  rm -rf "$CACHE_DIR.tmp"
+  mkdir -p "$CACHE_DIR.tmp"
+  cp -r "$W/relocated" "$CACHE_DIR.tmp/relocated"
+  rm -rf "$CACHE_DIR"
+  mv "$CACHE_DIR.tmp" "$CACHE_DIR"
+  echo "   期望树：已缓存 → _build/vendor-cache/$CACHE_KEY"
+fi
+
+fi  # 结束"缓存未命中则重建"的分支
 
 # ---------------------------------------------------------------- 4) 执行模式
 case "$MODE" in
   --apply)
     rm -rf "$ROOT/vendor/rabbita"
     mkdir -p "$ROOT/vendor"
-    cp -r "$W/relocated" "$ROOT/vendor/rabbita"
+    cp -r "$RELOCATED" "$ROOT/vendor/rabbita"
     echo "已按 $UP_NAME@$VERSION + $(ls "$PATCHDIR" | wc -l) 个 patch 重建第三方代码 → vendor/rabbita/"
     # 根上的转发包（html/ cmd/ sub/ http/）的名字清单是从 vendor 的 .mbti 生成的 ——
     # 换了 vendor 就必须重跑，否则消费者 import 的 `XiLaiTL/moobile/html` 会缺名字。
@@ -127,7 +182,7 @@ case "$MODE" in
       exit 1
     fi
     # 逐文件比：expected vs 工作区（忽略行尾差异，单独标注）
-    PYTHONIOENCODING=utf-8 bash "$ROOT/tools/py.sh" - "$W/relocated" "$ROOT/vendor/rabbita" ALL "$FORK_ROOT_FILES" <<'PY'
+    PYTHONIOENCODING=utf-8 bash "$ROOT/tools/py.sh" - "$RELOCATED" "$ROOT/vendor/rabbita" ALL "$FORK_ROOT_FILES" <<'PY'
 import os,sys
 exp,root,dirarg,rootfiles=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4].split()
 # 搬家之后整棵 relocated 树就是 vendor/rabbita/ 的内容 —— 不过滤顶层目录

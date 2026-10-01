@@ -129,15 +129,59 @@ def local_version():
     return m.group(1) if m else "0.0.0"
 
 
+def generate_package(dest, paths, dep):
+    """按 README 的 import 路径与示例代码，在 `dest` 里生成一个探针包。
+
+    单独抽成函数，是为了让 `check_external.sh` 能把它**生成到同一个工作区**里，
+    与它自己的 ext_probe 包共用**一次** `moon check`（原来是各跑一次，白花一半时间）。
+    """
+    os.makedirs(dest, exist_ok=True)
+    with open(os.path.join(dest, "moon.mod"), "w", encoding="utf-8", newline="") as fh:
+        fh.write('name = "probe/readmepaths"\n\nversion = "0.1.0"\n\npreferred_target = "js"\n\n')
+        # ⚠️ 工作区/zip 模式下**也必须写版本号**：moon.mod 的 import 只认带版本的 registry 依赖
+        #    （写裸模块名会报 `moon.mod only supports versioned registry dependencies`）；
+        #    版本号在 moon.work 解析时被忽略，实际吃的是本地源码。
+        fh.write(f"import {{\n  \"{dep}\",\n}}\n")
+
+    pkg = ['supported_targets = "+js"', "", "import {"]
+    for p in paths:
+        pkg.append(f'  "{p}",')
+    pkg.append("}")
+    with open(os.path.join(dest, "moon.pkg"), "w", encoding="utf-8", newline="") as fh:
+        fh.write("\n".join(pkg) + "\n")
+
+    # main.mbt：把 README §1.1 的 `view` / `app` **原样**搬进来（只补上它引用但没定义的
+    # Model / Msg / initial —— README 是片段，故意省了这些）。
+    # 这样验的不只是"路径存在"，还有**文档里的 API 名字与签名**。
+    with open(os.path.join(dest, "main.mbt"), "w", encoding="utf-8", newline="") as fh:
+        fh.write(README_SAMPLE)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", help=f"registry 上的目标，例如 {MODNAME}@0.2.1")
     ap.add_argument("--workspace", action="store_true", help="改为验证本地工作区")
     ap.add_argument("--zip", help="改为验证**打包好的 zip**（发版前用：验的就是将要发出去的那份）")
+    ap.add_argument("--generate-into", metavar="DIR",
+                    help="只生成探针包到 DIR/readmeprobe，不编译"
+                         "（供 check_external.sh 与它自己的探针共用一次 moon check）")
     ap.add_argument("--readme", default=README)
     args = ap.parse_args()
+
+    if args.generate_into:
+        paths = readme_import_paths(args.readme)
+        if not paths:
+            print(f"ERROR: 从 {os.path.relpath(args.readme, ROOT)} 里读不到 import 路径")
+            return 2
+        dest = os.path.join(args.generate_into, "readmeprobe")
+        generate_package(dest, paths, f"{MODNAME}@{local_version()}")
+        print(f"== README 探针包已生成：{dest}（{len(paths)} 条 import）")
+        for p in paths:
+            print(f"   {p}")
+        return 0
+
     if not (args.workspace or args.target or args.zip):
-        print("ERROR: 三选一：--workspace / --target / --zip")
+        print("ERROR: 四选一：--workspace / --target / --zip / --generate-into")
         return 2
 
     paths = readme_import_paths(args.readme)
@@ -150,10 +194,9 @@ def main():
     for p in paths:
         print(f"   {p}")
 
-    w = tempfile.mkdtemp(prefix="readme_probe_")
+        w = tempfile.mkdtemp(prefix="readme_probe_")
     try:
         app = os.path.join(w, "app")
-        os.makedirs(app)
         # 目标三种：registry 上的版本 / 本地工作区 / **打包好的 zip**（发版前用）
         member = None
         if args.zip:
@@ -167,26 +210,8 @@ def main():
             print(f"== 目标：本地工作区 {ROOT}")
         else:
             print(f"== 目标：{args.target}")
-        with open(os.path.join(app, "moon.mod"), "w", encoding="utf-8", newline="") as fh:
-            fh.write('name = "probe/readmepaths"\n\nversion = "0.1.0"\n\npreferred_target = "js"\n\n')
-            # ⚠️ 工作区/zip 模式下**也必须写版本号**：moon.mod 的 import 只认带版本的 registry 依赖
-            #    （写裸模块名会报 `moon.mod only supports versioned registry dependencies`）；
-            #    版本号在 moon.work 解析时被忽略，实际吃的是本地源码。
-            dep = args.target if args.target else f"{MODNAME}@{local_version()}"
-            fh.write(f"import {{\n  \"{dep}\",\n}}\n")
-
-        pkg = ["supported_targets = \"+js\"", "", "import {"]
-        for p in paths:
-            pkg.append(f'  "{p}",')
-        pkg.append("}")
-        with open(os.path.join(app, "moon.pkg"), "w", encoding="utf-8", newline="") as fh:
-            fh.write("\n".join(pkg) + "\n")
-
-        # main.mbt：把 README §1.1 的 `view` / `app` **原样**搬进来（只补上它引用但没定义的
-        # Model / Msg / initial —— README 是片段，故意省了这些）。
-        # 这样验的不只是"路径存在"，还有**文档里的 API 名字与签名**。
-        with open(os.path.join(app, "main.mbt"), "w", encoding="utf-8", newline="") as fh:
-            fh.write(README_SAMPLE)
+        dep = args.target if args.target else f"{MODNAME}@{local_version()}"
+        generate_package(app, paths, dep)
 
         if member:
             # 工作区 / zip 模式：用 moon.work 把本地那份挂进来（zip 先解到临时目录）。

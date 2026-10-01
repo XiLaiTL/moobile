@@ -33,3 +33,6 @@
 !/README.md
 !/THIRD-PARTY-NOTICE.md
 !/FORK.md
+
+# 生成的 API 快照：随机器与构建状态变，不进发布包（消费者侧 moon 会自己生成）
+**/pkg.generated.mbti

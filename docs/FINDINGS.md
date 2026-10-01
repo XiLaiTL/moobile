@@ -1666,3 +1666,37 @@ moon ide find-references <sym>   # 所有引用
 ```
 
 后面写 MoonBit 代码**先用 `moon ide doc` 查 API**，别再 grep 标准库。
+
+## 补记：把"重复劳动"压掉（21s → 8s），以及一次读错输出
+
+`verify_all.sh` 的 21 秒里约 20 秒是 moon 子命令在干活。三处都是**同一件事做两遍/每次重做**，
+与脚本语言无关：
+
+| 改动 | 手段 | 效果 |
+|---|---|---|
+| `vendor_sync --check` | 期望树按输入哈希缓存（`vendor.lock` + 全部 patch + 搬家参数 + 基准版本）；**只缓存期望树，工作区永远重新比** | 10.1s → **1.1s** |
+| `check_external` | 两个探针（手写 ext_probe + README 生成的那份）放进**同一个工作区**，只跑一次 `moon check` | 6.1s → **3.3s** |
+| `gen_forwarders --check` | 同样按输入哈希缓存"期望内容"，常见情况下**一次 `moon info` 都不用跑** | 2.0s → **0.27s** |
+
+**每一个都做了证伪**（缓存最危险的失效模式是"跳过检查还报通过"）：
+
+- 篡改缓存里的期望树 → 必须报漂移（实测 rc=1）✓
+- `touch` patch（内容不变）→ 仍命中（证明键是内容哈希，不是时间戳）✓
+- 改 patch 内容 → 键变、重建 ✓；还原 → 回到旧键 ✓
+- 改 vendor 源码 → 缓存失效、报漂移 ✓；还原后 vendor 不变量与转发包都恢复一致 ✓
+
+顺带记两个小事实：
+
+- **moon 失败时返回 127**（不是 1）。判断一律用 `-ne 0`；对外归一化成 1（127 在 shell 里是
+  "command not found" 的约定，容易误导）。
+- **`.mbtx` 脚本模式在本机必须带 `--target js`**：不带会走 wasm 后端去找
+  `~/.moon/lib/core/_build/wasm/.../prelude.mi`，而本机只备了 js 产物 → **编译器 ICE**
+  （报的是 "This is a bug in the compiler"，看不出真因是缺 wasm std 产物）。
+
+### 一次读错输出（值得记）
+
+我测 `.mbtx` 的参数传递时，用了 `... 2>&1 | head -2`，头两行是 node 的
+`MODULE_TYPELESS_PACKAGE_JSON` 警告，于是我**得出了"脚本收不到参数"的错误结论**。
+换成 `2>/dev/null` 再看，`args 4 条：[node, single.js, hello, world]` —— 参数一直是通的。
+
+> 又是同一个形状：**先确认"我看的是不是那一行"**。这次是我把 stderr 的噪声当成了 stdout 的结论。

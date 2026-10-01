@@ -53,3 +53,6 @@ examples/services/todo-server/todos.json.tmp
 #    `vendor/rabbita/*`（丢掉那一段）之后，根包照样能 import 并使用它们（含枚举变体匹配）。
 #    见 docs/FINDINGS.md 的 R3 实验记录。
 /vendor/
+
+# 生成的 API 快照：moon 按需重建，不入库、不进发布包（否则包内容不确定）
+pkg.generated.mbti

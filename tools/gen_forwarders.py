@@ -38,6 +38,8 @@
 # 改了 `vendor/rabbita/**` 或升级 fork 之后，必须重跑本脚本。
 
 import argparse
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -48,6 +50,9 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MODNAME = "XiLaiTL/moobile"          # 从 moon.mod 读，别写死
 VENDOR = "vendor/rabbita"
+
+# 期望内容的缓存目录（`_build/` 已被 .gitignore 覆盖，也被 cr-scan 的排除规则跳过）
+CACHE_ROOT = os.path.join(ROOT, "_build", "forwarders-cache")
 
 # 要转发的包：<根上的转发包名> ← <vendor 下的真实包名>
 #
@@ -192,6 +197,67 @@ def ensure_mbti(needed):
     return created, ran
 
 
+def input_key():
+    """期望内容的**唯一输入**的哈希：被转发包的 vendor 源码 + 生成器自己 + 转发配置。
+
+    ⚠️ 为什么要缓存：每次 `--check` 都要拿 `.mbti`，而 `.mbti` 得靠 `moon info` 重生成
+    （实测 ~1 秒，本仓最大的单项工具开销之一）。而 `.mbti` 只由**源码**决定 ——
+    源码没变，名字清单必然一样。所以按输入哈希缓存"期望内容"，
+    `--check` 在常见情况下**一次 moon info 都不用跑**（~2.0s → ~0.2s）。
+
+    缓存失效是**自动**的：vendor 源码、`FORWARD` 表、生成器脚本任一改变，键就变。
+    缓存坏了只会朝"报假漂移"失败（安全方向），不会漏掉真漂移 ——
+    因为**磁盘上的转发包永远重新比**，只是"期望值"来自缓存。
+    """
+    h = hashlib.sha256()
+    h.update(MODNAME.encode("utf-8"))
+    h.update(repr(FORWARD).encode("utf-8"))
+    for _, vendor_name in FORWARD:
+        base = os.path.join(ROOT, VENDOR, vendor_name)
+        for dp, dn, fn in os.walk(base):
+            for f in sorted(fn):
+                if f == "pkg.generated.mbti":
+                    continue  # 生成物，不算输入（否则每次 moon info 都会改键 → 永远不命中）
+                p = os.path.join(dp, f)
+                h.update(os.path.relpath(p, ROOT).replace(os.sep, "/").encode("utf-8"))
+                with open(p, "rb") as fh:
+                    h.update(fh.read())
+    with open(os.path.abspath(__file__), "rb") as fh:
+        h.update(fh.read())
+    return h.hexdigest()[:16]
+
+
+def load_cache(key):
+    """命中则返回 {绝对路径: 期望内容}，否则 None。"""
+    path = os.path.join(CACHE_ROOT, key + ".json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (OSError, ValueError):
+        return None  # 缓存坏了就当没命中（朝重建方向失败，安全）
+    return {os.path.join(ROOT, rel): text for rel, text in raw.items()}
+
+
+def save_cache(key, want):
+    """原子写缓存（临时文件 + rename），避免中断留下半个缓存。"""
+    os.makedirs(CACHE_ROOT, exist_ok=True)
+    path = os.path.join(CACHE_ROOT, key + ".json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump({os.path.relpath(p, ROOT).replace(os.sep, "/"): t for p, t in want.items()},
+                  fh, ensure_ascii=False, indent=1, sort_keys=True)
+    os.replace(tmp, path)
+    # 清掉旧的键（避免 _build 里越积越多）
+    for name in os.listdir(CACHE_ROOT):
+        if name.endswith(".json") and name != key + ".json":
+            try:
+                os.remove(os.path.join(CACHE_ROOT, name))
+            except OSError:
+                pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
@@ -204,56 +270,60 @@ def main():
     if m:
         MODNAME = m.group(1)
 
-    needed = [os.path.join(ROOT, VENDOR, v, "pkg.generated.mbti") for _, v in FORWARD]
-    created, ran = ensure_mbti(needed)
-    if created is None:
-        return 2
-    if ran:
-        print(f"  （.mbti 缺失 → 跑了一次 `moon info`；用完会删掉这次新生成的 {len(created)} 个）")
+    key = input_key()
+    want = load_cache(key)
+    if want is not None:
+        print(f"  （命中生成缓存 {key}：跳过 `moon info`）")
+    else:
+        needed = [os.path.join(ROOT, VENDOR, v, "pkg.generated.mbti") for _, v in FORWARD]
+        created, ran = ensure_mbti(needed)
+        if created is None:
+            return 2
+        try:
+            if ran:
+                print(f"  （.mbti 缺失 → 跑了一次 `moon info`；用完会删掉这次新生成的 {len(created)} 个）")
+            want = {}
+            for fwd_name, vendor_name in FORWARD:
+                mbti = os.path.join(ROOT, VENDOR, vendor_name, "pkg.generated.mbti")
+                if not os.path.exists(mbti):
+                    print(f"ERROR: 缺少 {os.path.relpath(mbti, ROOT)}（`moon info` 没产出它）")
+                    return 2
+                types, traits, values = parse_mbti(mbti)
+                pkg_txt, mbt_txt = render(fwd_name, vendor_name, types, traits, values)
+                fdir = os.path.join(ROOT, fwd_name)
+                want[os.path.join(fdir, "moon.pkg")] = pkg_txt
+                want[os.path.join(fdir, "forward.generated.mbt")] = mbt_txt
+        finally:
+            # 只删**这次**新建的 .mbti（别人原本就有的不动）—— 见 ensure_mbti 的说明
+            for p in created:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        save_cache(key, want)
 
-    try:
-        drift = []
-        for fwd_name, vendor_name in FORWARD:
-            mbti = os.path.join(ROOT, VENDOR, vendor_name, "pkg.generated.mbti")
-            if not os.path.exists(mbti):
-                print(f"ERROR: 缺少 {os.path.relpath(mbti, ROOT)}（`moon info` 没产出它）")
-                return 2
-            types, traits, values = parse_mbti(mbti)
-            pkg_txt, mbt_txt = render(fwd_name, vendor_name, types, traits, values)
-
-            fdir = os.path.join(ROOT, fwd_name)
-            pkg_path = os.path.join(fdir, "moon.pkg")
-            mbt_path = os.path.join(fdir, "forward.generated.mbt")
-            want = {pkg_path: pkg_txt, mbt_path: mbt_txt}
-
-            for path, text in want.items():
-                rel = os.path.relpath(path, ROOT)
-                cur = open(path, encoding="utf-8").read() if os.path.exists(path) else None
-                if cur == text:
-                    if not args.check:
-                        print(f"  未变：{rel}")
-                    continue
-                if args.check:
-                    drift.append(rel)
-                    continue
-                os.makedirs(fdir, exist_ok=True)
-                with open(path, "w", encoding="utf-8", newline="\n") as fh:
-                    fh.write(text)
-                print(f"  已写：{rel}  ({len(types)} 类型 / {len(traits)} trait / {len(values)} 值)")
-    finally:
-        # 只删**这次**新建的 .mbti（别人原本就有的不动）—— 见 ensure_mbti 的说明
-        for p in created:
-            try:
-                os.remove(p)
-            except OSError:
-                pass
+    drift = []
+    for path, text in sorted(want.items()):
+        rel = os.path.relpath(path, ROOT)
+        cur = open(path, encoding="utf-8").read() if os.path.exists(path) else None
+        if cur == text:
+            if not args.check:
+                print(f"  未变：{rel}")
+            continue
+        if args.check:
+            drift.append(rel)
+            continue
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+        print(f"  已写：{rel}")
 
     if args.check:
         if drift:
             print("转发包与 mbti 不一致（漂移）：")
             for d in drift:
                 print(f"  [异] {d}")
-            print("修：python3 tools/gen_forwarders.py   （改了 vendor/rabbita/** 之后必须重跑）")
+            print("修：bash tools/py.sh tools/gen_forwarders.py   （改了 vendor/rabbita/** 之后必须重跑）")
             return 1
         print("转发包一致 ✓")
         return 0
