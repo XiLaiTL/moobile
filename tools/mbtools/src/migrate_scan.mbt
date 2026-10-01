@@ -159,13 +159,15 @@ fn rules() -> Array[Rule] {
       id: "gesture.mouse", auto: "不自动",
       why:
         "**读坐标的处理器在 RN 上拿到的是零值** —— 全库普查后整表换成 `passthrough_decoders()`，它的 `Mouse`/`Keyboard`/`Scroll` 三个载荷**无条件返回 0**（`vendor/rabbita/html/event_decoders.mbt` 明写「已知降级，不是等价替换」）。",
-      next: "手势通道（**尚未实现**，见 PLAN §8.2 ⑦ 与 §3.6 的 T3.4）：单指按下/拖动/抬起 + 元素内坐标。",
+      // ⚠️ 这条原本写的是「手势通道**尚未实现**（T3.4）」—— 2026-10-01 手势通道落地后**过时了**。
+      //    报告的说辞也是产物：说错了会把人引到"先去做一条已有的通道"上（F1 的价值全在"下一步"准不准）。
+      next: "**手势通道已落地**（`@gesture.attrs(on_pan=…)` / `@gesture.pan(attrs, msg)`，宿主默认装载、零新依赖）：`on_mousedown/move/up` 换成**一个** `pan` 处理器，坐标从 `Gesture` 的 `x/y`（**元素内**）取。判据：web 40/40 + 真机 18/18。⚠️ 多指（pinch/rotate）真机未验。",
       needle: "on_mouse", exts: ["mbt"],
     },
     {
       id: "gesture.coord", auto: "不自动",
       why: "坐标换算依赖 DOM 的布局信息（`getBoundingClientRect` / `devicePixelRatio`），RN 上没有这些。",
-      next: "手势通道 + 坐标换算（P3 的 T3.5）；`devicePixelRatio` 在 RN 用 `PixelRatio.get()`。",
+      next: "量原点这件事**已经收进手势通道**了（`Gesture` 的 `x/y` 就是元素内坐标，真机验过 `深 起=130,50`）；剩下的是**画布侧**的 `devicePixelRatio` 换算（T3.5，未验）。",
       needle: "getBoundingClientRect", exts: ["mbt"],
     },
     {
@@ -190,7 +192,7 @@ fn rules() -> Array[Rule] {
     {
       id: "canvas.api", auto: "半自动",
       why: "canvas 在标签表里是**明确排除**的（RN 无 canvas）。",
-      next: "**画布通道已落地**（`@canvas.OpCtx`，32 项判据）：方法名与 `CanvasRenderingContext2D` 逐字相同，迁移是换类型；⚠️ 真机未验、手势未做。",
+      next: "**画布通道已落地**（`@canvas.OpCtx`，32 项判据）：方法名与 `CanvasRenderingContext2D` 逐字相同，迁移是换类型；真机也验过（`canvas-spike` 7/7、`canvas-demo` 12/12）。⚠️ 仍差**文字字形**（`makeFont`）与 **`devicePixelRatio` 换算**（T3.5）。",
       needle: "CanvasRenderingContext2D", exts: ["mbt"],
     },
   ]

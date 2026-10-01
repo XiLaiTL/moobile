@@ -27,16 +27,23 @@ let exts : Array[String] = [
 ///|
 /// 不进的目录 —— 三种规则，各有理由：
 ///
-/// 1. **按路径段**（任意深度）：`.git` / `_build` / `target` / `.mooncakes` / `node_modules`
-///    —— 这些是版本控制、构建产物与第三方缓存。**规则只该管我们自己的文件**：
+/// 1. **按路径段**（任意深度）：`.git` / `_build` / `target` / `.mooncakes` / `node_modules` / `.scratch`
+///    —— 这些是版本控制、构建产物、第三方缓存与**本地草稿区**。**规则只该管我们自己的文件**：
 ///    它们要么不该被改写（`--mode fix` 去改构建产物毫无意义），要么根本不该被报警
 ///    （第三方源码带 CRLF 不是我们的问题）。
 ///    ⚠️ 这条是按**路径段**判的，不是精确路径 —— 曾经只排 `<root>/_build`，
 ///    于是新建的 `tools/mbtools/_build/` 里 192 个构建产物被当成候选（实测：候选数 2338 → 2531）。
+///    ⚠️ `.scratch/` 是**后加的**（2026-10-01 实测踩到）：它是 gitignore 的草稿区（`.gitignore:30`），
+///    里面放什么都不会进发布包 —— 但**它会红**。当时为了诊断 CI 在里面写了两份 CRLF 文本，
+///    `lf_normalize --check` 与 `vendor_sync --check` **同时**变红，点名的是
+///    `.scratch/ci/anns.txt` 这种**永远发不出去**的文件。这正是本仓库最讨厌的那类红：
+///    **红的是自己的草稿，不是被测物**。
 /// 2. **按精确相对路径**：fork 的 `vendor/`（由 `vendor_sync.sh` 自己规范行尾），
 ///    以及 Expo 宿主下那几个生成目录。
 /// 3. **按形状认安卓产物**（见 `is_android_build`）—— 这一条是"写死路径"栽过之后加的。
-let prune_segments : Array[String] = [".git", "_build", "target", ".mooncakes", "node_modules"]
+let prune_segments : Array[String] = [
+  ".git", "_build", "target", ".mooncakes", "node_modules", ".scratch",
+]
 
 ///|
 let prune_paths : Array[String] = [
