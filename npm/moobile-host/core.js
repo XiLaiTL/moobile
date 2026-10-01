@@ -71,15 +71,27 @@ export function installHostCore(options = {}) {
     platform = detectPlatform(),
     ...rest
   } = options;
+  // ⚠️ **幂等：已经装过就合并，不能把 `MOBILE_HOST` 整个换掉。**
+  //
+  // 为什么（实测出来的真 bug）：文档推荐的写法是
+  //     installHost() → registerLibrary({…}) → mountApp(app)
+  // 而 `mountApp` 内部会**再调一次** `installHost`。原来是 `globalThis.MOBILE_HOST = {…}`
+  // —— 整个对象被替换，第一步注册的组件全丢，于是渲染到它时库侧报
+  // "宿主没有注册组件 `moobile:Canvas`"。文档那句"mountApp 再装一次是幂等的（同参数）"
+  // 与实现不符（`index.js` 的注释一直这么写）。
+  // 生成路径（`mountApp(app, { registry })`）不受影响：它的注册发生在 install **之后** ——
+  // 所以只有"手写 registerLibrary"这条路会踩，而 `canvas-skia` 正是手写的。
+  const prev = globalThis.MOBILE_HOST;
   globalThis.MOBILE_HOST = {
+    ...(prev || {}),
     react,
-    components: { ...components },
-    events: { ...events },
+    components: { ...((prev && prev.components) || {}), ...components },
+    events: { ...((prev && prev.events) || {}), ...events },
     apiBase,
     scheduleTask,
     scheduleFrame,
     platform,
-    wrapRoot: [],
+    wrapRoot: prev && prev.wrapRoot ? [...prev.wrapRoot] : [],
     ...rest,
   };
   return globalThis.MOBILE_HOST;
@@ -214,6 +226,31 @@ function jsonPropAdapter(namespace, name, Base, keys) {
  *
  * @returns {string[]} 实际注册的组件名（便于启动日志与验证脚本断言）。
  */
+/**
+ * 从模块导出里取一个名字，**支持点号路径**（复合子组件）。
+ *
+ * 为什么需要它：React 组件库的层级结构一大半靠复合子组件表达 —— `Form.Item`、
+ * `Layout.Header`、`Radio.Group`、`Input.TextArea`。它们在模块里是
+ * `mod.Form.Item` 这样的**嵌套属性**，不是顶层导出；而 MoonBit 侧写的标签是
+ * `"antd:Form.Item"`（一个字符串），所以注册表必须能按这个名字拿到组件对象。
+ *
+ * 取值顺序：
+ *   1. 直接命中（`mod['Form.Item']` —— 万一某个库真有这么个导出名）；
+ *   2. 按 `.` 逐段下钻（`mod.Form` → `.Item`）。
+ * 取不到就返回 `undefined`，由调用方**点名报错**（不回落、不猜）。
+ */
+function resolveExport(mod, name) {
+  if (!mod) return undefined;
+  if (name in mod) return mod[name];
+  if (!name.includes('.')) return undefined;
+  let cur = mod;
+  for (const part of name.split('.')) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
 export function registerLibrary(spec) {
   const host = globalThis.MOBILE_HOST;
   if (!host) {
@@ -248,15 +285,40 @@ export function registerLibrary(spec) {
     );
   }
 
-  // 挑组件：显式清单优先，否则自动挑（排除门面/工具导出）。
+  // 挑组件。**两种形状都收** —— 这条是实测逼出来的：写手写组件的人（第一个就是
+  // `canvas-skia.js` 里的 Skia 画布）必然传对象，而原来只认数组。
+  //   · `components: ['Button', …]` + `module` → 按名字从模块里挑（`module` 的常规用法）；
+  //   · `components: { Canvas: MyCanvas }`     → 直接给实现（**手写组件**的常规写法，
+  //     不该逼使用者再包一层 `module: { Canvas: … }`）。
+  // ⚠️ 只认数组时，传对象会走到 `for…of` 上，在 Hermes 里报的是
+  //    `TypeError: iterator method is not callable` —— **完全看不出是"形状不对"**
+  //    （实测：真机上第一次注册手写组件就撞上，栈里只有 registerLibrary）。
   let picked;
-  if (components) {
+  if (components && !Array.isArray(components)) {
+    if (typeof components !== 'object') {
+      throw new Error(
+        `moobile-host: registerLibrary("${namespace}") 的 \`components\` 形状不对（拿到 ${typeof components}）。\n` +
+          "  两种合法形状：① 名字数组 + `module`；② 实现映射 `{ Button: MyButton }`。",
+      );
+    }
+    picked = { ...components };
+  } else if (components) {
+    if (!mod) {
+      throw new Error(
+        `moobile-host: registerLibrary("${namespace}") 给的是**名字数组**（${JSON.stringify(components)}），` +
+          "但没给 `module` —— 名字要从模块里挑，没有模块就没得挑。\n" +
+          "  要么补 `module`，要么把 `components` 写成实现映射 `{ 名字: 组件 }`。",
+      );
+    }
     picked = {};
     for (const name of components) {
-      const value = mod ? mod[name] : undefined;
+      const value = resolveExport(mod, name);
       if (value === undefined) {
         throw new Error(
-          `moobile-host: registerLibrary("${namespace}") 里列了 \`${name}\`，但模块里没有这个导出。`,
+          `moobile-host: registerLibrary("${namespace}") 里列了 \`${name}\`，但模块里没有这个导出。` +
+            (name.includes('.')
+              ? `\n  它是一个**复合子组件**（点号路径）：确认 \`${name.split('.')[0]}\` 上真的有 \`${name.split('.').slice(1).join('.')}\`。`
+              : ''),
         );
       }
       picked[name] = value;

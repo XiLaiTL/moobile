@@ -8,10 +8,17 @@
     "moobile-host": "bin/cli.js"
   },
   "files": [
+    "canvas-skia.js",
+    "canvas-ops.js",
     "index.js",
     "core.js",
+    "native-rn.js",
     "capabilities/",
     "bin/",
+    "lib/",
+    "libgen/",
+    "template/",
+    "template/.gitignore",
     "README.md",
     "LICENSE"
   ],

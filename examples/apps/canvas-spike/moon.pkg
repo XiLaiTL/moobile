@@ -1,0 +1,17 @@
+supported_targets = "+js"
+
+import {
+  // ★ 公开路径（消费者同路）。库侧契约在 `canvas/`，词汇表与翻译器在宿主包。
+  "XiLaiTL/moobile/canvas" @canvas,
+  "moonbitlang/core/math" @math,
+}
+
+// 导出的三个函数给 Node 侧的 `verify.mjs` 调（跨语言对账）。
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": ["probe_payload", "probe_ops_count"],
+    },
+  },
+)

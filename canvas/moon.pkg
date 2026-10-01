@@ -1,0 +1,12 @@
+// 绘制指令 + 组件通道节点：与库其余部分一样只构建 js
+// （`+js` 与 `vendor/rabbita/html` 的声明一致 —— 不写会有一条 warning）。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile/vendor/rabbita/html" @html,
+  // 下面两个**只给白盒测试用**：`canvas_wbtest.mbt` 断言 `canvas()` 真的把载荷挂到了标签上
+  // （看得见 VNode 才能断言"标签名 + prop 名 + prop 值"三件事，而不是只测编码器）。
+  // 非测试构建里用不到它们，所以会有一条 `unused_package` warning —— 那是**预期**的噪声。
+  "XiLaiTL/moobile/vendor/rabbita/vdom" @vdom,
+  "XiLaiTL/moobile/vendor/rabbita/variant" @variant,
+}

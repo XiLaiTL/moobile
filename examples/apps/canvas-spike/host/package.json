@@ -1,0 +1,13 @@
+{
+  "name": "canvas-spike-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "canvas 通道试金石：draw-op 列表 → Skia（真引擎出图 + 像素断言）",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "canvaskit-wasm": "0.41.0"
+  }
+}
