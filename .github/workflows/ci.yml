@@ -75,4 +75,47 @@ jobs:
         run: cd examples/apps/todo-app/host && npm install --no-audit --no-fund
 
       - name: 一条命令跑完离线检查
-        run: bash tools/verify_all.sh
+        run: |
+          set -o pipefail
+          LOG="$RUNNER_TEMP/gates.log"
+          if bash tools/verify_all.sh 2>&1 | tee "$LOG"; then
+            {
+              echo "### 离线门：全绿"
+              echo '```'
+              grep -E '^(PASS|SKIP) ' "$LOG" || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # ★ 失败时必须**自己说清为什么**。
+          #
+          # 为什么要有这一段（2026-10-01 被逼出来的）：修好 vendor 那一步之后 CI 仍然红，
+          # 而**我去看日志时吃了个 403** —— 公开仓库的 job log 走 REST API 要认证
+          # （`GET /actions/runs/<id>/logs` → 403），运行页又是 JS 渲染的、curl 取不到内容。
+          # 于是"CI 红了"这句话对**任何非账号持有人**（含自动化代理）都是不可诊断的。
+          # **annotation 不用认证**，所以就把它当出口：
+          #     GET /repos/{owner}/{repo}/check-runs/{id}/annotations
+          #
+          # 顺序也有讲究：先把**门名**发出来（这是"哪条红了"的答案），再发日志尾巴。
+          grep -E '^FAIL ' "$LOG" | head -10 | while IFS= read -r l; do
+            echo "::error title=门失败::$l"
+          done
+
+          # `verify_all.sh` 在每条失败的门后面跟着它日志的末尾 12 行（以 6 个空格缩进）。
+          # 只取**第一条**失败的门的尾巴：annotation 有条数/体积上限，而"哪条先红"信息量最大。
+          awk '
+            /---- 末尾 12 行 ----/ { f = 1; n = 0; next }
+            /^(PASS|FAIL|SKIP) /   { f = 0 }
+            f && NF && n < 12       { print; n++ }
+          ' "$LOG" | while IFS= read -r l; do
+            echo "::error title=日志尾巴::$(printf '%s' "$l" | sed 's/^ *//')"
+          done
+
+          {
+            echo "### 离线门：失败"
+            echo '```'
+            grep -E '^(PASS|FAIL|SKIP) ' "$LOG" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
