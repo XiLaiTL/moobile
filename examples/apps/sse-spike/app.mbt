@@ -3,7 +3,7 @@
 ///
 /// 它刻意**小到只说一件事**：点「连接」→ 服务端分帧推 → 每收到一帧界面就多一行 →
 /// 最后落到「完成」。判据在 `verify.mjs`（无头，node + 本地 SSE 服务）与
-/// `device_check.mjs`（真机，验的是另一条传输 —— 见 `sse/sse.mbt` 的平台表）。
+/// `device_check.mjs`（真机，验的是另一条传输 —— 见 `http/stream.mbt` 的平台表）。
 ///
 /// ## 这个应用存在的理由
 ///
@@ -38,7 +38,7 @@ struct Model {
 /// 旧流可能还会吐出几帧 —— 那些必须**丢掉**，否则会把新会话的内容搅进来。
 pub enum Msg {
   Connect
-  Stream(Int, @sse.Event)
+  Stream(Int, @http.StreamEvent)
   Stop
 }
 
@@ -66,7 +66,7 @@ fn update(
       let id = model.next_id
       (
         { ..model, status: "接收中", chunks: [], next_id: id + 1, active: Some(id) },
-        @sse.stream(
+        @http.stream(
           id=id,
           url=sse_url(),
           headers=[("Content-Type", "application/json"), ("Accept", "text/event-stream")],
@@ -81,9 +81,9 @@ fn update(
         (model, @cmd.none)
       } else {
         match ev {
-          @sse.Delta(text) => ({ ..model, chunks: model.chunks + [text] }, @cmd.none)
-          @sse.Done => ({ ..model, status: "完成", active: None }, @cmd.none)
-          @sse.Fail(reason) => (
+          @http.Delta(text) => ({ ..model, chunks: model.chunks + [text] }, @cmd.none)
+          @http.Done => ({ ..model, status: "完成", active: None }, @cmd.none)
+          @http.Fail(reason) => (
             { ..model, status: "失败：\{reason}", active: None },
             @cmd.none,
           )
@@ -91,7 +91,7 @@ fn update(
       }
     Stop =>
       match model.active {
-        Some(id) => ({ ..model, status: "已停止", active: None }, @sse.abort(id))
+        Some(id) => ({ ..model, status: "已停止", active: None }, @http.abort(id))
         None => (model, @cmd.none)
       }
   }

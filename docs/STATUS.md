@@ -114,7 +114,7 @@
 | **E 脚手架** | 模板唯一真源、`init`、`build`（发现产物）、**三条离线门（模板 / 承载真应用 / 同源 T1）**、**打包形态门**（`package_check`，发布前跑；09-21 抓起 npm 解包改名那个 bug） | **发一版带 `init` 的宿主包**、`doctor`、E5/E6/E7、E8 接线 | §3.9 |
 | **CAN 画布通道** | 设计定案（**不新开通道**：组件通道 + `prop_json`）、库包 `canvas/`（18 条指令 + `OpCtx` + `canvas()`）、宿主包两个入口（`canvas-ops` 纯翻译器 / `canvas-skia` React 桥）、本机真 Skia 验证 32 项、跨语言对账：载荷**逐字节相同** | **真机**（`<Canvas>` 挂载 + 文字字形，要 prebuild + 重建 APK）、**手势**（P3 T3.4）、**坐标换算/devicePixelRatio**（T3.5）、性能基线（D 轨道） | §3.6 补记 + [`design/DESIGN.md`](design/DESIGN.md) 阶段 4 |
 | **GES 手势通道** | 库包 `gesture/`（`Gesture` + `Phase` + `attrs`/`pan`/`tap`）、宿主包 `gesture-rn.js`（**默认装载**，PanResponder、零新依赖）、**契约的不变量 4 条**（`start` 恰一次且在最先 / 起点 `dx=0` / 全程同一参照系 / `cancel` = 这次不算）、web 试金石 **40/40**（含边界 20 项）、真机 `gesture-edges` **18/18** | **多指 / pinch / rotate**（`pointers` 已**诚实报数**、`dx` 锁第一指，但真机多指没验 —— `adb shell input` 只能发单指）、iOS、**元素自身在拖动中移动时 `x/y` 怎么解释**（契约未写）、"JS 线程忙时的手感" | §3.6 / §7-19 |
-| **SSE 流式通道**（新增） | 库包 `sse/`（`Event` + `stream` + `abort`；web 用 `fetch` 流、RN 用 XHR 渐进）、试金石 `examples/apps/sse-spike/`（无头 **12/12**、真机 **14/14**）、已接成第 17 条门 | 契约里**没有**取消之外的流控（背压）；多路并发流（一次开多条）未验 | 见 `FINDINGS.md` 的 SSE 补记 |
+| **SSE 流式通道**（新增） | **`@http` 的流式那一半**（`http/stream.mbt`：`StreamEvent` + `stream` + `abort`；web 用 `fetch` 流、RN 用 XHR 渐进）、试金石 `examples/apps/sse-spike/`（无头 **12/12**、真机 **14/14**）、已接成第 17 条门 | 契约里**没有**取消之外的流控（背压）；多路并发流（一次开多条）未验 | 见 `FINDINGS.md` 的 SSE 补记 |
 | **F 迁移** | **F1 迁移动检**（`tools/mb.sh migrate-scan`；判据"与人工清点零遗漏"✅ 已达成） | F2 样式半自动、F3 指南、F4 `moon add` 提示；**E9 从此有了前置** | §5.1 |
 | **D 性能** | D4 空样式短路（顺手做的） | D1/D2 基线、D3（表分成三档但查表仍是线性扫描）、D5、D6 | §4 |
 | **G 真实应用** | —— | 全部（`interest/yi` 移植仍未拍板，见决策点 3） | §6 |

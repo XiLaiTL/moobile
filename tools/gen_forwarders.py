@@ -66,6 +66,33 @@ FORWARD = [
     ("http", "http"),   # 网络请求（同步链路）
 ]
 
+# 转发包**可以有手写扩展**：`<转发包名>` → 那个包里有哪些**手写**文件、它们要哪些额外 import。
+#
+# 为什么需要这张表：`<转发包>/moon.pkg` 是**生成物**，手改会被下次重跑覆盖，而且 `--check`
+# 会把改动当漂移报出来。可手写文件确实需要 import —— 例：`http/stream.mbt`（**流式**响应）
+# 要用 `@cmd.custom_cmd` 拿到 scheduler，才能把"流里的每一帧"送回 update 循环。
+#
+# ⚠️ 为什么**不**把这个功能加进 vendor fork：`vendor/rabbita/**` 是**别人的包**，
+#    我们的改动得落成 `tools/patches/*.patch`、升级时逐个重放（`FORK.md` §0）。
+#    往别人的包里塞我们发明的新能力，代价大于收益。所以：**实现写在根上的转发目录里（手写），
+#    vendor 一行不改** —— 而消费者看到的仍然只有 `import { "…/http" }` 这一个入口。
+#
+# ⚠️ 想加第二个手写扩展时：往这张表里加一条，**别忘了同时把文件真的建出来**
+#    （生成器不管手写文件的内容，也不会替你建）。
+#
+# ⚠️⚠️ **先有鸡还是先有蛋**：本脚本要先跑 `moon info`，而那要求**工程能编译**；
+#    可新的手写文件又需要新 import 才能编译。所以第一次加扩展时：
+#    **照本脚本将会产出的内容，先把 `<转发包>/moon.pkg` 手写一次** → 编译通过 → 再跑本脚本
+#    （它会写出同样的内容，`--check` 随即一致）。`http/stream.mbt` 就是这么落地的。
+EXTRA = {
+    "http": {
+        # 追加到该包 `moon.pkg` 的 import 行：<模块内相对路径> → <别名>
+        "imports": [("vendor/rabbita/cmd", "@cmd")],
+        # 只为自述：这些手写文件必须真的在（`--check` 不会替你验，它们不进比对范围）
+        "files": ["stream.mbt"],
+    },
+}
+
 HEADER = """// ⚠️ **生成物，不要手改** —— 由 `tools/gen_forwarders.py` 从
 // `{vendor_pkg}/pkg.generated.mbti` 生成（那个文件又是 `moon info` 的产物）。
 //
@@ -143,11 +170,23 @@ def parse_mbti(path):
 
 def render(fwd_name, vendor_name, types, traits, values):
     """产出 (moon.pkg 内容, .mbt 内容)。"""
+    extra = EXTRA.get(fwd_name, {})
     pkg = (
         "// ⚠️ 生成物（tools/gen_forwarders.py）—— 转发包，转出 vendor 下的真实实现。\n"
-        f'import {{\n  "{MODNAME}/{VENDOR}/{vendor_name}" @vendor,\n}}\n'
+        f'import {{\n  "{MODNAME}/{VENDOR}/{vendor_name}" @vendor,\n'
     )
+    for rel, alias in extra.get("imports", []):
+        # 手写扩展要的 import —— 登记在 tools/gen_forwarders.py 的 EXTRA 里，别手改本文件
+        pkg += "  // 下面这条是**手写扩展**要的（见同目录的手写文件）—— 改 EXTRA，别手改本文件\n"
+        pkg += f'  "{MODNAME}/{rel}" {alias},\n'
+    pkg += "}\n"
     body = HEADER.format(vendor_pkg=f"{VENDOR}/{vendor_name}", mod=MODNAME, name=fwd_name)
+    files = extra.get("files", [])
+    if files:
+        body += "//\n// ⚠️ 本目录里**还有手写文件**（它们不在生成器的比对范围里）：\n"
+        for f in files:
+            body += f"//      · `{f}`\n"
+        body += "//    它们要的 import 由 `tools/gen_forwarders.py` 的 `EXTRA` 表写进 `moon.pkg`。\n"
     body += f"\n///|\n// 转发 {MODNAME}/{VENDOR}/{vendor_name} 的公开面。\n"
     # 名字很多（html 有 400+）：分多条 pub using，便于人读 diff
     items = [f"type {t}" for t in types] + [f"trait {t}" for t in traits] + values

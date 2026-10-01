@@ -1,4 +1,6 @@
 // ⚠️ 生成物（tools/gen_forwarders.py）—— 转发包，转出 vendor 下的真实实现。
 import {
   "XiLaiTL/moobile/vendor/rabbita/http" @vendor,
+  // 下面这条是**手写扩展**要的（见同目录的手写文件）—— 改 EXTRA，别手改本文件
+  "XiLaiTL/moobile/vendor/rabbita/cmd" @cmd,
 }

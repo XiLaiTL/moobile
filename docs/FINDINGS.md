@@ -3479,7 +3479,7 @@ node tools/verify_headless.mjs      # → ERR_MODULE_NOT_FOUND，与 CI 同一�
 
 **起因**：要给手机 LLM chat 应用做"边生成边显示"。库里原来**只有一问一答**
 （`@http` 的 `expect_json` / `expect_text` 都会把整个响应读完才交回来），于是新开了
-`XiLaiTL/moobile/sse`（`sse/sse.mbt`）—— 一个请求、**很多条消息**回到 `update`。
+**`@http` 的流式那一半**（`http/stream.mbt`）—— 一个请求、**很多条消息**回到 `update`。
 试金石 `examples/apps/sse-spike/`（无头 12 项 + 真机 14 项），已接成 `verify_all.sh` 的第 17 条门。
 
 ### 一、**RN 的 `fetch` 没有 `response.body`** —— 平台上必须有**两份**传输

@@ -6,8 +6,8 @@ import {
   "XiLaiTL/moobile/style",
   "XiLaiTL/moobile/vendor/rabbita/html",
   "XiLaiTL/moobile/vendor/rabbita/cmd",
-  // ★ 被验的东西：流式通道
-  "XiLaiTL/moobile/sse" @sse,
+  // ★ 被验的东西：**流式**那一半（它就是 `@http` 包里的 `stream.mbt`，不是另一个包）
+  "XiLaiTL/moobile/http" @http,
 }
 
 options(

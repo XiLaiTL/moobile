@@ -1,20 +1,45 @@
 ///|
-/// SSE（Server-Sent Events）**流式**客户端 —— 让"边生成边显示"的接口能用。
+/// **流式**响应 —— `@http` 的另一半（让"边生成边显示"的接口能用）。
 ///
 /// ## 它解决什么问题
 ///
-/// 库里原来只有**一问一答**：`@http.post(url).with_json(b).expect_json(msg)` 会把整个响应
+/// `@http` 原来只有**一问一答**：`@http.post(url).with_json(b).expect_json(msg)` 会把整个响应
 /// 读完之后**一次性**交回来（`expect_text` 也是读完整包）。而 LLM 的 `/chat/completions`
 /// 带 `stream: true` 时是 **SSE**：一条连接上分很多帧推 `data: {...}`，最后一帧是 `data: [DONE]`。
 /// 用一问一答的接口拿它，**用户要盯着空白等十几秒**，然后文字一次蹦出来。
 ///
-/// ⇒ 这个包补的就是这一条：**同一个请求，分成很多条消息回到 `update`**。
+/// ⇒ 这里补的就是这条：**一个请求、很多条消息回到 `update`**。
 ///
-/// ## 为什么不是加在 `@http` 上
+/// ## 为什么它住在这个目录里（**手写文件躺在生成物旁边**，是刻意的）
 ///
-/// `http/` 是 `vendor/rabbita/http` 的**转发包（生成物）**，改它要走
-/// `--capture` → patch → `gen_forwarders`。而 SSE 是**新能力、不是 `rhttp` 的语义修正**
-/// —— 与 `canvas/`、`gesture/` 同类，所以独立成包（先例：那两个也是这么来的）。
+/// `http/` 是 `vendor/rabbita/http` 的**转发包**，`moon.pkg` 与 `forward.generated.mbt` 都是
+/// `tools/gen_forwarders.py` 生成的 —— **但生成器是我们自己的**，它有 `EXTRA` 表专门登记
+/// "这个转发包里还有哪些手写文件、它们要哪些 import"。于是：
+///
+/// | 做法 | 为什么不选 |
+/// |---|---|
+/// | 加进 `vendor/rabbita/http/**` | 那是**别人的包**。我们的改动得落成 `tools/patches/*.patch`、升级时逐个重放（`FORK.md` §0）—— 往别人的包里塞我们发明的新能力，代价大于收益 |
+/// | 另开一个包 `XiLaiTL/moobile/sse` | API 就变成 `@sse.stream(...)`。可它**本来就是 HTTP 能力的一部分**（客户端是应用、地址是 URL、错的是 HTTP 状态码），消费者没理由多记一个包名 |
+/// | 手改 `http/moon.pkg` | 它是生成物：下次重跑被覆盖，且 `--check` 会当漂移报出来 |
+///
+/// ⚠️ **操作上的一个坑（下次加手写扩展时会撞上）**：`gen_forwarders.py` 要先跑 `moon info`，
+/// 而那要求**工程能编译**；可新的手写文件又需要新 import 才能编译 —— **先有鸡还是先有蛋**。
+/// 解法：**照生成器将会产出的内容，先把 `moon.pkg` 手写一次**，编译通过后再跑生成器
+/// （它会写出同样的内容，`--check` 随即一致）。本文件就是这么落地的。
+///
+/// ## 为什么不用生态里那个 `f4ah6o/sse`
+///
+/// 它有，但**对 LLM 流式用不了** —— 三条独立的理由：
+///
+/// | 它的实现 | 后果 |
+/// |---|---|
+/// | 建在浏览器 **`EventSource`** 上 | **只能 GET** —— 而 `/chat/completions` 要 **POST + JSON body** |
+/// | `EventSource` 不支持自定义请求头 | 带不了 **`Authorization: Bearer …`** |
+/// | `EventSource` 在 **React Native 里不存在** | 真机上也跑不了 |
+///
+/// 生态里的 LLM 客户端同样接不上：`DC-Z-lab/moonllm` 依赖 `oboard/mio`（**native** 异步 HTTP 栈），
+/// `QuietlyChan/moonai` 则**把传输留给你实现**（`HttpTransport::fetch_stream`）——
+/// 也就是说最底下那条传输**还是得我们自己写**，而那正是 web 与 RN 分叉的地方。
 ///
 /// ## 契约
 ///
@@ -28,7 +53,7 @@
 ///
 /// 1. **`Done`/`Fail` 恰一次且在最后**，两者互斥；收尾之后**不会再有任何事件**。
 /// 2. **分帧与网络分包无关**：一帧被切成两半、或者两帧挤在一次读取里，应用看到的都是
-///    "一帧一条 `Delta`"（解析器自己缓冲，见 `parse` 的注释）。
+///    "一帧一条 `Delta`"（解析器自己缓冲，见 `JS` 里 `feed` 的注释）。
 /// 3. **`abort` 之后一条都不再发** —— 不是"发了但应用忽略"。
 ///
 /// ## 平台：同一份代码，两种传输
@@ -47,11 +72,11 @@
 /// // update 里：发出去，并把句柄记在 Model 里（用来 abort / 忽略过期事件）
 /// Start => (
 ///   { ..m, streaming: Some(m.next_id) },
-///   @sse.stream(
-///     m.next_id,
-///     url,
+///   @http.stream(
+///     id=m.next_id,
+///     url=url,
 ///     headers=[("Authorization", "Bearer \{key}"), ("Content-Type", "application/json")],
-///     body,
+///     body=body,
 ///     on_event=ev => emit(Stream(ev)),
 ///   ),
 /// )
@@ -65,11 +90,11 @@
 ///
 /// ⚠️ `on_event` 的返回值**必须**是 `@cmd.Cmd`（通常是 `emit(...)` 的结果）——
 /// `Emit[Msg]` 的定义就是 `(Msg) -> Cmd`，**光调 `emit` 不把返回的 Cmd 交给运行时，消息不会到**。
-/// 本包内部用 `custom_cmd` 拿到的 `scheduler` 把它送进去（与 `@sub.every` 同一条路径）。
+/// 这里内部用 `custom_cmd` 拿到的 `scheduler` 把它送进去（与 `@sub.every` 同一条路径）。
 
 ///|
 /// 流式事件。**应用只该看见这三种**，别把某个厂商的帧格式漏到应用层。
-pub(all) enum Event {
+pub(all) enum StreamEvent {
   /// 一帧数据（`data:` 后面那串，已剥前缀；多行 `data:` 用 `\n` 拼接）
   Delta(String)
   /// 正常结束（`[DONE]` 或连接读完）——恰一次，在最后
@@ -91,7 +116,7 @@ pub fn stream(
   url~ : String,
   headers~ : Array[(String, String)],
   body~ : String,
-  on_event~ : (Event) -> @cmd.Cmd,
+  on_event~ : (StreamEvent) -> @cmd.Cmd,
 ) -> @cmd.Cmd {
   @cmd.custom_cmd(scheduler => {
     sse_start(
