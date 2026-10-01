@@ -38,7 +38,7 @@
 | ✅ | **真机验证能力**：Android 14 / x86_64 模拟器 + APK 构建 + 上机运行全部打通 | `DEV.md` §3.3 |
 | ✅ | **样式层**：`StyleValue` 类型化，对 yi 的 198 条 CSS 差集**账目闭合**（0 未归类） | `docs/evidence/r1/style_gap.md` |
 | ✅ | **DOM 缝隙普查**：`html/`+`svg/` 45 处 `@dom.` 逐条列明，13 个同类 panic 点统一策略化 | `docs/evidence/r1/dom_survey.txt`、`html/event_decoders.mbt` |
-| ✅ | **标签表 42 条** + 未收录计数（可断言为 0） | `moobile/render.mbt` |
+| ✅ | **标签表 44 条** + 未收录计数（可断言为 0） | `moobile/render.mbt` |
 | ✅ | **验证脚本**：Web 端到端 26/26 | `node tools/verify_web.js` |
 | ✅ | **fork 可跟版**：diff 清单 + 重放步骤 | `FORK.md` |
 | ✅ | **T0.0 目录合并**：代码 + 文档同处 `interest/moobile/`，模块名 `XiLaiTL/moobile`，`style/` 已公开，原 `moobile_demo/` 不存在 | 本文件 T0.0 |

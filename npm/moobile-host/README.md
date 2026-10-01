@@ -39,6 +39,82 @@ pub fn app() -> @moobile.JsValue {
 }
 ```
 
+## 生成一个项目（`moobile-host init`）
+
+```bash
+npx moobile-host init my-app
+cd my-app && npm install && npm run web
+```
+
+拷模板 → 按应用名做**纯字符串替换**（没有模板语言）→ **断言"名字替换干净"**：
+残留（含 `moobile_template` 这类派生写法）或锚点不对（`moon.mod` / `package.json` /
+`app.json` 里的名字不是请求的那个）就**一个文件都不写** —— 半个项目比报错更难查。
+
+| 参数 | 说明 |
+|---|---|
+| `--name <应用名>` | 目录名与包名不同时用；只允许小写字母 / 数字 / 连字符 |
+| `--force` | 目标目录非空时也往里写（只覆盖同名文件） |
+| `--dry-run` | 只列出将要写哪些文件、替换成什么，不落盘 |
+
+模板的真源是仓库的 `examples/apps/template/`；发布时 `publish.sh` 会按发布规矩把它拷进包里
+（`init` 跑在别人的机器上，模板必须随包走）。
+
+## 把 MoonBit 产物搬进宿主目录（`moobile-host build`）
+
+```bash
+moon build --target js && npx moobile-host build     # 生成出来的项目里，`npm run build` 就是这两步
+```
+
+**为什么不能写成一句 `cp`**（实测，2026-09）：产物路径**不是模块名的函数，而是模块在构建根里
+身份的函数** —— 工作区成员是 `_build/js/<profile>/build/<作者>/<模块>/<模块>.js`，
+独立模块（空目录里 `moon new`）是平铺的 `_build/js/<profile>/build/<模块>.js`。
+写死任何一条，都会在"仓库里能跑"与"用户机器上能跑"之间错一边。
+
+所以这条命令**发现**产物：先按预测路径找，不中就在构建根里按文件名扫；
+**匹配到多个就报错并列出候选**（歧义是要人看一眼的信号，不是可以猜的）。
+
+`--release` / `--out <文件>` / `--module <名字>` / `--print-path` 见 `--help`。
+
+## 子命令面（冻结）
+
+| 子命令 | 做什么 | 状态 |
+|---|---|---|
+| `init` | 从模板生成一个项目 | ✅ |
+| `build` | 把 MoonBit 产物搬进宿主目录 | ✅ |
+| `regen` | 从依赖生成能力注册表 | ✅ |
+| `libgen` | 组件库生成（manifest + MoonBit DSL + 宿主注册） | ✅ 见下一节 |
+| `doctor` | 环境自检（缺什么直接说装什么） | ⏳ 名字已冻结 |
+| `upgrade` | 读 `moon.mod` + `package.json` 列出要改的版本 | ⏳ 名字已冻结 |
+
+名字冻结的理由：这个 CLI 是**共同战场**（脚手架与组件库生成器都要往里加命令），
+先定名字与产物路径，两边就不会各写一半。
+
+## 生成组件库的清单与包装（`moobile-host libgen`）
+
+```bash
+cd host && npx moobile-host libgen          # 生成
+cd host && npx moobile-host libgen --check  # 只校验（进 CI：生成物被手改就红）
+```
+
+它读应用**装好的**组件库（`node_modules/<lib>/**/*.d.ts`），一条流水线出三份产物：
+
+```
+① generated/<ns>.manifest.json   组件 → prop 名 + 类别（入库、可 diff、可手改兜底）
+② host/libraries.generated.js    registerLibrary(...) 的调用（components / jsonProps / events / wrap / platforms）
+③ <ns>/components.generated.mbt  MoonBit DSL 包（`@antd.button(type_="primary", danger=true, on_click=…, "加一条")`）
+```
+
+**三份同源于一份 manifest** —— 宿主侧认的名字与 MoonBit 侧发的标签因此不可能对不上，
+而 `--check` 就是这件事的判据（任一侧被手改都会红）。产物路径与其余选项写在应用根的
+`libgen.config.json` 里（路径**相对该文件**，不必管命令是在哪一层跑的）。
+
+**为什么这个工具住在 npm 包里**：它的输入是 `.d.ts` 与 `node_modules`，只有 Node 侧拿得到。
+**它刻意不起 TypeScript**：浅解析（花括号配对 + 小解析器）在 antd 6.6.4 上能覆盖
+71 个组件 / 9317 个 prop，~~0.6s~~ 半秒左右跑完；解不开的会在报告里**逐条点名**，不是静默丢。
+
+示例（真跑起来的）：[`examples/apps/antd-demo/`](../../examples/apps/antd-demo/) ——
+用生成的 DSL 把 antd 的 71 个组件全渲染出来，24 条判据。
+
 ## 接入一个 React 组件库（契约 ≥ 2）
 
 ```js
@@ -77,6 +153,75 @@ MoonBit 侧就是普通标签，只是名字带命名空间：
 
 ⚠️ **未做**：事件**载荷**还是不透明的（`onChange` 能触发，但取不到用户输入的值），
 所以受控组件暂时用不了 —— 见设计稿 §5 T1。
+
+## 画布（`<canvas>` 的平台替代物，Skia）
+
+`render.mbt` 的标签表**明确排除** `canvas`（RN 没有它）。库侧的做法不是"新开一条通道"，
+而是把绘制指令说成一段 JSON，走**上面那条组件通道**；宿主这边把指令翻成 Skia 元素树。
+
+```js
+import * as Skia from '@shopify/react-native-skia';   // ← 应用自己装（见下）
+import { installHost, mountApp } from 'moobile-host';
+import { registerSkiaCanvas } from 'moobile-host/canvas-skia';
+
+installHost();
+registerSkiaCanvas({ skia: Skia });        // 注册 moobile:Canvas（默认 platforms: android/ios）
+export default mountApp(app);
+```
+
+```moonbit
+let ctx = @canvas.OpCtx::new()
+ctx.set_fill_style("#f6efe0")
+ctx.fill_rect(0.0, 0.0, 720.0, 720.0)
+ctx.set_stroke_style("#b8902f")
+ctx.set_line_width(2.5)
+ctx.begin_path()
+ctx.arc(360.0, 360.0, 300.0, 0.0, 2.0 * @math.pi)   // 整圆：宿主会拆成两段 SVG 弧
+ctx.stroke()
+@canvas.canvas(ctx.take(), 720.0, 720.0)
+```
+
+四条要知道的事：
+
+1. **绘制指令是 18 条有界词汇**，与 canvas 的 18 个调用一一对应（`begin_path` / `move_to` /
+   `line_to` / `arc` / `close_path` / `fill` / `stroke` / `fill_rect` / `set_line_width` /
+   `set_fill_style` / `set_stroke_style` / `set_font` / `fill_text` / `save` / `restore` /
+   `translate` / `rotate` / `scale`）。`OpCtx` 的方法名与 DOM 的 `CanvasRenderingContext2D`
+   **逐字相同** —— 所以把既有 canvas 代码迁过来是**换一个类型**，函数体不用动。
+2. **宿主包不依赖 Skia**。它带 `reanimated` + `worklets` 两个**原生依赖**，装不装是应用的决定；
+   所以是应用 `import` 进来传给 `registerSkiaCanvas`。`moobile-host` 只提供翻译器
+   （`moobile-host/canvas-ops`，纯函数，也能单独拿来用）。
+3. **文字要字体**：RN Skia 的 `<Text>` 需要一个 `SkFont`，而"用哪个字体"是应用的资源决定，
+   宿主不替你猜 → 传 `makeFont`，不传而指令里又有文字就**当场抛**（不静默跳过文字）。
+4. **平台闸门默认是 `['android','ios']`**（与 `registerLibrary` 的默认 `['web']` 相反）——
+   Skia 只跑原生。Web 上要同样的画面走 CanvasKit，那是另一条注册（`platforms: ['web']`）。
+
+判据与已知边界（**真机上的组件挂载还没验**）见
+[`examples/apps/canvas-spike/`](https://github.com/XiLaiTL/moobile/tree/main/examples/apps/canvas-spike)。
+
+### 两个容易踩的形状（2026-10 实测补）
+
+**① `installHost()` 是幂等的** —— 已经装过再装一次会**合并**，不会把之前注册的组件冲掉。
+所以「先装 → 注册组件库 → 再 `mountApp`」这条顺序是安全的：
+
+```js
+installHost();
+registerLibrary({ namespace: 'antd', module: antd, platforms: ['web'] });
+export default mountApp(app);          // 内部还会再装一次，注册保留
+```
+
+（在这之前它其实**不**幂等：实现把 `MOBILE_HOST` 整个换掉，手动注册的组件全丢，
+渲染到它时报「宿主没有注册组件 `X`」。生成路径 `mountApp(app, { registry })` 一直没有这个问题，
+因为它注册发生在 install 之后 —— 所以这个坑只在**手写 `registerLibrary`** 时出现。）
+
+**② `components` 收两种形状**：
+
+| 写法 | 含义 |
+|---|---|
+| `components: ['Button', 'Table']` + `module` | 按**名字**从模块里挑（常规用法） |
+| `components: { Canvas: MyCanvas }` | 直接给**实现**（**手写组件**的写法，例如把 Skia 画布接进来） |
+
+形状真不对时，报错会说清两种合法写法 —— 而不是丢一个 `iterator method is not callable`。
 
 ## 能力注册表（`registry.generated.js`）
 

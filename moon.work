@@ -7,8 +7,21 @@
 //
 // ⚠️ 示例后端（`examples/services/todo-server/`）**刻意不在这个工作区里**：
 //    它只支持 native 目标，拉进来会让默认的 `moon check` 依赖 MSVC 工具链。
+// `template` 是**脚手架的真源**（docs/design/SCAFFOLD.md §3.4）：它不是第三个演示，
+// 它是"生成出来的那个项目"本身。放在工作区里是为了让它**一直可编译** ——
+// 一个编译不过的模板等于"我们从未验证过用户会拿到什么"。
+// 它只带最小 Todo（内存一条链路）；长满了的那份是 `todo-app`。
+//
+// `antd-demo` 是**生成器的用法示例**（PLAN §3.8 的 I3）：它的 `antd/` 目录是
+// `libgen` 从 antd 的类型定义生成的 DSL 包（`@antd.button(...)` 那种写法），
+// 必须吃本地源码，否则拿到的库还没有 `on_raw` / 标签直通。
 members = [
   ".",
   "examples/apps/todo-app",
   "examples/apps/antd-spike",
+  "examples/apps/template",
+  "examples/apps/antd-demo",
+  // canvas 试金石（PLAN §3.6 / P3 T3.2）：它走的是**组件通道**，
+  // 而这条通道（标签直通 + jsonProps）是新加的 —— 不吃本地源码就会拿到旧库。
+  "examples/apps/canvas-spike",
 ]

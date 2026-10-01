@@ -1,7 +1,24 @@
 # SCAFFOLD —— moobile 脚手架设计
 
-> 状态：**设计稿（待决策项已标出）**。本文只回答一件事：
+> **现状与分数**：见 [`STATUS.md`](../STATUS.md)（唯一来源）—— 本文只讲设计与判据，不重复记分数。
+> 状态：**设计稿 + 已落地的一部分（2026-09-20）**。本文只回答一件事：
 > **一个从没接触过 moobile 的人，怎么在最短时间内得到一个能跑的项目，而且全程不需要装 Python。**
+>
+> **落地状态**（只列已经有可跑判据的；`⏳` = 还没做）：
+>
+> | 设计里的东西 | 现在住在哪 | 怎么验 |
+> |---|---|---|
+> | 模板 = 唯一真源（§3.4） | `examples/apps/template/`（已进 `moon.work`） | `moon check --target js` |
+> | 生成器：替换 + 两条断言（§3.4.2） | `npm/moobile-host/lib/init.js`（`moobile-host init`） | `node tools/template_check.mjs` |
+> | 产物搬运：**发现**而不是 `cp`（§3.4.3） | `npm/moobile-host/lib/build.js`（`moobile-host build`） | 同上（两种布局各验一遍）；`tools/build.sh` 已改用它 |
+> | **无头验证**（设计里没有这一条，做的过程中补的） | `tools/verify_headless.mjs` | `node tools/verify_headless.mjs`（离线、秒级；**项数与分数见 `docs/STATUS.md`**） |
+> | "生成物撑得住真应用" | `tools/scaffold_probe/`（探针应用 + 剧本）、`tools/scaffold_probe.mjs` | `node tools/scaffold_probe.mjs`（7 + 22 项） |
+> | T1b / T1c / T3（§6） | `tools/template_check.mjs` + `tools/scaffold_probe.mjs`，已进 `verify_all.sh` | `bash tools/verify_all.sh`（三条门**并发**跑，约 7 秒） |
+> | CLI 子命令面（§3.8） | `npm/moobile-host/bin/cli.js` | `node npm/moobile-host/bin/cli.js --help` |
+> | **T1 模板同源（`deltas.txt` 清单）** | ✅ 已落地（2026-09-21）：清单 `tools/template/deltas.txt` + 比对器 `tools/template_compare.mjs`，已进 `verify_all.sh` —— 见 §3.4.4 第 4 步 | `node tools/template_compare.mjs`；证伪 `bash tools/template_compare_falsify.sh` |
+> | `libgen`（I 轨道） | ✅ 已落地：`npm/moobile-host/libgen/` + `npm/moobile-host/bin/libgen.js`，产物三份入库、`--check` 可比对 | `node npm/moobile-host/bin/cli.js libgen --check` |
+> | `doctor` / `upgrade` | ⏳ 只有**名字**（已冻结；敲了会说"名字已冻结、但还没实现"） | —— |
+> | npm 包里那份模板（D2） | `publish.sh` 发包时按发布规矩拷进 `template/`，发完即删 | 包内副本存在时 `tools/template_check.mjs` 会比它与真源 |
 >
 > 背景见 [`../../PLAN.md`](../../PLAN.md) 的 E 轨道（脚手架）、H 轨道（接入收敛，**已完成**）。
 > 本文是 E 轨道的落地设计，并补上 PLAN 里没写的那半：**工具用什么语言写、按什么原则分**。
@@ -29,7 +46,7 @@ npm run web                       # 或 npm run android
 | **S1** | 干净机器能跑通：只装 moon + node | 在一次性的干净环境里按 §1.1 走完，页面渲染出内容 |
 | **S2** | **全流程零 Python** | 在同一次干净环境里跑完整流程；对生成的工程与工具链 grep `python`，命中的只能是"说明性文字"，不能是执行路径 |
 | **S3** | 环境缺什么，报错要**直接说装什么** | 缺 moon / 缺 node / 版本过低 / 缺 adb → `doctor` 与各命令都给出可照抄的修复命令（不是抛栈） |
-| **S4** | 生成的项目就是我们验过的那条链路 | 模板是唯一真源、demo 由它派生（见 §3.4）；`verify_all.sh` 的 T1 按 `deltas` 清单发现清单外漂移 |
+| **S4** | 生成的项目就是我们验过的那条链路 | 模板是唯一真源、demo 由它派生（见 §3.4）；`verify_all.sh` 的 T1 按 `deltas` 清单发现清单外漂移。**现状：✅ 清单与门都已落地**（`tools/template/deltas.txt` + `tools/template_compare.mjs`，见 §6） |
 | **S5** | 生成后立刻能做开发闭环 | 改一行 `view` → 重新构建 → 页面变；`npx moobile-host regen` 在加能力后仍然一致 |
 | **S6** | 契约不匹配时**当场**失败并说清版本 | 库 `handles.contract` 与宿主 `CONTRACT` 不等 → 报出两个版本号（**已有**，见 §5.2） |
 
@@ -44,15 +61,19 @@ npm run web                       # 或 npm run android
 |---|---|---|
 | 库（MoonBit 侧） | 已发布 `XiLaiTL/moobile@0.2.2`，应用侧**一个导出** | [`../../README.md`](../../README.md) §1.1 |
 | 宿主（JS 侧） | 已发布 npm 包 `moobile-host@0.2.0`：实现 `MOBILE_HOST` 契约、组件表、调度钩子、后端地址 | `npm/moobile-host/index.js` |
-| 契约版本比对 | ✅ `CONTRACT = 1`，不符即报两个版本号 | `index.js` 的 `checkContract` |
+| 契约版本比对 | ✅ `CONTRACT = 2`，不符即报两个版本号 | `npm/moobile-host/core.js` 的 `checkContract` |
 | 能力注册表 | ✅ `npx moobile-host regen` 读应用 `package.json` → `registry.generated.js`（`--check` 可比对） | `npm/moobile-host/bin/cli.js` |
 | 参考实现 | ✅ `examples/apps/todo-app/`：本地库 + 网络同步 + 多页面 + MoonBit 后端，四道门全过 | [`../FINDINGS.md`](../FINDINGS.md) R2 |
 | 消费者手写代码量 | **4 行 `App.js`** + 一个 `moon.pkg` 的 import 块 | `examples/apps/todo-app/host/App.js` |
-| 模板工程 | ⏳ **纸面**：`examples/apps/template/` 尚不存在 —— 它就是**最小工程本身**（§3.4）。2026-09 **推翻"参数化 demo"为"模板是独立真源、demo 是派生用例"**。⚠️ `tools/template/` 是**生成器的配置与说明**，不是模板的住处 | —— |
+| 模板工程 | ✅ 已存在：`examples/apps/template/`（**11 个文件**，已进 `moon.work` 与 `moon check`）—— 它就是**最小工程本身**（§3.4）。2026-09 **推翻"参数化 demo"为"模板是独立真源、demo 是派生用例"**。⚠️ `tools/template/` 是**生成器的配置与说明**，不是模板的住处 | `examples/apps/template/`；`moon check --target js` |
 
-**缺的是"把上面这些拼成一个新项目"的那一层**（E 轨道），以及"环境自检"与"升级路径"。
-**`examples/apps/template/`、生成器、`doctor`、T1/T3、`postadd` 钩子这五项目前一行代码都没有** ——
-本文是设计稿，不是进度报告。
+**剩下的缺口是"环境自检"（`doctor`）与"升级路径"（`upgrade`）**（E 轨道的尾段）。
+已经落地的有：`examples/apps/template/`（11 个文件）、生成器（`npm/moobile-host/lib/{init,build,placeholders,template,regen}.js`
++ `bin/cli.js` 的 `init`/`build`/`regen`）、T1（**清单 + 比对器 + 证伪**：`tools/template/deltas.txt`、
+`tools/template_compare.mjs`、`tools/template_compare_falsify.sh`）、
+I 轨道的 `libgen`（`npm/moobile-host/libgen/` + `bin/libgen.js`）。**还没落地的**：
+`doctor`、`upgrade`、`postadd` 钩子 —— 这几项一行代码都还没有。
+本文是设计稿，**现状以 `docs/STATUS.md` 为准**。
 
 ---
 
@@ -141,7 +162,7 @@ examples/apps/template/          ← 唯一真源：一个**真的能编译、�
 | 目录 | 装什么 | 谁看它 | **不**装什么 |
 |---|---|---|---|
 | **`examples/apps/template/`** | **最小工程本身**：`moon.mod` / `moon.pkg` / `app.mbt` / `host/**` / `.gitignore` / `README.md`。能 `moon check`、能跑起来、进 `verify_all` | 使用者（生成物的 README 就是它那份）；维护者跑它 | —— |
-| **`tools/template/`** | **生成器的配置与说明**：占位符清单、`deltas.txt`、维护者怎么跑生成器 | 只给维护者 | ❌ **任何工程文件**（`app.mbt` / `App.js` / `package.json`…）。放进来就是第二份真源 |
+| **`tools/template/`** | **生成器的配置与说明**：`deltas.txt`（T1 的清单）、维护者怎么跑生成器 | 只给维护者 | ❌ **任何工程文件**（`app.mbt` / `App.js` / `package.json`…）。放进来就是第二份真源<br>❌ **占位符清单**（2026-09-20 改）—— 它在 `npm/moobile-host/lib/placeholders.js`：那份清单**必须随 npm 包发布**（`init` 跑在别人的机器上），而 `tools/` 不随包走 |
 | **`npm/moobile-host/bin/cli.js`** | `init` 子命令的**实现代码**（真正干活的） | —— | —— |
 
 **工程只有一份，住在 `examples/` 下。** 这不是新发明 —— 这个仓库已经这么干过两次：
@@ -221,22 +242,38 @@ bash tools/build.sh      # moon build --target js → cp 到 host/moobile.js
 （如 `"build": "moon build --target js && node <搬运>"`），否则照 §1.1 的三条命令走完，
 `npm run web` 会在 `./moobile.js` 上当场解析失败 —— **而 S1/S2/S3 全是"干净机器上跑"，这个洞正落在核心判据上**。
 
-> 待定：搬运那一步的**最优形态**（写死路径的 `cp` 还是由 `moobile-host build` 去**发现**产物）
-> 取决于"全新空目录里 `moon build` 的产物落在哪、路径可不可预测"。**这是脚手架动工前的第一个实验**，
-> 它决定脚手架的形状（详见 §3.4.4）。
+> **已定（2026-09-20 实测）**：搬运那一步**不写死路径，而是"发现产物"** ——
+> `moobile-host build`（`npm/moobile-host/lib/build.js`）。
+> 真因是实测出来的：**产物路径不是模块名的函数，而是模块在构建根里身份的函数** ——
+> 工作区成员是 `_build/js/<profile>/build/<作者>/<模块>/<模块>.js`，独立模块是平铺的
+> `_build/js/<profile>/build/<模块>.js`。写死任何一条，都会在"仓库里能跑"与
+> "用户机器上能跑"之间错一边。实现里"预测不中就扫、扫出多个就报错"，两种布局在
+> `tools/template_check.mjs` 里各有一条断言（细节见 `docs/FINDINGS.md` 的 E 轨道补记）。
 
 ### 3.4.4 动工前先做的实验（顺序建议）
 
-**先有 v0，再谈同源。** 现在是反的：`SCAFFOLD.md` 里"模板同源"的争论很细，但 `deltas` 清单
-**长度其实是 0** —— 因为它比对的另一方（模板）还不存在。
+**先有 v0，再谈同源。** 这条曾经是反的：`SCAFFOLD.md` 里"模板同源"的争论很细，而当时的 `deltas` 清单
+**长度是 0** —— 因为它比对的另一方（模板）还不存在。**2026-09-20 已经纠正过来**（清单量出来了，见下）。
 
-建议顺序：
+建议顺序（**1–3 已完成，2026-09-20**）：
 
-1. **在空目录里手动搭最小工程**（`moon.mod` + `app.mbt` + 4 行 `App.js` + `package.json`），
-   把 `moon build → Metro` 这一段亲手跑通 → 回答"产物路径可不可预测"。
-2. 通了，把它**搬成 `examples/apps/template/`**，加进 `moon.work` 与 `verify_all`（它就开始被验证了）。
-3. 再写生成器（替换 + 残留断言）与 T1。
-4. 最后才谈 §3.4 的 `deltas` 清单——那时候清单里该有几行是**量出来的**，不是猜的。
+1. ✅ **在空目录里手动搭最小工程**，把 `moon build → Metro` 这一段亲手跑通 →
+   回答"产物路径可不可预测"：**不可预测**（见 §3.4.3 末段），于是搬运改成"发现"。
+2. ✅ 把它**搬成 `examples/apps/template/`**，加进 `moon.work` 与 `verify_all`。
+3. ✅ 再写生成器（替换 + 断言）与 T1b/T1c/T3 门。
+   ⚠️ 其中"**断言替换干净**"一条在实现时发现第一版近乎**同义反复**（`apply()` 必然替换掉
+   已登记的字面量），补了**派生写法**与**身份锚点**两条真会红的断言 —— 见 `docs/FINDINGS.md`。
+4. ✅ 最后才谈 §3.4 的 `deltas` 清单 —— 清单 2026-09-20 量出，**2026-09-21 把门装上**
+   （`tools/template_compare.mjs`，在 `verify_all.sh` 里），证伪 8 例全过
+   （`bash tools/template_compare_falsify.sh`：5 例该红、2 例不许红、1 例基线）。
+   ⚠️ 装门时机器把清单核了一遍，**当场核出手量首版是错的**（漏登 3 处、多登 1 处）——
+   真因与解法见 [`../FINDINGS.md`](../FINDINGS.md) 的 T1 补记：**手量差异靠印象，不靠集合**。
+
+**额外做了一件设计里没有的事**（因为它回答了同一层的问题）：`tools/verify_headless.mjs`
+—— 无浏览器、无 Metro 地把应用**跑起来**（构造 + 首屏 + 事件回填 + 增/勾/删），
+外加 `tools/scaffold_probe.mjs` 把一份"多文件 + 多页面 + 带过滤"的应用覆盖进刚生成的项目里再跑。
+理由：`moon check` 只证明"编得过"，而"生成出来的形状撑不撑得住真应用"以前没有任何门看得见
+（历史形状差异：产物路径、没有 `host/` 这一层、`App.js` 只有 4 行）。
 
 demo 于是从"真源"降级为"**模板最狠的那个测试用例**"：它自带 R1 排版样本、网络同步、本地库，
 正好是把模板所有占位符压满的那一份。**加实验能力时改 demo，不必再动模板** ——
@@ -261,22 +298,30 @@ demo 于是从"真源"降级为"**模板最狠的那个测试用例**"：它自�
 > 用模板生成一个临时项目 → 与 `examples/apps/todo-app/` 比对，**只比 `deltas` 清单内的文件**，
 > 且差异必须命中清单里**显式列出的允许项**。**清单之外的任何差异 = 红。**
 
-`deltas` 清单是 `tools/template/deltas.txt`，起步 8 条，必须短到**能被人一眼审完**
-（⚠️ 这 8 条是**现在的推测**，按 §3.4.4，正确的做法是等模板存在后**量出来**）：
+`deltas` 清单是 `tools/template/deltas.txt`。**2026-09-20 量出来、2026-09-21 装门时又机器核了一遍**
+（对着真实的两份目录逐文件比对）—— 结论比下面那张推测表更干净：
 
-| 允许的差异 | 为什么 |
-|---|---|
-| `host/` 子目录（demo 在子目录里，生成物平铺） | §3.1 末段 |
-| `package.json`：`file:` 本地路径 → semver | demo 连本地库开发，生成物连 registry |
-| `package.json`：`name` / demo 专属的 `private: true` 等字段 | 参数化维度之外 |
-| demo 专属文件：`r1.mbt`、`todo_api.mbt`、`todo_db.mbt`（网络同步 + 本地库） | 模板只带最小 Todo |
-| demo 专属 `Msg` / 页面 enum 成员（`R1`、同步相关） | 上面那条耦合的另一半 |
-| 构建产物 / 锁文件：`package-lock.json`、`android/`、`.expo/`、`dist/`、`moobile.js` | 生成物不入库也不比对 |
-| `app.json` 的 `name` / `slug` / `android.package` | 参数化 |
-| `README.md` 正文 | 模板的 README 是给消费者的，demo 的是给我们的 |
+| 量出来的差异（分四类） | 条数 | 真正的语义差异？ |
+|---|---|---|
+| demo 独有文件：`main.mbt` `model.mbt` `ui.mbt` `r1.mbt` `todo_db.mbt` `todo_api.mbt` | 6 | 是（demo = 长满了的那一份；模板只带最小 Todo） |
+| 生成物独有文件：`app.mbt`（模板把入口+Todo 写在一个文件里）、`README.md`（给使用者） | 2 | 是（但方向是"生成物更全"） |
+| 参数化与注释：`moon.mod` 的 name/description/注释、`package.json:name`、`app.json` 的名字与图标、`App.js`（**代码 4 行完全相同**）、`index.js`、`.gitignore`、`newArchEnabled` | 11 | **否**（名字、注释、assets、Expo 的两处默认值） |
+| **能力相关**：`moon.pkg` 的 import（5 vs 7）、`package.json` 的 `scripts` 与三个依赖写法、`registry.generated.js`、`metro.config.js` 的 wasm 段 | 7 | **是，而且成本集中在 4 件事上**：加能力（sqlite/http）、npm 那半扇门（D6）、§3.4.3 那个 build 步骤、以及"多加一条能力要同时动 4 个文件" |
+
+（总条数**别抄** —— `node tools/template_compare.mjs` 会把条数与**死条目**一起打出来。）
+
+一句话读法：**"模板与 demo 的差异"里，绝大部分是注释、名字与 assets；
+真正需要人记住的只有"加能力会让 4 个文件各长一块"** —— 这也正是模板 README 里
+"加能力"那一节要讲的事。
+
+✅ 门（T1）**已装**（2026-09-21）：`tools/template_compare.mjs` —— 判据按 `deltas.txt` 顶部的规则
+实现，**清单之外的任何差异 = 红**；证伪见 `tools/template_compare_falsify.sh`（5 例该红、2 例不许红）。
+它除"清单外差异"之外还报**死条目**：登记着、实际已经不存在的差异 —— 那是**清单在腐烂**
+（不弄红：红的意思是"有漂移"，而"清单该删一行"是另一回事；弄红会诱人去删**真**条目）。
 
 **清单一旦长到几十条，说明反向依赖没做成，只是把漂移藏进了清单里** ——
 那时候应该老实回到"两份真源 + 一条独立闸门"，而不是继续往清单里加行。
+现在清单里**真正的语义差异只有 4 件事**（见上表），其余是注释、参数化与 assets，所以这条路目前是通的。
 
 ### 3.5 环境自检：`doctor`
 
@@ -335,8 +380,8 @@ PLAN §1.1 记了一条还没用起来的机制：`moon.mod` 支持
 | 视图 DSL `@html.*` | 同（同一份 fork 血统） | 同 | 不动（除样式相关那几行） | 照搬 |
 | **入口 / 宿主** | `App::new` + `run` + 自己写 HTML/JS 引导 | `@moobile.handlers(...)` + npm 宿主 + 契约版本 | 换入口（约 10 行）+ 生成宿主 | 半自动 |
 | **样式** | `class=` + CSS 文件（含伪类 / 媒体查询 / 后代选择器） | 类型化 `Attrs::styles(Style)`，**封闭属性集** | CSS → `Style` 调用 | 半自动（F2），**必然有损** |
-| **标签** | 116 个标签里的任意一个 | 42 条有映射，12 条**明确排除**（`img`/`video`/`canvas`/`svg`/`table`/`select`/`details`/`dialog`…） | 接第三方组件库（**I 轨道**）或改写 | **不自动**，必须人决定（动检点名） |
-| **事件载荷** | 真实 DOM 事件（坐标、输入值） | 现在零值/不透明（**I1 未做**） | 读坐标/读值的代码要重写 | **不自动**（动检点名） |
+| **标签** | 116 个标签里的任意一个 | 44 条有映射，12 条**明确排除**（`img`/`video`/`canvas`/`svg`/`table`/`select`/`details`/`dialog`…） | 接第三方组件库（**I 轨道**）或改写 | **不自动**，必须人决定（动检点名） |
+| **事件载荷** | 真实 DOM 事件（坐标、输入值） | 载荷通道已落地（**I1 ✅ 2026-09**：`Attrs::on_raw` + `Payload::text/json/num/bool/field`）；**坐标/手势那一档**的状态见 `docs/STATUS.md` | 读坐标/读值的代码要重写 | **不自动**（动检点名） |
 | **浏览器能力** | `@dom` 直连、`fetch`、`localStorage` | 能力注册表（宿主注入 `MOBILE_HOST.db` 等） | 换成能力包（**N 轨道**） | 半自动 |
 | **构建目标** | 常见 `wasm-gc` / `js` | **只支持 `js`**（传递性 js 锁） | 改 `preferred_target` / `supported_targets` | 自动 |
 | **平台承诺** | 只有浏览器 | Web + Android + iOS（iOS 未实测） | 无动作，但排版要重新验（R1 行内流那条） | —— |
@@ -391,6 +436,31 @@ F1 迁移动检（可提前，成本最低）→ I 轨道（接住 img / canvas 
 > 接在脚手架里则天然复用 §3.4 的模板真源与 §5.1 的三个版本号。
 > **一句话：E9 的产物 = `create` 的产物 + 一份报告 + 一支 TODO。**
 
+### 3.8 CLI 子命令面（**冻结**，2026-09-20）
+
+`moobile-host` 是**共同战场**：脚手架（E）与组件库生成器（I2/I3）都要往里加命令。
+名字与产物路径先冻结，两边就不会各写一半（历史的坑：`regen` 的 `from:` 曾写死仓库相对路径，
+还随包发了出去 —— 见 §6.1）。
+
+| 子命令 | 谁实现 | 状态 | 产物 / 约定 |
+|---|---|---|---|
+| `init <dir>` | E（`lib/init.js`） | ✅ | 生成一个项目；**不装 npm 依赖、不做交互** |
+| `build` | E（`lib/build.js`） | ✅ | 发现 MoonBit 产物 → 搬成 `./moobile.js`（Metro 只认工程目录内的路径） |
+| `regen` | H（已有，`lib/regen.js`） | ✅ | `registry.generated.js`（入库、可 `--check`） |
+| `libgen` | **I 轨道**（`libgen/`） | ✅ 已落地（2026-09） | manifest + MoonBit DSL 包 + 宿主注册；`--check` 能 diff（E8 只接线不实现；I 轨道已把它实现，见 `docs/design/DESIGN-COMPONENT-LIBRARY.md`） |
+| `doctor` | E | ⏳ 名字已冻结 | 环境自检（S3：缺什么直接说装什么） |
+| `upgrade` | E | ⏳ 名字已冻结 | 版本配套表（§5.1） |
+
+三条规矩：
+
+1. **一个子命令一个文件**（`lib/<命令>.js`，或 `libgen/`），`bin/cli.js` 里只留一张表 ——
+   并行开发时冲突面就只有那一行。`libgen` 的入口放到位会被**自动接上**（表里配了几个候选路径，
+   `../libgen/cli.js` / `../libgen/index.js` / `../lib/libgen.js`）。
+2. **未实现的命令给明确的一句话**，不是 `unknown command` —— 用户多半是照文档敲的。
+   现在敲 `doctor` / `upgrade` 得到的是"名字已冻结、但还没实现"（`libgen` 已经接上、真能跑了）。
+3. **生成物一律入库 + 可 `--check`**（`registry.generated.js` 已经是这个规矩）：
+   依赖升级之后忘了重跑，CI 能 diff 出来。
+
 ---
 
 ## 4. 工具用什么语言写（本文的第二件事）
@@ -421,7 +491,7 @@ F1 迁移动检（可提前，成本最低）→ I 轨道（接住 img / canvas 
 | 工具 | 住哪 | 语言 | 为什么 |
 |---|---|---|---|
 | 脚手架 `create-moobile-app` / `moobile-host init` | npm | **`.mjs`** | 它跑在**消费者的 JS 项目**里、读写 `package.json`/`metro.config.js`/`App.js`，还要调 `npm install`；**npm 包只能发 JS**。为生成一个 JS 文件而要求装 MoonBit 工具链，是错误耦合。 |
-| `doctor` / `regen` / 契约校验 | npm 包 `moobile-host` | **`.mjs`** | 同上；`regen` 读的就是 `package.json`。**已实现**。 |
+| `doctor` / `regen` / 契约校验 | npm 包 `moobile-host` | **`.mjs`** | 同上；`regen` 读的就是 `package.json`。`regen` 与契约校验**已实现**；`doctor` 尚未实现（状态见 `docs/STATUS.md`）。 |
 | 库仓库的**纯文件扫描与改写**（`verify_all`、`lf_normalize`、`check_links`、`check_public_leaks`、`gen_forwarders`、`vendor_relocate`） | 仓库 `tools/` | **MoonBit**（`.mbtx` 单文件） | 没有进程编排、不碰 JS 生态 —— 是 `.mbtx` 的甜区；这些人必然有 moon；审核者读的就是 MoonBit。 |
 | **要 spawn 进程 / 要 node 模块解析 / 要读别人输出判成败**（`verify_web.js`、`db_probe`、`sync_probe`、`readme_probe`、`verify_android`、`scroll_r1`、`tap_r1`） | 仓库 `tools/` | **`.mjs`** | 它们的活就是 CDP / adb / uiautomator / `moon check` 的子进程编排与输出解析 —— node 的强项；换 MoonBit 只会多一层 FFI。**`readme_probe` 原本判给 MoonBit，是错的**：它 spawn `moon check` 并读编译输出判成败。 |
 
@@ -535,18 +605,20 @@ npx moobile-host upgrade      # 后续：读 moon.mod + package.json，列出要
 
 ## 6. 验收怎么跑（进 CI 的形态）
 
-| 门 | 做什么 | 归属 |
-|---|---|---|
-| **T1 模板同源** | `tools/template/deltas.txt` 是**允许差异的唯一清单**：生成临时项目 → 比对 `examples/apps/todo-app/`，**清单外的任何差异 = 红**（§3.4） | `verify_all.sh`（离线） |
-| **T1b 替换干净** | 生成后 grep 白名单之外的字面量残留（`template` / `XiLaiTL/moobile-template` / `{{`）→ 有残留即红（§3.4.2）。这条兜住"漏参数化"（模板用真字面量的代价） | `verify_all.sh`（离线） |
-| **T1c 模板自身可验** | `examples/apps/template/` 进 `moon check` 与 `moon.work`；再跑一遍"生成出来的那个"能起来（§3.4.1） | `verify_all.sh`（离线） |
-| **T2 零 Python** | 干净环境跑完整流程；grep 执行路径里不得出现 `python` | CI（Linux 容器最干净） |
-| **T3 生成物可编译** | 在生成的临时项目里 `moon check --target js` 通过 | `verify_all.sh`（离线） |
-| **T4 README 契约** | 已有：从 README 解析 import 路径并按示例代码编一遍 | `verify_all.sh`（已有） |
-| **T5 发版配套** | 发布清单里加一条：库次版本变动 → 宿主同批发布 + 兼容表更新 | `CONTRIBUTING.md` §3 |
+| 门 | 做什么 | 归属 | 状态 |
+|---|---|---|---|
+| **T1 模板同源** | `tools/template/deltas.txt` 是**允许差异的唯一清单**：生成临时项目 → 比对 `examples/apps/todo-app/`，**清单外的任何差异 = 红**（§3.4） | `tools/template_compare.mjs` → `verify_all.sh`（离线） | ✅ **已落地**（2026-09-21；做过证伪：`bash tools/template_compare_falsify.sh`） |
+| **T1b 替换干净** | 生成后不许残留模板的字面量：已登记的、**派生写法**（`moobile_template`…）、以及身份锚点（`moon.mod` / `package.json` / `app.json` 的名字必须**正好**是请求的）（§3.4.2、FINDINGS 的 E 轨道补记） | `tools/template_check.mjs` → `verify_all.sh` | ✅ 已落地（做过证伪） |
+| **T1c 模板自身可验** | `examples/apps/template/` 进 `moon check` 与 `moon.work`；再跑一遍"生成出来的那个"能起来（§3.4.1） | `verify_all.sh` 的 `moon check` + `template_check` 的 T3b | ✅ 已落地 |
+| **T2 零 Python** | 干净环境跑完整流程；grep 执行路径里不得出现 `python` | CI（Linux 容器最干净） | ⏳ 未做（脚手架这条链本身已经零 Python：`init`/`build` 都是 node） |
+| **T3 生成物可编译** | 在生成的临时项目里 `moon check --target js` 通过 | `tools/template_check.mjs` → `verify_all.sh` | ✅ 已落地 |
+| **T3b 生成物可构建 + 可运行**（新） | `moon build` → `moobile-host build` → 无头跑起界面逻辑；再有 `tools/scaffold_probe.mjs` 把"多文件 + 多页面 + 过滤"的应用覆盖进去重跑 | `verify_all.sh`（离线，三条门并发约 7 秒） | ✅ 已落地 |
+| **T4 README 契约** | 已有：从 README 解析 import 路径并按示例代码编一遍 | `verify_all.sh`（已有） | ✅ 已有 |
+| **T5 发版配套** | 发布清单里加一条：库次版本变动 → 宿主同批发布 + 兼容表更新 | `CONTRIBUTING.md` §3 | ⏳ 未做 |
 
-T1/T1b/T1c/T3 是纯离线检查，**必须进 `verify_all.sh`**（它现在 **9** 项、仍在 10 秒内，
-加这几项仍然很轻；T1c 多一次 `moon check` 是其中最贵的一项）。
+T1/T1b/T1c/T3 是纯离线检查，**必须进 `verify_all.sh`**（项数与最近分数见
+[`STATUS.md`](../STATUS.md) §2 —— **别抄在这里**）。加这几项仍然很轻，
+T1c 多一次 `moon check` 是其中最贵的一项；T1 只读文件，约 1 秒。
 
 ### 6.1 缺口：npm 那一半从来没有"发布后验一遍"（2026-09 查实）
 
@@ -585,6 +657,9 @@ T1/T1b/T1c/T3 是纯离线检查，**必须进 `verify_all.sh`**（它现在 **9
   **现在是反的：`examples/apps/template/` 就是真源，demo 是派生用例**。
   真正要防的有两条：① **往 `deltas.txt` 里不断加行**来掩盖漂移（判据是**清单的长度**）；
   ② **在 `tools/template/` 里放工程文件**（`app.mbt` / `App.js`…）—— 那就是第二份真源（§3.4.1）。
+  ⚠️ 2026-09-21 起第 ① 条有了机器帮手，但**只有一半**：T1 门保证"清单之外没有差异"，
+  它**保证不了**"清单里那些还该在"—— 所以门旁边专门有一条**死条目**检查（登记着、
+  实际早就不是差异的行会被点名，不弄红），专治"用加行掩盖漂移"。**加行仍然要过人的脑子。**
 - **模板里不写 `{{占位符}}`**：模板必须是能编译、能进门的**真工程**（§3.4.2）。
 - **不把脚手架做成库模块的一部分**：它是 npm 包，库的 `moon.mod` 一个依赖都不许加。
 
@@ -592,14 +667,14 @@ T1/T1b/T1c/T3 是纯离线检查，**必须进 `verify_all.sh`**（它现在 **9
 
 ## 8. 待决策项
 
-| # | 问题 | 选项 | 倾向 |
+| # | 问题 | 选项 | 结论 |
 |---|---|---|---|
-| **D1** | 脚手架怎么分发 | ① 独立 npm 包 `create-moobile-app`（`npm create moobile-app`）；② 作为 `moobile-host` 的子命令（`npx moobile-host init`） | **② 起步**（少一个包的版本要同步），做成后再拆出独立名 |
-| **D2** | 模板放哪 | ① 随 npm 包分发；② 随仓库（用户 clone）；③ 两者 | **①**，npm 是消费者唯一 guaranteed 的入口。⚠️ 但模板真源在 `tools/template/`（§3.4），所以 npm 包里那份是**构建时拷进去的副本** —— 这多出一个漂移点，**必须配一条"副本新鲜度"闸门**（比对包内模板与 `tools/template/` 的哈希，不一致就红），否则又是一次 R7 形状的事故 |
+| **D1** | 脚手架怎么分发 | ① 独立 npm 包 `create-moobile-app`（`npm create moobile-app`）；② 作为 `moobile-host` 的子命令（`npx moobile-host init`） | ✅ **② 已落地**（少一个包的版本要同步；做成后再拆出独立名。命令面见 §3.8） |
+| **D2** | 模板放哪 | ① 随 npm 包分发；② 随仓库（用户 clone）；③ 两者 | ✅ **③ 落地**：真源只有一份（`examples/apps/template/`，§3.4），`publish.sh` 发包时**按发布规矩拷一份**进包内 `template/`、发完即删；副本存在时 `tools/template_check.mjs` 会比它与真源，不一致就红。⚠️ 实测坑**两个**（都在这边复现不出来）：`files` 里必须单独列 `template/.gitignore`（不列，tarball 里一个 ignore 文件都没有）；而**列了也不够**——`npm install` 解包时会把 `.gitignore` **改名成 `.npmignore`**，收口在 `lib/init.js` 与发布前的 `tools/package_check.mjs`（见 FINDINGS 的 E 轨道补记 + 2026-09-21 补记） |
 | **D3** | 要不要 `moon install` 一个 MoonBit CLI | ~~`moon install` 支持 registry 包路径，能得到全局命令~~ | **❌ 实测封路**（§4.3.1）：`moon install` 默认 native 后端，与仓库工具的 `extern "js"` 形态互斥；改 native 要求消费者装 C 工具链，比 Python 更重。**不做**，且不再是"暂不做" |
-| **D4** | iOS 怎么办 | 本机（Windows）无法构建验证 | **生成工程 + 文档标注"未实测"**，不承诺 |
-| **D5** | 生成物要不要带 Todo | 带（可跑闭环）vs 空壳 | **带**：S5 要求"生成后立刻能做开发闭环"，空壳证明不了。2026-09 补：**模板 = 最小 Todo**（本地库一条链路，不带同步/多页面），**demo = 长满了的那一份**（R1 样本 + 网络同步 + 本地库）。两者不再是同一份东西，所以这条不再是二选一 |
-| **D6** | demo（`examples/apps/todo-app/host/`）要不要改成引用**远端** `moobile-host` | ① 保持 `file:` 本地副本；② 改 semver 远端 | **② 远端**（2026-09 定）。现在 demo 与 README 口径不一致、且 npm 侧缺"发布后验一遍"那半扇门（§6.1）。⚠️ **顺序不能反**：先发修好的宿主版本 → 再切（当前线上 0.2.0 是坏的，切了 demo 立刻起不来）。**未动手，记待办** |
+| **D4** | iOS 怎么办 | 本机（Windows）无法构建验证 | **生成工程 + 文档标注"未实测"**，不承诺（模板 README 里已标） |
+| **D5** | 生成物要不要带 Todo | 带（可跑闭环）vs 空壳 | ✅ **带，且已定"带哪一档"**：模板 = **最小 Todo、纯内存一条链路、5 条 import**（加/勾/删 + 一个 `subscriptions` 样本）；**本地库那条链路留给"加能力"演示**（`todo-app` 里已被验过），模板不背它 —— 理由见 §7"不生成大而全样板"，以及"生成物要能秒级被验证"这条实操约束 |
+| **D6** | demo（`examples/apps/todo-app/host/`）要不要改成引用**远端** `moobile-host` | ① 保持 `file:` 本地副本；② 改 semver 远端 | **② 远端**（2026-09 定）。现在 demo 与 README 口径不一致、且 npm 侧缺"发布后验一遍"那半扇门（§6.1）。⚠️ **顺序不能反**：先发修好的宿主版本 → 再切（当前线上 0.2.0 是坏的，切了 demo 立刻起不来）。⚠️ 2026-09-20 补：**`init`/`build` 这两个子命令只在源码里有，线上 0.2.0 都没有** —— 所以 D6 现在多了一条前置：先发一版带 `init`/`build` 的宿主 |
 | **D7** | `moon.work` 要不要把 demo 从工作区摘掉（MoonBit 侧也吃远端） | ① 保留工作区（改库即时生效）；② 摘掉，demo 两边都吃远端 | **② 两边都吃远端**（2026-09 定）：demo = 真实用户路径，值得为此付"改库要发版才能在 demo 里看到"的代价。**未动手，记待办**；须与 D6 **同批**做，否则留下"远端宿主 + 本地库"的中间态（那不是任何真实用户的组合） |
 | **D8** | 迁移（§3.7）的野心到哪一档 | ① **只做"新项目 + 报告 + TODO"**（一行用户代码都不改写）；② 在 ① 之上加**样式层的机械映射**（F2）；③ 连视图/逻辑一起自动改写 | **① 起步，② 作为 ① 之后的增量**。理由：迁移的价值在**把"静默失效"变成显式清单**，不在替用户猜意图；③ 猜错的代价是把 bug 埋进用户代码，而用户不会知道。**②** 的边界要写死：机械映射得到的 `Style` 与原 CSS **不等价**（伪类/媒体查询/后代选择器无对应物），必须逐条标出"有损" |
 | **D9** | 迁移的**验收项目**用哪个 | ① `interest/yi`（真实、够复杂，含 canvas/罗盘）；② rabbita 仓库自带的 example（干净、但太简单）；③ 两个都跑 | **① 为主**（它才是"真实压力"），**② 用来隔离"迁移器自身的 bug"与"项目本身的复杂度"** |

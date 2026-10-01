@@ -1,11 +1,20 @@
 # DESIGN-COMPONENT-LIBRARY —— 让第三方 React 组件库成为一等公民
 
-> **状态：🟡 机制已落地 + 端到端跑通；三项能力未做（见 §5）。**
+> **现状与分数**：见 [`STATUS.md`](../STATUS.md)（唯一来源）—— 本文只讲设计与判据，不重复记分数。
+> **状态：✅ 机制 + 生成器都已落地（2026-09）；剩下的缺口在 §5 逐条列。**
 >
 > - ✅ 库侧改造 + 宿主包拆分 + `registerLibrary` 已落地；
-> - ✅ **端到端证据**：antd 6.6.4 跑通，`20/20`（`examples/apps/antd-spike/host/verify.mjs`）；
-> - 🟡 未做：事件**载荷**提取（受控组件回填）、结构化 prop 的**类型化**、浏览器/真机实测；
-> - ❌ 不做：把第三方组件名直接塞进 `render.mbt` 的 42 条标签表（理由见 §1.2）。
+> - ✅ **事件载荷**（§5 T1）：受控组件能"用"了，不只是"能画"；
+> - ✅ **生成器**（§5 T2b / T5 / T6 = `PLAN.md` 的 I2/I5/I3）：`moobile-host libgen`
+>   从 `.d.ts` 生成 manifest + 宿主注册 + **MoonBit DSL 包**（`@antd.button(…)` 那种平级写法），
+>   三份产物同源、`--check` 可 diff；
+> - ✅ **端到端证据（两条主证据）**：① `examples/apps/antd-demo/` 用生成的 DSL 把 **71 个组件**全渲染出来 ——
+>   `cd examples/apps/antd-demo/host && npm run check` → **24/24**；
+>   ② 库本体试金石 `examples/apps/antd-spike/` —— `node examples/apps/antd-spike/host/verify.mjs` → **26 项**
+>   （已进 `verify_all.sh`）；
+> - 🟡 未做：真浏览器/真机的**样式**实测（§5 T3）、平台矩阵实测（I4）、
+>   渲染型回调通道、`Splitter` 那类"children 挂在组件类型上"的 props；
+> - ❌ 不做：把第三方组件名直接塞进 `render.mbt` 的 44 条标签表（理由见 §1.2）。
 
 相关：`README.md`（能力边界）· [`../ARCHITECTURE.md`](../ARCHITECTURE.md)（分层与契约）· [`../FINDINGS.md`](../FINDINGS.md)（实测记录）· [`../../FORK.md`](../../FORK.md)（vendor 改动）
 
@@ -18,8 +27,8 @@
 | 能不能接第三方 React 组件库？ | **能，而且不需要动渲染架构** —— 因为我们本来就是把最后一跳交给 React（`createElement` 的 `tag` 参数就是一个**组件对象**，不是 RN 的内置名字） |
 | 卡在哪？ | 三处**窄通道**：标签表是封闭的（组件名出不去）、`Attrs` 只有 HTML 属性名（组件库的 props 进不来）、事件名映射写死在 MoonBit（落点错了不会有人告诉你） |
 | 改动量 | 库本体 ~120 行（`render.mbt` / `host.mbt` / `app.mbt` / vendor 一个文件）+ 宿主包一次拆分；**没有新依赖** |
-| 代价是什么？ | 三条已知缺口：结构化 prop 走 JSON 文本（非类型化）、事件载荷还是不透明的、每个库要在宿主侧写一行适配器声明 |
-| 证据在哪？ | `node examples/apps/antd-spike/host/verify.mjs` → `20/20 通过`（离线，无浏览器/无 Metro） |
+| 代价是什么？ | 三条已知缺口：结构化 prop 走 JSON 文本（非类型化，见 §5 T2）、事件载荷靠运行时提取器兜（形状对不上给空值，见 §5 T1）、每个库要在宿主侧**声明**一行适配（现在由 manifest 生成，见 §5 T5） |
+| 证据在哪？ | ① `cd examples/apps/antd-demo/host && npm run check` → `24/24`（生成的 DSL 渲染 71 个组件）；② `node examples/apps/antd-spike/host/verify.mjs` → `26 项`（库本体试金石，离线，无浏览器/无 Metro；已进 `verify_all.sh`） |
 | 契约变化 | `MOBILE_HOST` 契约 `1 → 2`（`components` 键空间开放 + `events` + `wrapRoot` + `platform`）→ **库与宿主包必须同代发布** |
 
 ---
@@ -41,12 +50,12 @@
 
 - **R-a 错了必须点名**：名字写错、库没装，要在**启动时**抛一句能照着做的话；
   回落成 `View` 是**最坏**的选择 —— 它把"没接上"变成"渲染了个空盒子"，查起来毫无线索。
-- **R-b 不许悄悄改变已有语义**：内建标签（`div`/`span`/`button`）的行为、42 条标签表的
+- **R-b 不许悄悄改变已有语义**：内建标签（`div`/`span`/`button`）的行为、44 条标签表的
   "未收录就计数"诊断，都不能因为引入组件库而改变。
 
 ### 1.2 被否掉的方案：把第三方组件名塞进标签表
 
-`render.mbt` 的 42 条表有一条**唯一的收录判据**："两端都有等价物"。
+`render.mbt` 的 44 条表有一条**唯一的收录判据**："两端都有等价物"。
 它的产出不只是一张映射，还有**诊断价值**：表外的标签会被计数（`unmapped()`），
 于是"迁移时漏了哪个标签"是**一个可以断言的数字**。
 
@@ -64,13 +73,13 @@
 
 | 档 | 输入 | 产出 | 计数 |
 |---|---|---|---|
-| 1 | 命中 42 条表（`div`/`span`/`button`…） | 宿主基础组件名（`View`/`Text`/`Pressable`…） | 不动 |
+| 1 | 命中 44 条表（`div`/`span`/`button`…） | 宿主基础组件名（`View`/`Text`/`Pressable`…） | 不动 |
 | 2 | **含冒号**（`antd:Button`、`paper:Card`） | **原样直通**，交给宿主注册表解析 | **不计数** |
 | 3 | 其余（`img` / `table` 这种表外 HTML） | `View` + 计数 | `unmapped +1` |
 
 **为什么用冒号**（而不是 `x-` 前缀）：`x-foo` 在 HTML 里是**自定义元素**的既有写法，
 和档 3 的语义会撞车；冒号在 HTML 标签名里**不合法**，于是"这是不是外部组件"一眼可辨，
-42 条表的语义一个字都不用改。
+44 条表的语义一个字都不用改。
 
 **为什么档 3 保持"回落 + 计数"**：那是迁移诊断，不能变成崩溃；
 而**档 2 不计数**是因为它本来就该在表外 —— 这两个语义必须分开，
@@ -161,9 +170,10 @@ Invalid event handler property `onchange`. Did you mean `onChange`?  ← react-d
 也就是说那些处理器**根本不会被接上**，不是 README 里写的"载荷是零值"那么轻。
 多词事件（`mouseleave`）恢复不出正确大小写，逐个列了名（`onMouseLeave`）。
 
-**仍然没做的（§5 T1）**：**载荷**还是零值/不透明。`onChange` 能触发，
-但拿不到用户输入的内容 —— 受控组件因此**还不能用**。这是 N-3 只完成了一半的地方，
-必须说清楚，不能靠"20/20 全绿"掩盖。
+**当时没做的（§5 T1）**：**载荷**在那个阶段还是零值/不透明。`onChange` 能触发，
+但拿不到用户输入的内容 —— 受控组件因此**还不能用**，这是 N-3 当时只完成了一半的地方。
+⚠️ **2026-09 这一条已经补上**（见 §5 T1）：`on_raw` + `Payload::*` 提取器让真实值回到 `update`，
+判据也随之从"事件触发了"升级成"值对上了" —— 不再靠"全绿"掩盖缺口。
 
 ### N5 样式边界：typed style 是 RN 词汇表
 
@@ -229,7 +239,7 @@ Invalid event handler property `onchange`. Did you mean `onChange`?  ← react-d
 ```bash
 cd <仓库根> && moon build --target js
 cd examples/apps/antd-spike/host && npm install && node verify.mjs
-# → 20/20 通过
+# → 26 项通过
 ```
 
 **为什么可以不带浏览器**（这是设计的一部分，不是偷工）：两条链路各有更省的判据 ——
@@ -312,11 +322,42 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs
 ### T2 结构化 prop 的类型化 + "平级 DSL 包"
 
 **现状**：`columns` / `dataSource` 是手写 JSON 字符串，编译期零检查（schema 也不查）。
+（2026-09 补：生成的 DSL 把**名字**变成了编译期检查，**值**仍旧是 `String` —— 生成物里就是
+`columns? : String`（走 `prop_json`），所以这一条**仍然未做**。）
 **设计**：`prop_json` 的入参从 `String` 换成能**序列化**的 MoonBit 值（`ToJson`），
 或用 `derive(ToJson)` 的类型 + 一层薄包装。
 **判据**：试金石的 `columns` 写成结构化值，改错字段名**编译期**就红。
 
-#### T2b（= `PLAN.md` §3.8 的 I3）让组件在**写法上**与 `@html` 平起平坐
+#### T2b（= `PLAN.md` §3.8 的 I3）让组件在**写法上**与 `@html` 平起平坐 —— ✅ **已实现**（2026-09）
+
+**落地形态**：`moobile-host libgen` 由 manifest 生成
+`examples/apps/antd-demo/antd/components.generated.mbt`（12062 行，`moon check` **0 错误**）。
+demo 里 **71 个组件全部**用它写，`@html` 与 `@antd` 混在同一棵树里：
+
+```moonbit
+@antd.button(type_="primary", danger=true, on_click=emit(Bump), "加一条")
+@antd.form_item(label="姓名", [ @antd.input(placeholder="姓名", ([] : Array[@html.Html])) ])
+```
+
+三条当时定的判据都满足：① 与 `@html.button(...)` 同款形状；② typo 变编译错误；
+③ **生成包的组件名集合 == 宿主注册表的键集合**（136 个键 = 71 顶层 + 65 复合子组件，
+两边都由 `verify.mjs` 对着 manifest 断言）。
+
+**两处当时没预料的**（都写进了生成物的文件头）：
+
+- **复合子组件**：`Form.Item` / `Layout.Header` / `Radio.Group` / `Input.TextArea` …
+  它们不在入口的值导出里，而 React 组件库的结构一大半靠它们（没有 `Form.Item`
+  就没有标签与校验）。生成器从每组件的 `index.d.ts` 里读 `Sub: typeof X` 表认出 **65 个**，
+  名字用小写带父前缀（`form_item`），标签是 `"antd:Form.Item"`，宿主侧按 `.` 逐段下钻取值。
+- **children 的处理**：`children` 声明在 React 的 `DOMAttributes` 里，所以"转发 DOM 属性的组件"
+  都有它；而**没有**它的组件（`Rate` / `Slider` / `Pagination`…）真的不接受 children。
+  生成的签名沿用 `@html` 的惯例：**有 children 就是必填的位置参数**，
+  不需要时写 `([] : Array[@html.Html])`。
+- ⚠️ 一个**没做**的已知缺口：渲染型回调（`Listy` / `Masonry` 的 `itemRender`、
+  `List` 的 `renderItem`）过不了 prop 通道 —— 回调是另一个通道，而它的契约是"返回消息"。
+  两条解法（宿主侧注入默认渲染器 / 库侧新增 render prop 通道）都还没做。
+
+### T2b-原始设计（留档）
 
 **这不是我们发明的形态，rabbita 自己就有先例**：`vendor/rabbita/svg/svg.mbt`（68 个 `pub fn`）
 是一个**独立包**，与 `@html` 平级，写法就是 `@svg.rect(x~=0, y~=0, width~=100, fill="red", children)`。
@@ -333,6 +374,8 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs
 `@html.IsChildren` 可作消费方的 **trait 约束**；`attrs?` + 具名可选参数 + `children : C` 的签名能编；
 可选参数能用 `match` 逐条落到 `Attrs::prop_*`；产出的 `@html.Html` 能直接塞进 `@html.div([...])`。
 **未做的是"自动生成"这件事本身**（以及 prop 值类型能精确到哪一档）。
+> ⚠️ **2026-09 补**：这两件里"自动生成"**已经落地**（`moobile-host libgen`，见上面 T2b）；
+> prop 值类型仍停在"`json` 类走 `String`"，即 §5 T2 那条 —— 仍然**未做**。
 
 ⚠️ **一条语法硬约束（同批实测）**：`@antd.Button()` 这种大写写法**做不到** ——
 `pub fn Button(...)` 是 parse error（`unexpected token '(', you may expect '::'`），
@@ -345,7 +388,7 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs
 |---|---|---|
 | **写法平级** | ✅ | 同款具名参数、同款 children、可混进同一棵树（已实测） |
 | **包结构平级** | ✅ | `@antd` 与 `@html`、`@svg` 是同一层的兄弟包 |
-| **身份平级** | ❌ **刻意不做** | antd 组件**不进** 42 条标签表、不计入 `unmapped` —— 那张表是"两端都有等价物"的可移植子集，混进平台相关的第三方名字就毁了它的诊断价值（§1.2） |
+| **身份平级** | ❌ **刻意不做** | antd 组件**不进** 44 条标签表、不计入 `unmapped` —— 那张表是"两端都有等价物"的可移植子集，混进平台相关的第三方名字就毁了它的诊断价值（§1.2） |
 
 **底下仍然是"字符串标签 + 命名空间"**，只是生成器把它抹掉了 —— 而且**必须留着**：
 "这个名字指向哪个真实实现"仍然由宿主的注册表决定，平台矩阵（§N6）才能成立。
@@ -361,21 +404,25 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs
 
 ### T4 跨平台矩阵的自动化
 
-**现状**：`platforms` 由人写在适配器里；"同一份视图在 Android 上长什么样"没验证过。
+**现状**：`platforms` 由人在 `libgen.config.json` 里声明（已不再是手写适配器文件，见 §5 T5）；
+"同一份视图在 Android 上长什么样"没验证过。
 **设计**：把 `registerLibrary` 的声明接进 `moobile-host regen`（它已经会读 `package.json`
 生成能力注册表），让"装了 `@ant-design/react-native` 就自动生成一份 RN 侧声明"。
 **判据**：`regen` 生成的注册表里出现组件库项；`platforms` 传错时**启动即报错**（已有）。
 
-### T5 组件库适配器目录
+### T5 组件库适配器目录 —— ✅ **换形态落地了**（2026-09）
 
-**现状**：试金石的 `registerLibrary` 调用写在 `verify.mjs` 里（约 20 行）。
-**设计**：`npm/moobile-host/libraries/antd.js` 这类**可选**适配器（与 `capabilities/db.js` 同构），
-`regen` 按依赖自动接。**判据**：新项目 `npm install antd` + `regen` 之后，
-MoonBit 侧直接写 `antd:Button` 就能跑，**宿主侧零手写**。
+**现状**：不再手写 `npm/moobile-host/libraries/antd.js`，而是由**同一份 manifest**
+生成应用侧的 `host/libraries.generated.js`（`components` / `jsonProps` / `events` / `wrap` / `platforms`）。
+
+**为什么换**：原方案的"手写适配器目录 + `regen` 自动接"里，适配器与生成的清单是**两份东西** ——
+而"两边各写一份就是等着漂"恰恰是 I2/I3 要消灭的。生成物里 `components` 显式列出 136 个键，
+与 MoonBit 侧标签**逐字相同**，`--check` 能发现任一侧被手改。
+**判据达成**：`examples/apps/antd-demo` 里宿主侧**零手写**（只有 `install()` 那一层的通用装配）。
 
 ### T6 落地形态：**一条应用侧命令**（= `PLAN.md` 的 I2 / I3 / I5）
 
-T1–T5 里那些"生成"的东西**收敛成一条命令**（暂名 `npx moobile-host libgen`），三段一条流水线：
+T1–T5 里那些"生成"的东西**收敛成一条命令**（`npx moobile-host libgen` —— 名字已冻结、且已落地），三段一条流水线：
 
 ```
 应用装好的组件库（node_modules/**/*.d.ts）
@@ -387,6 +434,12 @@ T1–T5 里那些"生成"的东西**收敛成一条命令**（暂名 `npx moobil
         ▼
    应用侧生成物（入库 + `--check`）
 ```
+
+**落地形态（2026-09，已实现）**：`npm/moobile-host/libgen/`（`dts-scan.js` 浅解析 →
+`resolve.js` 类型求值 → `manifest.js` 分类 → `emit-host.js` / `emit-moonbit.js` 两个发射器），
+入口是 `moobile-host libgen`（CLI 子命令名由脚手架那边冻结，实现住 `libgen/`）。
+读数（antd 6.6.4，2026-09-20 复核）：**71 个组件 / 65 个复合子组件 / 136 个键 / 9317 个 prop（4965 个进 DSL）**，
+提取 ~0.6s；生成的 MoonBit 包 12062 行、`moon check` 0 错误。
 
 **为什么必须"一条命令、一份 manifest、两个产物"**：宿主侧认的是**名字**
 （`MOBILE_HOST.components["antd:Button"]`），MoonBit 侧发的也是**名字**（标签字符串）。
@@ -463,6 +516,9 @@ T1–T5 里那些"生成"的东西**收敛成一条命令**（暂名 `npx moobil
 | 宿主注册调用生成 + `--check` + 门 | **0.5 天** | 纯 JSON 产出，比 MoonBit 那半简单 |
 | **合计** | **2.5–3 天** | 到"antd 上可用的 `libgen`"；最不确定的一环（浅解析够不够）已被本次量测消掉 |
 
+> ⚠️ **这张表是当时的估计，留档用**：到"antd 上可用的 `libgen`"这件事**已经做完**
+> （`npm/moobile-host/libgen/` + `bin/libgen.js`，见 §5 T6 / T2b；实际用时见 `docs/STATUS.md`）。
+
 **长尾不阻塞**：`Locale` / 跨组件 props / `Table` 泛型列的精确类型 —— 标 `unsupported` 即可，
 它们本来就该由人手写（`prop_json` 那条路一直开着）。
 
@@ -487,7 +543,7 @@ T1–T5 里那些"生成"的东西**收敛成一条命令**（暂名 `npx moobil
 
 
 
-### 明确未覆盖（别把 20/20 读成"antd 全部可用"）
+### 明确未覆盖（别把 26 项全绿读成"antd 全部可用"）
 
 表单校验、弹层、虚拟滚动、受控双向绑定、性能（有 Table 时的全树 diff 代价）**都没测**。
 
@@ -510,9 +566,14 @@ T1–T5 里那些"生成"的东西**收敛成一条命令**（暂名 `npx moobil
 ```bash
 cd <仓库根>
 
-# §0 / §4：端到端证据
+# §0 / §4：端到端证据（两条主证据）
 moon build --target js
-cd examples/apps/antd-spike/host && npm install && node verify.mjs     # 期望 20/20
+
+# ① 库本体试金石（离线：SSR 出 HTML 断言 + jsdom 真实点击）
+cd examples/apps/antd-spike/host && npm install && node verify.mjs     # 期望 26 项
+
+# ② 生成器的产物跑在真应用里（71 个组件用生成的 DSL 渲染）
+cd <仓库根>/examples/apps/antd-demo/host && npm run check              # 期望 24/24
 
 # §N7：这一项已进唯一验证入口
 cd <仓库根> && bash tools/verify_all.sh                                # 期望全 PASS（含"组件库接入"）

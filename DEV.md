@@ -177,9 +177,12 @@ AVD 的 `config.ini` 里已经设好真机尺寸（`hw.lcd.width=1080 / height=2
 **先记这一条**（其余脚本按需单跑）：
 
 ```bash
-bash tools/verify_all.sh              # 离线 6 项（不需要 Metro/模拟器/后端）
+bash tools/verify_all.sh              # 离线全套（不需要 Metro/模拟器/后端）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端三门
 ```
+
+⚠️ 项数**别抄**（这里曾长期写着"6 项"，而实际早就不是了）—— 跑一遍看汇总行，
+最近的分数见 [`docs/STATUS.md`](docs/STATUS.md) §2（唯一来源）。
 
 真机与"已发布版本"两套**不进**这个入口（前者要模拟器，后者要发版之后）：
 
@@ -200,6 +203,12 @@ bash tools/check_published.sh         # registry 上那一版对外可用吗
 | `node tools/sync_probe.js` | **同步链路 14 项**：拉取合并（服务器为准）、本地新增是**负 id + dirty**、推送后换成服务器 id、界面与服务器一致 | Metro + 后端在 8787 |
 | `python3 tools/verify_android.py` | **真机 21 项**：原生 SQLite / 播种 / 订阅心跳 / 同步拉取合并 / **新增·完成·删除**各自「先只落本地 → 同步后服务器跟上」/ 界面与服务器一致。脚本**自己把状态清成确定的**（`pm clear` + 重置服务器），可反复跑 | 模拟器 `moobile64` + 后端 + APK 已装 |
 | `node tools/console_dump.js` | **白屏排查**：把 console / exception / network-loadingFailed 三类事件原样打出来 | Metro 在 8081 |
+| `node tools/template_check.mjs` | **脚手架模板门**：生成 / 替换干净 / 生成物能编能构建 / 无头跑起最小 Todo（T1b·T1c·T3·T3b） | 无 |
+| `node tools/scaffold_probe.mjs` | **生成物撑得住真应用**：把"多文件 + 多页面 + 过滤"的应用覆盖进刚生成的项目里再跑 | 无 |
+| `node tools/template_compare.mjs` | **模板同源 T1**：生成物与 `examples/apps/todo-app/` 的差异逐条对着 `tools/template/deltas.txt` 判，清单外即红 | 无 |
+| `bash tools/template_compare_falsify.sh` | 证伪上面那条门（**会临时改工作区、跑完还原**，手动跑；不进 `verify_all`） | 无 |
+| `node examples/apps/host-swap-spike/verify.mjs` | **C0 换宿主**：同一份 MoonBit 产物挂到**零 Expo、零 Metro** 的裸 RN(Web) 宿主上，真 Chrome 里断言渲染 + 交互 + 产物 sha256（27 项）。`--with-e2e` 那一组会跑它；缺 Chrome/依赖记 SKIP | Chrome + 该目录 `npm install` |
+| `node tools/package_check.mjs` | **打包形态**：真打 tarball → 真 `npm install` → 用**装好的 CLI** `init` 一个项目，断言它拿到的是 `.gitignore`（npm 解包会把模板里的 `.gitignore` 改名成 `.npmignore` —— 详见 FINDINGS）。**发布前必跑**（`publish.sh` 会调它） | npm（要 registry）+ 网络 |
 
 `tools/verify_web.js` / `tools/measure_r1.js` / `db_probe.js` / `sync_probe.js` 用无头 Chrome + CDP，不依赖 UI；
 安卓那两个用 `uiautomator dump`，**不依赖 GPU 截图**，所以在无头模拟器上也能量。
@@ -221,7 +230,7 @@ Windows 上原生构建**需要 MSVC**：moon 自己用 `vswhere.exe` 找到 VS 
 
 ```bash
 moon publish                                  # 月亮包（mooncakes）
-bash npm/moobile-examples/apps/todo-app/host/publish.sh 123456   # npm 包（2FA 的一次性密码）
+bash npm/moobile-host/publish.sh 123456   # npm 包（2FA 的一次性密码）
 bash tools/check_published.sh                 # 发完再验一遍"外部视角能用"
 ```
 

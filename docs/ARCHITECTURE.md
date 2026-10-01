@@ -36,7 +36,11 @@
 ├─ L3 TEA 挂载 ───────────────────────────────────────────── 根包 app.mbt
 │    mount(model, update, view) -> Mount；start / snapshot / subscribe / element
 ├─ L2 翻译层 ─────────────────────────────────────────────── 根包 render.mbt
-│    VNode → React 元素；标签表 42 条 + 排除表 12 条 + 样式 map → RN style
+│    VNode → React 元素；标签表 44 条 + 排除表 12 条 + 样式 map → RN style
+│    ⚠️ 排除表里的 `canvas` 有**替代物**，但**不走这张表**：它是一条 `moobile:Canvas`
+│       的组件通道标签（载荷 = 18 条绘制指令的 JSON），见 `canvas/` 与
+│       `examples/apps/canvas-spike/README.md`。理由是那张表只装"两端都有等价物"的标签，
+│       而 canvas 是平台相关的（Web 原生 / RN 要 Skia）—— 混进去会毁掉它的诊断价值。
 ├─ L1 FFI 边界 ───────────────────────────────────────────── 根包 host.mbt
 │    ★ 全套代码里 %identity 不安全性**唯一的集中地**
 └─ L0 宿主（JS） ──────────────────────────────────────────── examples/apps/todo-app/host/
@@ -78,14 +82,48 @@ globalThis.MOBILE_HOST = {
 ```
 
 ⚠️ **必须提供的组件恰好是这 5 个**（`View` `Text` `Pressable` `TextInput` `ScrollView`）——
-它是 `render.mbt`（模块根包） 标签表的**值域**：42 条标签全部映射到这 5 个名字上，少一个，
+它是 `render.mbt`（模块根包） 标签表的**值域**：44 条标签全部映射到这 5 个名字上，少一个，
 对应标签就会在渲染时**点名报错**（`host.mbt` 的 `js_host_component`，不再返回 `undefined`）。
 
 > **契约版本 2（未发布，2026-09）**：`components` 的键空间**开放**了（第三方组件库的组件
-> 以 `antd:Button` 这种命名空间键注册），并新增三个**可选**成员：`events`（按标签覆盖事件
-> prop 名）、`wrapRoot`（Provider 包裹）、`platform`（平台闸门）。
+> 以 `antd:Button` 这种命名空间键注册），并新增四个**可选**成员：`events`（按标签覆盖事件
+> prop 名）、`wrapRoot`（Provider 包裹）、`platform`（平台闸门）、`native`（平台替代物，见下）。
 > 库与宿主各自声明版本，挂载时比对，不等就同时报出两个版本号。
 > 设计与证据见 [`design/DESIGN-COMPONENT-LIBRARY.md`](design/DESIGN-COMPONENT-LIBRARY.md)。
+>
+> #### `native` —— 浏览器能力的平台替代物
+>
+> ```js
+> MOBILE_HOST.native = {
+>   visibility: { subscribe(cb) { /* …返回退订函数… */ } },   // ← RN: AppState
+> }
+> ```
+>
+> **要解决的问题**：vendor 里的能力包（`sub/` `clipboard/` `nav/` `dialog/`）是 DOM 实现，
+> 在 RN 上 `document` 根本不存在 → **直接抛**。而 `#cfg(target="js")` **区分不了 Web 与 RN**
+> （RN 走的也是 js 目标），所以"这是不是浏览器"只能由**宿主声明**。
+>
+> **语义是"问不到就回退"，与 `capabilities/` 正好相反 —— 别混这两层：**
+>
+> | | 键 | 谁提供 | 缺失时 |
+> |---|---|---|---|
+> | 应用声明的能力 | `MOBILE_HOST.<name>`（如 `db`） | `capabilities/<name>.js`，由 `regen` 按依赖生成 | **抛错**（应用要了却没装，必须立刻说清） |
+> | 平台替代物 | `MOBILE_HOST.native.<name>`（如 `visibility`） | 宿主预设（RN 在 `native-rn.js`，Web **不装**） | **回退 DOM**（Web 本来就该走 DOM，不需要谁登记） |
+>
+> 库侧契约与回退逻辑在 `vendor/rabbita/cmd/host_native.mbt`（通道 + `subscribe_bool` /
+> `subscribe_json` 两个适配器 + `host_has_dom` 运行时探测），
+> RN 侧实现在 `npm/moobile-host/native-rn.js`。
+> **现阶段两个能力**：`visibility` ← `@sub.on_visibility_change`（布尔流）、
+> `geometry` ← `@sub.on_resize`（JSON 载荷）；其余按"有替代物但形状不同"
+> 排序见 `PLAN.md` §3.6 的 N5。
+>
+> 判据分两层，**别把前者读成后者**：`tools/native_rn_check.mjs` 用 stub 的 `react-native`
+> 验的是这个文件的**逻辑**（订阅 / 载荷映射 / 退订 / 覆盖）；
+> `tools/verify_android.py` 验**真机**（可见性：按 Home 键 → 回前台；尺寸：`wm size 400x800`
+> 后界面读数逐位相同，2026-09-21 通过）。
+> ⚠️ 但**真机断言自身的灵敏度没被证明**：把 `state !== 'active'` 写成 `===` 的证伪试了两次
+> 都没拿到有效结果（见 `docs/FINDINGS.md` 的「一处没证明的事」）—— "映射写反"这一条是由
+> 逻辑层的 `native_rn_check.mjs` 抓住的（那边证伪过：10 项红 1 项、退出码 1）。
 >
 > 顺带一条给宿主作者的提醒：**契约本身与 React Native 无关** ——
 > `npm/moobile-host/core.js` 只依赖 React，RN 的组件表在 `index.js` 里当**预设**。

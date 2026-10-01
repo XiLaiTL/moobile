@@ -1727,3 +1727,1119 @@ done
 
 **为什么值得记**：这条错的形状与 R7/R8 同一类 —— *报错信息指向的地方（patch 生成器）不是真因所在
 （文件末尾换行）*。而且它只在"新增文件 + 生成式 vendor"这个组合下出现，正常改代码不会碰到。
+
+---
+
+## 补记（E 轨道脚手架）：产物路径不是模块名的函数，以及"残留检查近乎同义反复"
+
+2026-09-20 动手做脚手架时实测到的五件事，都是"只在别人的机器上才暴露"的那一类。
+
+### 1. `moon build` 的 JS 产物路径，取决于模块在**构建根里的身份**
+
+同一个模块，两种布局（都是实测，不是推理）：
+
+| 场合 | 产物 |
+|---|---|
+| **工作区成员**（仓库 `moon.work` 里，或临时 `moon.work` 里带 `.`） | `_build/js/<profile>/build/<作者>/<模块>/<模块>.js` |
+| **独立模块**（空目录里 `moon new` + `moon add`，没有 `moon.work`） | `_build/js/<profile>/build/<模块>.js`（平铺） |
+
+后果：`tools/build.sh` 原本写死的那条嵌套路径，**在用户的机器上一定不存在**。
+所以搬运这一步从"`cp` 一个已知路径"改成"**发现产物**"（`npm/moobile-host/lib/build.js`）：
+先按预测路径找，不中就在 `_build/js/<profile>/build/` 下按文件名唯一命中，
+**匹配到多个就报错并列出候选**（歧义是要人看一眼的信号，不是可以猜的）。
+
+判据是可执行的：`tools/template_check.mjs` 两种布局各验一遍（成员形态走预测路径，独立形态走扫描）。
+
+### 2. `@sub.every` 在 node 里需要一个 `window`
+
+无头跑模板时第一下就炸（不是编译错，是运行时）：
+
+```
+ReferenceError: window is not defined
+    at _M0FP…rabbita3dom6window (...)
+    at …builtin__sub__loader (...)
+    at …diff__subs (...)
+```
+
+`@sub.every` 底下读的是 **`window.setInterval`**（订阅加载器先取 `window`）。浏览器与 RN 里它天然存在，
+node 里没有 —— 无头验证补了一个最小的同名对象（`tools/verify_headless.mjs` 里有说明，写明这是
+环境补齐而不是绕过）。**换成 `setTimeout` 并不解决**：真因是"这个能力由平台给"。
+
+顺带一个同源的小坑：补上 `window` 之后，验证脚本**跑完不退出** —— `setInterval` 是真的，
+事件循环一直挂着。第一次被自己坑了 120 秒（`timeout` 才收场），现在末尾显式 `process.exit`。
+
+### 3. npm **永远不把 `.gitignore` 打进 tarball**
+
+实测：`package.json` 的 `files` 里写了 `"template/"`，`npm pack --dry-run` 的 Tarball Contents 里
+**没有** `template/.gitignore`；单独列一条 `"template/.gitignore"` 之后才出现。
+
+后果正好落在"我们这边永远复现不出来"的那一格：`init` 从**包内模板**生成项目时，
+用户拿到的工程会没有 `.gitignore` —— 于是他的 `moobile.js`（1 MB 的产物）与 `_build/` 会被提交进仓库。
+所以 `publish.sh` 的 REQUIRED 自检里钉住了 `template/.gitignore`（发版自检是唯一能拦住它的地方）。
+
+> ⚠️ **2026-09-21 修正一半 —— 别把这一节当成完整的机制**（旧结论留在这里不删，按 `docs/README.md`
+> 第 2 条约定）。上面测的两件事**仍然成立**（`files` 里不列它 → tarball 里没有 ✓ 当天复验过）。
+> 但"列进 `files`"**不充分**：`npm install` 解包时会把包里的 `.gitignore` **改名成 `.npmignore`**，
+> 于是用户的项目里**还是**没有 `.gitignore`（只是换了个错法）。三份样本、"我们这边为什么看不见"
+> 与修复见下面**「补记（不发版先本地跑一遍，2026-09-21）」**。
+
+### 4. 门里用 `spawnSync(..., { shell: true })` 会被 `D:\Program Files\...` 打败
+
+`template_check.mjs` 第一次跑就红在这种形状上：
+
+```
+'D:\Program' is not recognized as an internal or external command
+```
+
+`shell: true` 把 `process.execPath`（`D:\Program Files\nodejs\node.exe`）按空格切开了。
+解法：**不用 shell**，node 一律走 `process.execPath` 的绝对路径，`moon` 交给 PATH（`moon.exe`）。
+
+### 5. "残留检查"差点写成同义反复 —— 补了两条真正会红的断言
+
+设计稿 §3.4.2 的取舍是"模板写真字面量，生成器替换 + **断言替换干净**"。第一版实现只查
+`placeholders` 清单里那几个字面量有没有残留 —— 而 `apply()` 一定会把它们替换掉，
+**所以那一半永远不会红**（第一次想证伪它时才发现：我往模板里塞 `moobile-template`，
+它被正常替换成了新名字，绿得很合理）。
+
+真正会漏的是另外两种，各补一条：
+
+| 补的断言 | 抓的是什么 | 证伪测试（都做过了） |
+|---|---|---|
+| **派生写法**：`moobile_template` / `moobileTemplate` / `MoobileTemplate` / `moobiletemplate` | 模板里出现了清单**没登记**的写法（snake 标识符、Android 包名那种紧凑写法） | 往 `App.js` 塞一行含 `moobile_template` 的注释 → 红，且**一个文件都没落盘** |
+| **身份锚点**：生成后 `moon.mod` 的 `name` / `package.json` 的 `name` / `app.json` 的 `name\|slug\|android.package` 必须**正好**是请求的名字 | "模板改了名而清单没跟着改" —— 那种情况下旧字面量根本没被匹配到，生成物里躺着的是**第三个名字** | 把模板的 `moon.mod` 改成 `XiLaiTL/moobile-template-v2` → 红：`模块名是 fals2-v2，应当是 fals2` |
+
+两条都在**落盘之前**判：失败时**不留半个项目**（半成品项目比报错更难查 —— 使用者会以为
+那个名字是正常的，然后把别人的名字提交进自己的仓库）。
+
+---
+
+## 补记（I2/I3 组件库生成器）：八个"形状对不上却给了结果"的坑
+
+> 背景：`libgen`（`PLAN.md` §3.8 的 I2/I3/I5）要从 `node_modules/antd/**/*.d.ts` 抽出
+> 「组件 → prop 名 + 类别」。它是**浅解析 + 小解析器**（不起 TypeScript），所以最有价值的
+> 记录不是"哪条语法没支持"，而是**那些不报错、只是悄悄少一批 prop 的退化** ——
+> 少一个可选参数，编译器一句话都不会说。
+
+### 1. 别名右值存成了 `{text, end}` 对象 → 每个 type 别名都变成 `[object Object]`
+
+`readTypeRhs()` 返回 `{text, end}`（文本 + 结束位置），而 `parseDts` 把**整个对象**塞进了
+`aliases[].rhs`。于是求值 `ButtonType` 时拿到的是字符串 `"[object Object]"` ——
+它以 `[` 开头、`]` 结尾，**正好撞上"元组"那条判据**。
+症状：`Button` 的 `type` / `color` / `variant` / `shape` / `size` 全被判成 `json`。
+**真因与症状隔了整整一层抽象**，而它不报错，只是"分类结果看起来怪"。
+
+解法：`aliases.push({ …, rhs: rhs.text })`。教训：**返回结构体的函数，取值时别漏字段**；
+凡是"字符串化之后恰好符合另一条判据"的地方，都值得加一条形状断言。
+
+### 2. `interface X extends A, B {` 集体解析不出来（零宽 lookahead 没吃掉空格）
+
+解析 extends 用的是 `/^\s*(?:extends\s+([\s\S]*?))?(?=\s*\{)/` —— lookahead 是**零宽**的，
+所以 `m[0]` 停在 `{` 之前的空格上，而代码紧接着检查 `src[i] === '{'` → 不成立 → `continue`。
+偏偏**没有 extends 的接口能过**（`m[0]` 是空串）。于是症状是精确的：
+**所有带继承的接口一起消失**，而那正好是 antd 里最常用的那批（`ButtonProps` / `CardProps`…）。
+第一版量到的"372 个 interface"里有 199 个是这么丢的。
+
+解法：匹配之后再吃掉空白。**零宽断言不消费字符**这件事在"匹配完还要看下一个字符"的代码里
+是经典陷阱。
+
+### 3. `import { type X } from '…'` 里的内联 `type` 没剥掉 → 整条 import 被丢
+
+TypeScript 4.5+ 的常见写法（`@rc-component/picker` 就用）。正则按 `Name as Alias` 匹配，
+`type PickerProps` 匹配不上 → 那条 import 被整条忽略 → `RcPickerProps` 查不到 →
+`DatePicker` 只有 11 个 prop。
+**"少 prop"是静默的**，所以这类退化特别值得防：它不是失败，是清单变小。
+
+### 4. `export * from './X'` 不认 → 那个包里所有名字都查不到
+
+`@rc-component/image/es/index.d.ts` 全文就三行：`import Image from './Image'; export * from './Image'; export default Image;`。
+只认 `export { … } from '…'` 的话，这个包等于空的 —— `RcImageProps` 解不开，`Image` 只剩 3 个 prop
+（连 `src` 都没有）。
+
+### 5. antd 6.6.4 的枚举全是 `(typeof _X)[number]`
+
+```ts
+declare const _ButtonTypes: readonly ["default", "primary", "dashed", "link", "text"];
+export type ButtonType = (typeof _ButtonTypes)[number];
+```
+
+不认这个写法就等于**把枚举整体丢掉**（64 个 prop 落进 `unsupported`）。
+解法：解析 `const` 值声明（注解式与初始化器式两种），并让求值器支持
+`typeof X` / `(typeof X)[number]` / `T['k']`。**这三样都是"结构上可求值"的**，
+和 `keyof` / `infer`（真要求值就得上编译器）不是一回事 —— 分开处理。
+
+### 6. React 属性面表写成了"平铺"，而真实类型是**继承链** → `Input.onChange` 消失
+
+`@types/react` 里是 `InputHTMLAttributes<T> extends HTMLAttributes<T> extends AriaAttributes, DOMAttributes<T>`。
+我们自备的那张兜底表第一版把每个接口写成"只有自己那几条"，于是
+`React.InputHTMLAttributes` 里**没有 `onChange`** —— 而 rc-input 的 props 正是
+`Omit<React.InputHTMLAttributes<…>, …>`。
+症状坏在"这是 I1 的招牌用例"：**受控输入在生成物里根本没有 `on_change` 这个参数**，
+编译报错是"这个函数没有 on_change 标签"，离真因（我漏了继承）隔了三层。
+
+顺带一条同源的事实：`children` 声明在 `DOMAttributes` 里 —— 所以"转发 DOM 属性的组件都有 children"。
+只在组件自己的 Props 接口里找 `children`，会得出"`Tag` / `Image` / `Statistic` / `Divider` / `Avatar`
+都不能有 children"的错误结论。
+
+### 7. React 具名事件类型没有参数表 → 被判成"信号"，受控输入当场失效
+
+`React.ChangeEventHandler` 是个**接口名**，浅解析不会去展开它的调用签名，
+于是"看不到参数" → 判成 `@cmd.Cmd`（信号）→ `Input.on_change` 收不到值。
+**家族够用**：`Change` / `Input` 两族就是"带值"，其余（Mouse/Keyboard/Focus/Pointer/…）是信号。
+解法：按名字里的家族判，而不是按"有没有参数表"判。
+
+### 8. 复合子组件的 `jsonProps` 键写成了裸名 → `Radio.Group.options` 没被 parse
+
+汇总时把子组件写成 `jsonProps["Group"]` 而不是 `jsonProps["Radio.Group"]`，
+而宿主注册表用的是 `antd:Radio.Group`。后果：`options` 以字符串身份交给 antd，
+报错是 antd 内部的 `options.map is not a function` —— 离"键写错了"隔了一整个组件。
+**教训**：跨边界的键必须**逐字对账**，而"两侧同源于一份 manifest"这条设计正是为了这个；
+实现时任何一处拼接不一致，都会以最远端的形态爆出来。
+
+### 另外两个（不是解析问题，但同样静默）
+
+- **联合里的"不可达分支"会污染分类**：`Table.rowKey?: string | ((record) => string)`
+  含函数分支 → 被算成"最宽 = json" → 调用点必须写 JSON 文本，而它 99% 的用法就是普通字符串。
+  函数分支对我们**不可达**（回调进不了 prop 通道），不该参与"最宽类别"的判断。
+- **`unused_mut` 在本仓库是错误**：生成的 DSL 里"只有 `attrs?` 的组件"一次都不改 `a`，
+  于是 `let mut a` 直接编译失败。生成器必须按"有没有参数"决定写不写 `mut`。
+
+### 工具链层面（留给下一个写生成器的人）
+
+- **Windows 上 `open(path, 'w')` 会把 `\n` 翻译成 `\r\n`**。我用脚本批量改文件时踩到，
+  被仓库的 `lf_normalize --check` 逮住（一次 19 个文件）。解法：`open(..., newline='\n')`，
+  或者干脆用带写入能力的工具而不是脚本。
+- **在 Git Bash 的 heredoc 里写 JS 正则，反斜杠会被吃掉一层**：
+  `.replace(/\/g, '/')` 落到文件里变成 `.replace(/\/g, '/')` —— 正则未闭合，
+  而报错是 `Private field '#materializeFields' must be declared in an enclosing class`
+  （因为语法树从那句起就崩了）。**同一个坑我踩了两次**，解法是能不用转义反斜杠就不用
+  （`path.sep` 代替 `\`）。
+
+---
+
+## 补记（计划文档整理，2026-09-20）：三处互相矛盾的分数，以及"线上那一对"到底自不自洽
+
+整理 `PLAN.md` / `SCAFFOLD.md` / `DESIGN-COMPONENT-LIBRARY.md` 时实查到的东西。
+**没有一条是"读文档发现的"，每条都跑过命令** —— 这也是为什么它们值得记。
+
+### 1. 同一份 `PLAN.md` 里，同一个数字有三个版本
+
+| 事实 | 文档里同时写着 | 实测 |
+|---|---|---|
+| 离线门项数 | 5 项（§3.4 C2）· 6 项（A5 与 `ci.yml` 注释）· 7 项（顶部快照）· 9 项（SCAFFOLD §6） | **12 项**（`bash tools/verify_all.sh`） |
+| Web 端到端 | 26/26 与 27/27，**同一份文件的两段** | 27/27（加了订阅心跳那条之后没回头改前面） |
+| 真机 | 21/21 与 14/14，同一份文件的两段 | 21 项（`AGENTS.md` 记的也是 21） |
+| 已发布什么 | 顶部停在 `0.1.0` | 月亮包 **`0.2.2`**、npm 宿主 **`0.2.0`** |
+
+**真因不是"忘了改"，而是"同一件事有多处落点"**：PLAN 顶部一段"进度快照"、各轨道小节里各写一次、
+设计文档顶部再来一张状态表 —— 每次有新数字就顺手写进当下正在改的那一处。
+**解法（已经落地）**：新增 [`docs/STATUS.md`](STATUS.md) 作为**唯一来源**，
+其他文档一律只留一句链接；`ci.yml` 的注释里明写"别抄这个数"。
+
+### 2. "线上那一对"自不自洽 —— 靠拉 tarball 才敢下结论
+
+契约从 `1` 升到了 `2`（`app.mbt:13` 与 `npm/moobile-host/core.js:24`），
+而线上是**更早发出去的**两个包 —— 那就有一个真问题：**线上库和线上宿主对得上吗？**
+光看源码回答不了（源码是两边都 `2`）。**做法：把发出去的那一份拉下来看**。
+
+```bash
+npm view moobile-host@0.2.0 dist.tarball      # → .../moobile-host-0.2.0.tgz
+curl -sL <tarball> | tar -tzf - | sort        # 清单：LICENSE / README.md / bin/cli.js /
+                                              #        capabilities/db.js / index.js / package.json
+tar -xzOf <tarball> package/index.js | grep CONTRACT   # → CONTRACT = 1
+curl -s https://mooncakes.io/api/v0/modules/XiLaiTL/moobile | head -c 200   # → "version":"0.2.2"
+```
+
+结论两条，都反直觉：
+
+- **线上那一对是自洽的**（`1` ↔ `1`）—— 因为契约 `1 → 2` 这一批**还没发**。这属于"运气好"，
+  只要当时先发了月亮包再想起 npm 包，线上就会错配（启动即抛），而这在本地**永远复现不出来**。
+- **线上包里连 `core.js` 都没有**（更别说 `lib/init`、`libgen`）—— "工作区里的包"比"线上的包"多一整套脚手架。
+  所以 `PLAN` 里 S1「干净机器三条命令跑起来」这条判据**当前不成立**，不是"没验"，是"验不了"。
+
+**顺带修掉一个文档里说过头的结论**："demo 已经改用远端包"（§3.1 的目标）——
+`examples/apps/todo-app/moon.mod` 里确实写着 `XiLaiTL/moobile@0.2.2`，但**它同时是 `moon.work` 的成员**，
+工作区会让这个名字解析到本地源码。也就是说那半条判据是"声明 + 编译级冒烟"，不是"跑起来"。
+（`moon.work` 会覆盖版本这条，以前没写下来过。）
+
+### 3. 两个"抄来的数字"都错了，而且错法不一样
+
+| 文档里 | 实测 | 错法 |
+|---|---|---|
+| `components.generated.mbt` **10931** 行 | **12062** 行 | 生成物长大之后没人回头改（复合子组件那一批加进来时长的） |
+| manifest **9318** 个 prop | **9317** | 差一 —— 这种不会被任何人发现，除非跑一遍数出来 |
+| 无头门"12 项" | **10 通过 + 2 SKIP** | 把 SKIP 也算成了"项" |
+
+**教训**：`wc -l` 和 `counts.props` 这种**一次就出**的数字，也应该由文档引用"当场跑一遍"，
+而不是从上一版文档里复制。生成物头部自己写着 `组件 71 个｜生成的参数 4965 个｜未生成 4352 个`
+（4965 + 4352 = 9317），**生成物自己就是最好的旁证** —— 文档该抄它，而不是抄彼此。
+
+---
+
+## 补记（T1 同源门，2026-09-21）：手量的清单是错的，以及门自己也会瞎
+
+装 SCAFFOLD §6 的 T1（生成物 vs demo 的同源比对器，`tools/template_compare.mjs`）时实查到的东西。
+**这一节的共同主题是："机器算出来的集合"打败"人记得的差异"。**
+
+### 1. 手量出来的清单：漏登 3 处、多登 1 处
+
+`tools/template/deltas.txt` 是 2026-09-20 **手量**的（当时记的是"66 行、24 条差异"）。2026-09-21
+把判据写进代码之后，第一件事就是让它自己算一遍 —— **清单本身是错的**：
+
+| # | 清单里怎么写的 | 实际 | 错法 |
+|---|---|---|---|
+| 1 | `app.json:icon / adaptiveIcon / plugins` | 还差 **`expo.web.favicon`** | 漏登（它属于同一类"assets 差异"，人脑归完档就停手了） |
+| 2 | （没有这一条） | 生成物**显式**写 `"newArchEnabled": true`，demo 没写 | 漏登（**后加的**字段） |
+| 3 | `moon.pkg` 只登记了 `import` 与 `注释` | `exports` 数组的**排版**也不同（`[ "app" ]` vs 三行） | 漏登（同一个值的两种写法 —— 人眼扫过去觉得"一样"） |
+| 4 | `package.json:private`（why 写"生成物是 `private: true`"） | **两边都是 `true`** | **多登**：它根本不是差异 |
+
+**真因**：手量差异靠的是"**我记得哪里不一样**"，而不是"**程序算出来的集合**"。于是漏的恰好是两类
+——**后加的字段**（第 2 条）和**看起来一样的差异**（第 1、3 条）。多登的那条更隐蔽：它读起来像一条
+**事实**（"生成物是 private: true"，这句是真的），而清单要的是**差异** —— 把两侧都打出来才发现
+"事实为真"和"它构成差异"是两回事。
+
+**解法**（三条，方向都是"别让它再靠印象"）：
+
+- 第 3 条**没有**写进清单，而是**把模板改成与 demo 同一个排版**（模板是真源，改它 = 改用户拿到的东西；
+  这次动的纯粹是排版，`moon check` 0 错误）。**判据：能用改代码消掉的差异，就不要变成清单里的一行** ——
+  清单越短，剩下的每一行才越有人看。
+- 第 1、2 条补进清单（它们是真实存在、需要人理解的差异）。
+- 第 4 条删掉，并顺手把它变成门的**一个功能**：**死条目**检查。登记着、而实际上早就不是差异的行会被
+  点名（但**不弄红** —— 见下）。
+
+### 2. 门要有"判决之后"的一层，否则清单会变成漂移的藏身处
+
+"清单之外的差异 = 红"这句话，反过来读就是：**只要往清单里加一行，任何差异都能变合法**。
+而 SCAFFOLD §7 明确说这条正是要防的（"往 `deltas.txt` 里不断加行来掩盖漂移"）。
+
+所以门做了三层，而不是一层：
+
+| 层 | 判据 | 抓的是 |
+|---|---|---|
+| 文件级 | 只在 demo / 只在生成物里的文件必须登记 | 新增/删掉一个文件（最容易发现，也最容易被忽略） |
+| **字段级** | 声明的字段**删掉之后，剩下的部分必须一模一样**（JSON 按键、文本按"去掉注释后逐字比"） | **漂移**藏进了已登记的文件里 |
+| **死条目**（不弄红，只点名） | 登记着、实际已不存在的差异 | **清单在腐烂** |
+
+几个具体决定，理由都不是"更严格"，而是"报错要能指向真因"：
+
+- **JSON 走"删掉已声明路径再比"**：这样"没登记的键变了、少了、多了"都会红。清单里因此把
+  `dependencies` 拆成了**逐个键**（`dependencies.moobile-host` 等）—— 粒度粗到"整个 dependencies 对象"，
+  就等于把漂移的入口开在那里。
+- **`import` 只做单向子集检查**（生成物的每一条都必须也在 demo 里）：理由是"demo = 模板 + 能力，
+  只许多、不许少"。这样**不用把能力名字抄进比对器**（抄了就会漂），而"模板偷偷多一条能力依赖"照样红。
+- **`注释` 走"去掉注释后逐字比"**：它把清单里"代码完全相同，只有注释不同"那句断言**变成可执行的**，
+  而不是留给人相信。
+- **不写字段的条目 = 整份文件允许不同**：这是最弱的一档，只给了 3 个"两份本来就各写各的"文件
+  （`registry.generated.js` / `metro.config.js` / `.gitignore`）。门的输出里**明写**"整份文件允许不同
+  （清单未细化到字段）"—— 免得有人把它当成一条强检查。
+- **死条目不弄红**：红的意思是"有清单外的漂移"；而"清单该删一行"是另一件事。把后者也弄红，会诱人
+  为了绿去删清单里的**真**条目 —— 那才是灾难。
+
+### 3. 装门时踩的三个自己的 bug（三个都"红得不像真因"）
+
+| 现象 | 真因 |
+|---|---|
+| 4 个文件同时红，报的都是"清单漏登"，可清单里明明写了 | `contentRules` 用**文件**当 Map 的键 → 同一文件的第 2、3 条把第 1 条**覆盖**了（`package.json` 有 5 条、`app.json` 有 3 条） |
+| `package.json:name` 明明登记了，删掉之后还是不同 | 顶层键的删除走了 `getPath(obj, "")` → `"".split(".")` 得到 `[""]` → 找到 `obj[""]` → **静默什么都没删** |
+| 删掉 `web.favicon` 之后两侧还是不同 | 删空的 `web: {}` 与"根本没有 `web` 键"被判成不同 → 一处已登记的差异被算成**两处** |
+
+三条的**报错信息都在指别处**（"清单没登记" / "有一处差异清单里没有"），真因却都在比对器自己身上 ——
+AGENTS.md 那句"**报错的第一行不一定是真因**"的又一次现场。所以工具里补了三条对价：
+删单段路径单独分支、比较前 `prune()` 掉空对象、失败时打印"**哪一侧、哪个文件、去掉已声明部分之后
+还剩哪一行/哪一个键不同**"。
+
+### 4. 证伪（`tools/template_compare_falsify.sh`，8 例全过）
+
+| # | 往哪塞 | 期望 | 实测 |
+|---|---|---|---|
+| 0 | （什么都不塞） | 绿 | ✅ 绿 |
+| 1 | demo 多一个未登记的文件 | 红 | ✅ 点名那个文件 |
+| 2 | 模板改了**共享依赖**的版本（`react-native`，没登记的键） | 红 | ✅ 报 `dependencies.react-native` |
+| 3 | 模板多一条 demo 没有的 `import` | 红 | ✅ 报 demo 缺哪一条 |
+| 4 | 模板改了 `App.js` 的**代码**（清单说这里只有注释不同） | 红 | ✅ |
+| 5 | 模板改了 `app.json` 的未登记字段（`orientation`） | 红 | ✅ |
+| 6 | demo 改 `.gitignore`（清单里是"整份文件允许不同"） | **绿** | ✅ 绿（这一档是**有意**放过的，写下来免得下次当成漏洞） |
+| 7 | 往清单里塞一条根本不存在的条目 | **绿 + 点名** | ✅ 绿，且出现在"死条目"里 |
+
+⚠️ **第一版证伪脚本是"假证伪"**：`sed` 的模式写漏了一个前缀，探针**根本没塞进去**，而报出来的结论是
+"**门没有红**" —— 看着像门坏了。所以脚本里加了一道：探针必须先在文件里出现（`grep`），否则报的是
+"探针没塞进去（脚本的错）"，而不是"门没红"。这与 R7 补记里那次假证伪（拿错的 zip 跑出了 ✅）是
+**同一类错误：验证者自己没被验证**。
+
+同样地，脚本跑完会**逐文件 `cmp`** 校验"确实还原了"（它会临时改工作区里真实的文件），并且 `trap` 到
+`EXIT/INT/TERM` —— 被 Ctrl-C 打断也会还原。这也是它**不进 `verify_all.sh`** 的原因：
+一条"每次跑都改源码"的门不适合放进日常入口。
+
+### 5. 这条门现在的位置
+
+`node tools/template_compare.mjs` 约 1 秒（只读文件、跑一次 `init`），已进 `verify_all.sh`
+**并发那一组**（和模板门、探针门一起）。清单条数与死条目由它自己打印 ——
+**别抄进文档**，抄一份就会漂一份（这正是上一节第 3 条的教训，也是 `docs/STATUS.md` 顶部那条规矩的由来）。
+
+---
+
+## 补记（C0 换宿主，2026-09-21）：同一份产物挂到"零 Expo"的裸 RN 宿主上
+
+`PLAN.md` §3.4 的 C0 要回答的是 §1.2 那句**断言**：「宿主是可替换件 —— 库与具体 RN 版本无关，
+也与 Expo 无关」。它在那之前只有**读代码 + 间接证据**：全文搜 `AppRegistry` 只搜得到
+「注释里说换成它会怎样」。落地物是 `examples/apps/host-swap-spike/`，判据是它自己的
+`verify.mjs`（**27 项，全过**）：
+
+```bash
+cd examples/apps/host-swap-spike && npm install
+node verify.mjs        # 编产物 → 搬产物 → esbuild 打包 → node 静态服务 → 真 Chrome（CDP）断言
+```
+
+**结论**：同一份 `moobile.js`（模板应用，sha256 逐字节对得上）在**零 Expo、零 Metro** 的
+宿主下渲染出「待办 / 还有 0 件」，并且 输入 / 添加 / 勾选 / 删除 四条交互都回到了 MoonBit 的
+`update`。**换宿主改的只有两处**：入口那 3 行（`registerRootComponent` → `AppRegistry`）
+和一行 resolver 映射（`react-native` → `react-native-web`）；库、产物、`App.js`（4 行）一个字节没动。
+
+### 边界（别把结论读大）
+
+- 验的是**web 目标**上的裸 RN 宿主（`react-native-web` = RN API 的 web 实现）——
+  **不是**"裸 native RN（gradle + 真机）也验过了"，那条路成本高、这一轮没做。
+- 挂的是**模板应用**（零能力），不是 `todo-app`。理由见下第 1 条。
+
+### 边界不是"产物"，是"能力注册表"（实测，不是推理）
+
+"`todo-app` 挂不上裸宿主"这句如果不验，就又是一句读代码的断言。把它跑了一遍（临时把
+spike 的 `App.js` 指向 demo 的产物，跑完即还原，`cmp` 校验过）：
+
+| 尝试 | 结果 | 说明 |
+|---|---|---|
+| demo 产物 + **demo 自己的注册表** | ❌ **连打包都过不去**：`Could not resolve "expo-asset"`（来自 `todo-app/host/node_modules/expo-sqlite/build/hooks.js`） | 注册表 `registry.generated.js` → `moobile-host/capabilities/db` → `expo-sqlite` → `expo-asset`。**把平台拉进来的是注册表那一环**，不是产物 |
+| demo 产物 + **空注册表**（只为让包能打出来） | ⚠️ 包能打（零 Expo ✓，2.7 MB），但页面**全空** | 启动那条 db 命令在 MoonBit 侧直接 abort。栈：`$panic ← abort ← XiLaiTL/moobile/sqlite::ensure ← sqlite::exec ← todo_app::open_and_read` |
+
+**所以 §1.2 推论 1 那句话是准的**：换平台 = **写一个新宿主**（含能力的适配），产物本身是干净的。
+
+⚠️ 顺带记一条**没做好的地方**：`sqlite/ensure` 的 panic 消息里**写着**"怎么装"（`npx expo install
+expo-sqlite` + 怎么注册，源码 `sqlite/*.mbt` 里看得到），但在上面这条路径上，**控制台里只有一条
+未捕获的 `$PanicError` + 栈**（CDP 抓到的控制台输出只有 React DevTools 的 info 行），
+页面又全空 —— 也就是"报错要说清装什么"这条（判据 S3）在**新宿主**上没兑现。
+这与 `registry.generated.js` 注释里"用到时会 fail-fast **并说明怎么装**"有落差，
+值得 N/I 轨道复核（要么让 abort 走 console.error，要么宿主侧注册表在挂载时先自检并打出来）。
+
+### 三个真问题（都是"看着已经做对了"的那种）
+
+| # | 现象 | 真因 | 处置 |
+|---|---|---|---|
+| 1 | 想直接挂 `todo-app` 的产物，但它的 `init_app = (initial(), load_cmd(emit))` —— **启动就发 db 命令**，而 db 能力现在是 `expo-sqlite` 实现的 | 能力实现本来就是**宿主侧**的东西（§1.2 推论 1）。把它混进来，"宿主能不能换"就被"有没有 sqlite"盖住了 | 这一轮挂**模板应用**（零能力）：**只换一个变量**。带能力的宿主（换一个 db 实现）是下一步，不是这一轮的结论 |
+| 2 | 从仓库根跑 `node examples/apps/host-swap-spike/verify.mjs` 红在 `Could not resolve "react-native-web"`，而 `cd` 进去跑是绿的 | **esbuild 的 `alias` 值按 cwd 解析**，不是按 import 它的那个文件 | 加 `absWorkingDir: HERE`。⚠️ 这类"只有从某个目录跑才对"的检查特别危险 —— `verify_all.sh` 正是从仓库根调的，第一次接进去就红了 |
+| 3 | `npm install` 报成功，`verify.mjs` 却说 esbuild 没装 | 本机 npm 的**生效配置是 `omit=["dev"]`**（`npm config ls -l` 里看得到），devDependencies 被**静默跳过** | esbuild 放进 `dependencies`（spike 没有发布/生产的区分，宁可一条命令到位）。⚠️ 与仓库记过的「`.gitignore` 不进 tarball」是同一类：**配置里写了 ≠ 会发生**，得有一处证明它真的发生了（那条后来还被**修正了一半**：不是"没打进去"，而是"**装的时候被改了名**" —— 见本文 2026-09-21 的补记） |
+
+### 两个 RNW 的 DOM 事实（写断言时踩的）
+
+- **RNW 把 `<Text>` 渲染成两层**：外层 `div` + 内层 `span`。所以按"文本最内层元素"定位时，
+  它的 `parentElement` 是**文本自己那一层**，不是行 —— 行要再往上一层。
+  （稳定的走法：从最内层往上找"最近的、同时包含这一行另一个标记（这里是「删」）的祖先"。）
+- **RNW 这一版没给 `Pressable` 加 `role="button"`**：靠 `[role=button]` 找按钮会**静默扑空**，
+  然后点在一个不可点的元素上、界面毫无变化 —— 报出来的是"交互没生效"，真因是"没找到按钮"。
+  所以那条断言现在**同时报元素尺寸**（找到的是 22×22 的勾选块，还是 150×20 的文本行，一眼可辨）。
+
+### 一条值得复用的做法：**新鲜度注入**
+
+"页面渲染出来了"只说明**某个** bundle 跑通了，说明不了跑的是**这一次**编的产物 —— 而本仓库在
+别处正好踩过"读到陈旧产物"的坑（`uiautomator dump` 失败时留下上一次的 xml）。
+这里的做法：`verify.mjs` 在**打包那一刻**算 `moobile.js` 的 sha256，用 esbuild 的 `define`
+注入成 `__ARTIFACT_SHA__`，页面上读回来的值必须与磁盘一致，否则红。
+
+> 同样地，`verify.mjs` 把"环境不够"（没 Chrome / 没装 esbuild）用**退出码 2** 报出来，
+> 由 `verify_all.sh` 记成 **SKIP** 而不是 PASS —— 判据的全部价值就是"真浏览器里渲染出来了"，
+> 拿不到浏览器时**悄悄给个绿**等于把判据作废。
+
+---
+
+## 补记（不发版先本地跑一遍，2026-09-21）：S1 链路两段都通了，以及 npm 解包会**改文件名**
+
+`docs/STATUS.md` §1 那三条推论里最硬的一条是"**不发布，S1「干净机器三条命令」就不成立**"
+（线上 `moobile-host@0.2.0` 里没有 `init`）。发版要 2FA、只能由账号持有人做 ——
+但**那条链路本身可以在本地先验**。于是照着"用户会遇到的两种形态"各跑了一遍：
+
+| 形态 | 怎么造出来的 | 结果 |
+|---|---|---|
+| 从**仓库布局**生成 | `node npm/moobile-host/bin/cli.js init my-app` | `npm install`（488 包）→ `npm run build`（moon 34 任务 0 错误，418 KB 产物）→ `npm run web` → 真 Chrome **9/9**：首屏「待办 / 还有 0 件」、输入回灌、点「添加」→ 计数 1、条目出现、输入框清空、全程无 console 错误 |
+| 从**打包形态**生成 | `publish.sh --dry-run` 全过之后手工 `npm pack` → `npm install <tarball>` → 用**装好的那份 CLI** `init clean-app` | 同上 **9/9**（宿主包确认来自 tarball：`package-lock.json` 里 resolved = `file:../../moobile-host-0.2.0.tgz`） |
+
+那 9 条断言的脚本（`probe-web.mjs`）是为这次实验写的一次性工具，住在仓库外的
+`s1-local-run/`，**没有**进 `tools/`。
+
+### 抓到的东西：`npm install` 解包时会把 `.gitignore` **改名成 `.npmignore`**
+
+第二段一开始就不对：从**打包形态**生成出来的项目里是 **`.npmignore`，没有 `.gitignore`**。
+三份样本（都是实测）：
+
+| 样本 | `template/.gitignore` 在不在 |
+|---|---|
+| `npm pack --dry-run --json` 的条目清单 / `tar -tzf <tgz>` | ✅ 在（`files` 白名单那一行没白写） |
+| 手写 `tar -xzf <tgz>` 解出来 | ✅ 还是 `.gitignore` |
+| **`npm install <tgz>` 装进 `node_modules` 之后** | ❌ **变成了 `.npmignore`** |
+
+**后果**：用户 `init` 出来的项目**没有 `.gitignore`** → 他会把 `moobile.js`（1 MB 产物）与
+`_build/` 提交进自己的仓库。**而这在我们这边永远复现不出来** —— 仓库里所有脚手架门
+（`template_check` / `scaffold_probe` / T1）都是**从仓库布局的模板**生成的，
+只有"真打包 + 真安装 + 用装好的 CLI 生成"这一步看得见。
+
+⚠️ 这一条把仓库里原先那句**修正了一半**（旧说法与推翻过程都留在原处，见下面
+「补记（E 轨道脚手架）」第 3 条）：`files` 里那一行**仍然必要**——不列它，tarball 里
+**一个 ignore 文件都没有**（2026-09-21 复验过：把 `"template/.gitignore"` 那一行去掉，
+`template/` 还在白名单里也没用）——但它**不充分**：名字能不能到用户手里，最后取决于 `init`。
+
+### 处置（三件，都做了证伪）
+
+| # | 做了什么 | 证伪 |
+|---|---|---|
+| 1 | `lib/init.js`：**永远写出 `.gitignore`**（模板里是 `.npmignore` 就把这个名字还原）；模板里两个都没有 → **当场报错**、不生成残缺项目（"半成品项目比报错更难查"，与它旁边两条断言同一个处置） | 把还原那一行关掉 → 下面两条门都红（见下） |
+| 2 | **新门** `tools/package_check.mjs`：真打 tarball → 真 `npm install` → 用**装好的 CLI** `init` → 断言生成物里有 `.gitignore`、没有 `.npmignore`、文件集合与包内模板逐一对得上。挂在 `publish.sh` 里（**发布前必跑**，不过就不许发） | 关掉修复 → **10 项里红 2 项** |
+| 3 | `tools/template_check.mjs` 加一条**离线代理**（14 → 15 项）：把模板副本里的 `.gitignore` 改名成 `.npmignore`（npm 干的就是这件事），用 `MOBILE_TEMPLATE_DIR` 指过去再生成一遍 | 关掉修复 → 该条红 ✓ |
+
+修完重打 tarball → `clean-app` 生成出来是 `.gitignore` ✓，而且它照样在真浏览器里 9/9 通过。
+
+### 顺带两条实测事实
+
+- **`file:` 装的包里没有 `template/`**（那是 `publish.sh` 发包时才拷进去的）—— 所以从 `file:`
+  依赖的安装形态跑 `npx moobile-host init` 会**直接失败**（报错会把找过的路径一条条列出来 ✓）。
+  也就是说 `init` 只在**仓库布局**或**打包形态**下工作。这与"demo 吃 `file:` 依赖"不矛盾：
+  demo 不调 `init`。
+- 两条路上 `moon build → moobile-host build` 都**命中预测路径**（独立模块形态：
+  `_build/js/debug/build/<模块名>/<模块名>.js`），与仓库成员形态的
+  `<作者>/<模块>/<模块>.js` 不同 —— 这条早就有记载，这次是两条路各复现了一次。
+
+## 补记（N2 宿主能力通道，2026-09-21）：`#cfg(target="js")` 分不开 Web 与 RN
+
+### 真因：裁线的维度错了，不是粒度错了
+
+一直默认"用 `#cfg(target="js")` 就能把浏览器专有的东西裁掉"。**这条对 RN 不成立**：
+RN 走的也是 js 目标（`moobile-host/lib/build.js` 就是 `moon build --target js`），
+**Web 与 RN 是同一个 target**。
+
+后果不是"降级"，而是**直接抛**：`@dom.document()` 编出来是 `() => document`，
+Node / RN 里 `document` 是 `undefined` → 调 `.as_event_target()` 立刻 TypeError。
+证据：`moon test --target js` 跑在 Node（`typeof document === 'undefined'`），
+所以 `sub` 的 visibility 测试**必须先 mock 一个 `document` 才能跑**。
+
+含义：**"这是不是浏览器"只能由宿主声明，不能由编译目标推断。** 这才是 `MOBILE_HOST.native`
+存在的理由 —— 不是"多一层配置"，是唯一能表达这件事的维度。
+
+### 量出来的 dom 引用分布（11 个包，199 处）
+
+| 类 | 处数 | 判据 |
+|---|---|---|
+| **死代码** | **88（44%）** | `vdom/diff.mbt`(35) + `vdom/hydrate.mbt`(39) 是**整套 DOM 渲染器**；`VDom::initialize` 全仓只有 3 个调用者 —— `host_browser.mbt` / `host_hydration.mbt` / `host_ssr.mbt`，**全是原版浏览器/SSR 宿主**。`react_host.mbt` 对 `@dom` 零引用 |
+| 活类型 | 65 | 事件类型别名、WebSocket/Sub 签名 |
+| 活运行时 | 46 | 能力包里的 `window.` / `document.` 调用 |
+
+`sub/sub.mbt` 那 26 处还要再分三类，**不能一刀切**：
+`every` / `on_animation_frame` 用的是标准 JS 全局（`setInterval` / `requestAnimationFrame`），
+**RN 上本来就有** —— 这正是 `@sub.every` 真机验过的原因；要接替代物的只有 `on_resize` /
+`on_scroll` / `on_url_changed` 那一档。
+
+### 踩到的坑：新增文件没进 `files` 白名单
+
+给 `moobile-host` 加 `native-rn.js` 时忘了改 `package.json` 的 `files`。真因：`npm pack`
+**只打白名单里的东西**，新增文件不会自动进去 —— 表现会是"发布出去的 `index.js`
+`import './native-rn.js'`，而那个文件不在包里"。
+
+三道防线里**哪道先响**值得记下来：
+
+| 检查 | 什么时候响 | 局限 |
+|---|---|---|
+| `git status` | **不响** | `npm/moobile-host/` 在白名单外的新文件本来是 untracked，看得见；但**发布形态**它验不了 |
+| `check_npm_fresh` | 副本陈旧时响 ✓（本轮就红了：`内容不同 index.js` / `副本里缺 native-rn.js`） | 它比的是**仓库里的 `file:` 副本**，所以要先刷新副本才能复绿 —— 顺序是"改 `files` → 重装副本 → 门复绿" |
+| `npm pack --dry-run` | **最直接** ✓ | 手动跑，不在门禁里 |
+
+处置：`files` 加 `native-rn.js`，重装 `examples/apps/todo-app/host/node_modules/moobile-host`
+（`check_npm_fresh` 复绿：一致 20 个文件），并用 `npm pack --dry-run` 直接确认
+`native-rn.js 3.1kB` 在 tarball 里。
+
+### 一条设计取舍：`native` 与 `capabilities/` **策略相反，不能合并**
+
+| | 键 | 谁提供 | 缺失时 |
+|---|---|---|---|
+| 应用声明的能力 | `MOBILE_HOST.<name>`（`db`） | `capabilities/<name>.js`，`regen` 按依赖生成 | **抛错**（应用要了却没装） |
+| 平台替代物 | `MOBILE_HOST.native.<name>`（`visibility`） | 宿主预设（RN 在 `native-rn.js`；Web **不装**） | **回退 DOM**（Web 本来就该走 DOM） |
+
+两者都想"用同一个注册表"，但缺失时的正确行为**正好相反** —— 合并会让注册表无法区分该用哪种策略。
+
+### 判据分了两层，别读混
+
+- ✅ **逻辑层**：`tools/native_rn_check.mjs`（10 项，已进离线门禁）用 stub 的 `react-native`
+  真 import、真调 `subscribe`、真断言载荷映射与退订。`native-rn.js` 此前是**纯盲区**：
+  `import 'react-native'` 而那个包本仓没装，`moon check` 与其它离线门都编译不到它。
+- ❌ **真机层**：`AppState` 在真机上**何时**发 `change`、发出来的 state 是不是那三个字符串 ——
+  **仍未验**，要 `tools/verify_android.py` 的形状（按 Home 键 → 回前台）。
+
+## 补记（N2 真机层，2026-09-21）：通道通了，但三次"对照实验"白跑
+
+### 结论先说
+
+`@sub.on_visibility_change` 在**真 Android 上真的走通了**宿主能力通道 ——
+`verify_android.py` 里新加的 3 条断言全过：界面上的 `可见` 计数按 Home 后 `1 → 3`，
+回前台后最近一次是 `显`（载荷方向对）。这不是"编译过"，是"事件到了、方向也对"。
+
+### 真机上"删除"是挂的，而且**一直都在挂**
+
+同一次运行里 `删除在真机上生效` 与 `同步后服务器上那条也没了` **稳定失败**（跑了两遍），
+而新增 / 勾选 / 同步 / 拉取全过。`docs/STATUS.md` 记的"真机 21/21"**已经不准**。
+
+**判定"不是这次改动引入的"用了可信对照**（这一步值得单独记，因为它差点做成假的）：
+
+| 做法 | 结果 |
+|---|---|
+| 把 app 改动 `git checkout` 回 HEAD、重编、跑 | ❌ **无效** —— 见下面两条坑，跑的还是新代码 |
+| 同上，但**先 curl 出 Metro 实际服务的 bundle、grep 出 UI 字面量**再跑 | ✅ 有效：`· 可见 ` 0 次 → 基线；删除仍然失败 → **既有问题** |
+
+### 坑一：`CI=1` 会让 Metro **关掉文件监听**
+
+日志原文：`Metro is running in CI mode, reloads are disabled.`
+后果：`--clear` 只在**启动那一刻**清缓存；之后重编源码，Metro 根本不重读 ——
+于是"改了源码 → 重跑"看到的还是旧行为。**离线门禁里用 `CI=1` 是对的**（只 bundle 一次），
+**做 A/B 对照时必须去掉它**。
+
+### 坑二：Metro 按**查询参数**缓存 bundle 变体
+
+app 请求的 URL 带一串参数（`minify` / `modulesOnly` / `runModule` / `app` …），
+而 `curl 'index.bundle?platform=android&dev=true'` 是**另一组参数 = 另一个缓存键**。
+后果：curl 出来的是新代码，app 拿到的却可能是旧变体 —— **"我看到的是新的"与"设备拿到的是新的"是两件事**。
+
+### 坑三：我用了一个**无效的标记**去判断"服务的是哪份产物"
+
+第一次判断"Metro 在服务缓存"时，我 grep 的是 `可见` 二字。它在 bundle 里出现 2 次，
+于是判成"服务的是我的代码"。**但那 2 次来自 `native-rn.js` 的注释**（host 包被 `index.js` import，
+注释一起进了 dev bundle），跟 UI 文本无关。
+**正确的标记是 UI 的稳定字面量**（`· 可见 ` / `vis_events`），不是一个可能出现在别处的词。
+
+> **三条合起来是一条规矩**：做"改前 vs 改后"的对照之前，**先证明"被服务的那份产物"是哪个**，
+> 再跑。否则对照的要么是自己的两次副本，要么是缓存 —— 而结论看起来完全正常。
+
+### 环境坑：AVD 名与 ABI 都对不上
+
+- 文档（`verify_android.py` 头注释）写的是 AVD `moobile64`、**x86_64**；
+  这台机器上只有 `moobile`，而且镜像目录里只有 `google_apis/**x86**`（32 位）。
+- 而 APK 只打 `lib/x86_64/*`（`unzip -l` 实测）→ 装上去必 `INSTALL_FAILED_NO_MATCHING_ABIS`。
+- 处置：`sdkmanager "system-images;android-30;google_apis;x86_64"` + `avdmanager create avd -n moobile64`
+  （同款 320x640 档，RAM 从 96M 提到 2048M）。**现在文档与现实一致了。**
+
+### 一处**没证明**的事（别当已验）
+
+真机断言**自身**的证伪（把 `native-rn.js` 的 `state !== 'active'` 写成 `===` 再跑）试了**两次**，
+两次都**没有得到有效结果**：第一次因为坑二（app 拿到旧变体），
+第二次因为 `--clear` 重启后 app 没渲染起来（屏上文本为空 → 断言读到 `None`，那是"没找到"而不是"方向反了"）。
+所以「这条真机断言能抓住映射写反」**没有被证明**。
+映射写反本身由逻辑层的 `tools/native_rn_check.mjs` 抓住（证伪过：10 项红 1 项，退出码 1）。
+
+## 补记（N5b 适配器形状 + 一个纯属自找的坑，2026-09-21）
+
+### 适配器形状：跟随已有约定，不另发明
+
+`HostCapability` 原来只有 `subscribe_bool`。加 B 类能力时面临"通用 JSON 还是逐个窄适配器"。
+选了**通用 + JSON 字符串**，理由不是省事，是**仓库里已经有这个约定**：
+`sqlite/` 就是"边界上只传 JSON 字符串，MoonBit 侧 `@json` 解，避免把 JS 对象逐个字段打字"。
+
+⚠️ 但 JSON 补了一个洞：**形状错在编译期看不见**。所以解码**必须严格** ——
+`viewport_of_payload` 缺字段给 `None`，调用方**当场 `abort`**，**绝不取默认值 0**。
+取 0 恰好复现了这条通道要消灭的"静默给错值"。这一点写进了 `abort_bad_viewport` 的错误消息本身。
+
+### 顺带定位了"静默失效"到底长什么样（反直觉）
+
+按 RN 自己的 `Libraries/Core/setUpGlobals.js`（它 `global.window = global`，**但从不定义 `document`**）：
+
+| 依赖 | RN 上 | 表现 |
+|---|---|---|
+| `document.*` | 未定义 | **抛** `ReferenceError` |
+| `window.location` / `.history` | 属性不存在 | **抛** `TypeError` |
+| `window.innerWidth` / `scrollY` | `undefined` | **不抛、静默给 0** ← 最难发现 |
+
+**所以"最该先修"的不是"C 类无替代物"（那会抛），而是 B 类里"静默给 0"的那两条。**
+`tools/cap_platform.mjs` 现在会把这一类**单独列出来报**（修完 `on_resize` 后剩 6 条）。
+先修的是 `on_resize`（`native.geometry` ← `Dimensions`）。
+
+### 自找的坑：`#|` 块里的注释折了行
+
+现象：`moon test` 编得过，**跑测试时 node 直接 `SyntaxError: Invalid or unexpected token`**，
+测试进程根本没起来（不是某条断言红）。
+
+**排查过程值得记，因为它差点写成错原因**：先怀疑中文注释 → 但 `sub_visibility_wbtest.mbt`
+里本来就有中文注释且一直是绿的；再怀疑制表符 → 塞进去仍然 7/7 全过；再怀疑全角括号 → 也全过。
+三次定点复现把三个嫌疑都排除了。
+
+**真因**：我把一句中文注释**折成了两行，只有第一行带 `//`**。`#|` 每个行都是 JS 的一行，
+`//` 只吃到行尾 —— 第二行就成了**裸代码**；它以全角 `）` 结尾，全角括号不是合法 JS token
+→ **加载期**语法错。最后一次复现用它逐字对上了原报错。
+
+> 教训两条：**`#|` 块里一行一条完整语句/注释，别折行**；
+> 以及**排除法要留下"排除过什么"的记录** —— 否则很容易停在一个"看起来像真因"的说法上。
+
+## 补记（N5b 二轮：一个原语，一次改判，2026-09-21）
+
+### 新原语：`host_capability` 与 `host_has_dom()` 是**两个问题**
+
+| | 问题 | 谁来答 |
+|---|---|---|
+| `host_capability(name)` | 这个能力你有替代实现吗？ | **宿主登记** |
+| `host_has_dom()` | 浏览器到底在不在？ | **运行时事实，不需要谁声明** |
+
+只靠能力注册表解不了 `on_url_changed`：它的宿主机制（`Scheduler` 注入器）**本来就在**，
+RN 上缺的不是"另一个实现"，而是"**不该去碰 DOM**"。老代码无条件挂了 `popstate`：
+
+```moonbit
+@dom.window().to_event_target().add_event_listener("popstate", listener)
+```
+
+RN 上 `window` **存在**（`global.window = global`）而 `addEventListener` 不存在
+→ `TypeError`，**这条订阅在原生端连装载都过不去**（不是"不工作"，是直接抛）。
+
+判据查的是 `typeof document !== "undefined" && typeof document.addEventListener === "function"`
+—— 只查"有没有 `document`"不够：有些非浏览器环境会挂一个残缺的 `document` 壳。
+（这条有测试兜着：残缺壳必须判成 `false`。）
+
+### 一次改判：`on_scroll` 的替代物不在宿主能力通道
+
+原本把它标成"🟡 待接（→ `ScrollView` 的 `onScroll` 载荷）"。看了两件事之后改判：
+
+1. Web 的 `on_scroll` 报的是**文档级**滚动（`window.scrollY` + `html` 的 scrollHeight）；
+2. RN **没有文档级滚动** —— 滚动发生在每个 `ScrollView` **内部**，事件是那个组件的
+   `onScroll` prop，**不是全局可订阅的东西**。
+
+所以它的替代物在**组件通道**（I 轨道），不在宿主能力通道 —— **宿主能力换的是"某个能力的
+平台实现"，换不掉"一个不存在的语义"**。处置：status 从 `todo` 改成 `web-only`，
+并且装载时 `abort` 报错 + 给出替代做法（老行为是静默给 0）。
+
+> 这一条值得单独记，因为它是**目标里写着的做法被实测推翻**的那种情况 ——
+> 把"待接"改成"不成立"比硬凑一个宿主能力实现诚实，也更省后来人的时间。
+
+### 结果
+
+平台矩阵报出的「RN 上静默给错值」从 **8 → 4** 条（`on_resize`、`on_scroll` 各去掉两条）。
+剩下 4 条**全在 `nav/`** —— 而 `nav/` 在根上没有转发包、消费者 import 不到，
+它的处置卡在 `PLAN.md` §7 的**决策点 17**（要不要暴露）。
+
+## 补记（真机验 `subscribe_json`，2026-09-21）：连挂两轮的断言，真因在测试前提
+
+### 现象
+
+`on_resize` 的真机断言第一版是**照"转屏幕"写的**：`adb shell settings put system user_rotation 1`
+→ 期望 `Dimensions` 发 change。结果**连挂两轮**，界面读到的始终是 `None`。
+
+查了三层才定位：
+
+| 检查 | 结果 |
+|---|---|
+| `user_rotation` 真的变了吗 | **变了**（0 → 1）——所以不是"命令没生效" |
+| 界面有尺寸 token 吗 | **没有** —— 所以事件确实没到 |
+| `app.json` 的 orientation | **`"portrait"`** ← 真因 |
+
+**app 锁了竖屏，旋转永远不会发生** —— 那条断言**从写下的那一刻就不可能通过**。
+不是 `native.geometry` 没工作，是**测试前提错了**。
+
+### 处置：换一个与方向无关的触发源
+
+`adb shell wm size 400x800` 改的是**窗口尺寸**，锁竖屏照样生效，而且比旋转更好：
+**能断言精确数值**。
+
+```
+PASS  改尺寸之前界面上没有尺寸 token       实得 None      ← 顺带证了"不补发初始值"
+PASS  改尺寸后收到载荷，且数值精确          实得 (400, 800, 1)
+PASS  还原后又收到一次（计数 +1）           实得 (320, 640, 2)
+```
+
+**值与被设的逐位相同** —— 这条断言不是"事件到了"级别的弱断言：
+只有 `Dimensions → subscribe_json → JSON 解 → Model → 界面` 整条链都对才会是这个数。
+`on_resize` 原来在 RN 上是**静默给 0**（`window.innerWidth` 是 `undefined` 却不抛），
+这条断言正好卡在那个失败模式上。
+
+> 教训：**断言连续失败时，先查断言自己的前提**（"这个前提在当前配置下成立吗"），
+> 再查被测对象。这次三轮里有两轮花在了一条不可能通过的断言上；
+> 而 `user_rotation` 那个 setting 明明生效了，恰恰是它把注意力引偏了
+> —— "命令成功了"不等于"我以为的那件事发生了"。
+
+---
+
+## 补记（canvas 通道 spike：四个映射坑 + 一条关于断言粒度的教训，2026-09-21）
+
+试金石在 `examples/apps/canvas-spike/`（设计 + 26 项判据 + PNG 证据）。
+这里只记**结论与坑**，细节在它的 `README.md`。起因：`PLAN.md` §3.6 的诚实标注把 `canvas`
+列为 12 个排除标签之一，而 T3.2 那句"先写方案再动手"的方案**从来没写过**。
+
+### 结论：canvas 不需要新通道
+
+`<canvas>` 就是**组件通道 + `prop_json` + 宿主侧一个 Skia 适配组件** —— 与 antd 的
+`Table.columns/dataSource` 走的是同一条通道（"结构化值走 JSON 文本"）。所以当年把它想成
+"要设计一条新通道"是**高估了**：真正要设计的只是**有界指令集**（实测 18 条，见下）。
+
+**否掉"给标签表加 canvas"这条路的理由**（文档里已有，这里只是复核）：`DESIGN-COMPONENT-LIBRARY.md` §391
+—— 42 条标签表是"两端都有等价物"的可移植子集，混进平台相关的名字就毁了它的诊断价值。
+canvas 是平台相关的（Web 原生 / RN 要 Skia）。
+
+### 词汇表是"量出来的"，不是拍的
+
+`interest/yi/zhouyi_reader/frontend/{colorring,main}.mbt` 全量统计 → **18 种**调用，
+一条不多。所以这套映射是**有界**的活，不是无底洞。六十四卦那一档的载荷实测
+**5335 条 op / 181 KB**（紧凑数组）—— 这是"op 用短标签数组而不是对象"的理由（省 31%）。
+
+### 坑一：`arc(…, 0, 2π)` 是整圆，**SVG 的 `A` 画不出来**
+
+`A` 是"两点之间的弧"，起点终点相同 → **什么都不画**。罗盘画纬线和外圈用的就是整圆。
+解法：拆成两段半圆。
+**定位性证据**：同起终点的单条 `A`，包围盒宽 **0**；拆两段宽 **600**。
+
+### 坑二：没有当前点时，`arc()` **要自己补一个起点**（第一版真踩了）
+
+canvas 里 `arc()` 在**没有当前点**时会新开一条子路径（等价 `moveTo(弧起点)`）。
+漏了这条，产出的 SVG 路径就**以 `A` 开头** —— 没有起点，Skia/浏览器把起点当 `(0,0)`，
+于是整圆被画到一个完全错误的位置。
+
+**这个坑是"全覆盖像素断言"抓出来的，不是读代码读出来的**：第一版只采 18 个点，**全中**；
+改成 384 个点（64 扇区 × 6 环）后立刻红了 10 个 —— 被画歪的纬线圈恰好穿过那几个扇区的环带。
+
+> **教训（这条比坑本身值钱）**：**采样点的选择也是一种断言强度**。
+> 18 个点全中只证明"我挑的地方对"，384 个点全中才证明"没有系统性错位"。
+> 与 AGENTS.md §4 那条"断言粒度要能抓住设计错误"是同一件事，但这次是**在像素上**踩到的：
+> 三个坑（整圆、隐式起点、隐式连线）都属于**同一条语义边界**，而稀疏采样正好从它们中间穿过去。
+
+### 坑三：有当前点但不在弧起点上 → 要补一条直线
+
+canvas 的隐式连线语义。罗盘的每个扇区都自己算了圆弧起点（`move_to(isx,isy)`），
+所以**本样本不触发**它 —— 但桥必须实现，否则换个调用序就画出多余或缺失的边。
+（"样本没触发"不等于"不用实现"，这一条是读语义读出来的，不是跑出来的。）
+
+### 坑四：`fill()` **不吃掉**路径
+
+紧随其后的 `stroke()` 描的是**同一条**路径。所以适配器要产出**两个**元素（同一条 `d`、各带一种 paint），
+而不是"一个元素带 fill + stroke 两个属性"。
+
+### Skia 会带进**两个额外原生依赖**（文档里没有，实测 `npm view`）
+
+```
+@shopify/react-native-skia@2.12.0 peerDependencies:
+  react >=19            ✅（宿主 19.2.3）
+  react-native >=0.78   ✅（宿主 0.86.3）
+  react-native-worklets >=0.7.0     ← 新增
+  react-native-reanimated >=4.0.0   ← 新增
+```
+
+这正是 P3 当初挂的 Q1 风险（"如果成本失控，要重新评估状态模型与 RN 导航/手势库如何共存"）。
+好消息：它自带 `canvaskit-wasm@0.41.0`，所以**本机就能用真 Skia 验绘制语义**（不必先上真机）。
+
+### 诱饵自己也要被验证
+
+证伪测试第一版按"扇区 7 = 卦 7"翻数据 —— 而扇区号 ≠ 卦号（先天圆图那套顺序里扇区 7 是**卦 25 无妄**）。
+翻错了卦 → 画面当然没变 → 看起来像"断言抓不住错"。
+**诱饵翻错，会把"测试写错了"误读成"实现是对的"。** 所以证伪前先断言"诱饵确实落在被测点上"
+（`verify.mjs` 的 `6a-pre`）。
+
+### 库侧落地（2026-09-21 二轮）：契约两端各一份实现，靠**对账**钉住
+
+库侧落地后，同一份契约有了两个实现：**MoonBit 的编码器**（`canvas/` 包）与
+**宿主包的解码器 + 翻译器**（`npm/moobile-host/canvas-ops.js`）。
+"两份实现就是等着漂"是这个仓库的老毛病（`tools/check_npm_fresh.mjs` 记的那次事故就是副本漂了），
+所以对账做成了机器判据 —— `examples/apps/canvas-spike/` 的第 ⑦ 组：
+
+1. 同一段程序**两边各写一遍**（`spike.mbt` 的 `probe_into` ↔ `host/probe_program.mjs`），
+   都由 yi 的真实图元组成（环带扇区 + 整圆 + 切向文字）；
+2. JS 侧把 MoonBit 编出来的载荷**解码**，逐条比 tag 与数值（容差 `1e-9`）；
+3. 两份载荷各自过翻译器 + **真 Skia** 出图，比像素。
+
+**结果**：57 条 op 逐条相同，而且——
+
+> 两边载荷**逐字节相同**（所以文本 diff 也能当对账手段）；
+> 两份载荷出图 **40000 个像素 0 个不同**。
+
+逐字节相同这件事**不是设计出来的，是量出来的**：MoonBit 的 `Double::to_string`
+（`360.0 → "360"`）与 JS 的 `JSON.stringify` 在样本上写法一致。所以判据用的是
+**语义比较（容差 1e-9）而不是文本相等** —— 契约是"JSON 数字"，不是"某一种数字写法"；
+哪天某个值写法不同了，语义比较仍然绿（那是正确的），而"逐字节相同"降级成一条**观察**而不是断言。
+
+**证伪**：把 MoonBit 载荷里一条 `arc` 的半径 +0.5 → 逐条对账**红**，像素差 **146 个点**
+（两者必须同时红：只红一个说明另一条判据是摆设）。
+
+### 又一条：`DrawOp` 忘了 `derive(Debug, Eq)`
+
+`canvas` 包的测试一开始编译不过：`assert_eq` 要求 `Debug` + `Eq`，而枚举没 derive。
+这不是测试的毛病 —— **绘制指令本来就该能比较、能打印**（测试、去重、"这一帧与上一帧一样吗"）。
+补上就过了；记在这里是因为它容易被当成"测试写法问题"糊过去。
+
+---
+
+## 补记（F1 迁移动检：工具自己的三个坑 + 一次文档漂移，2026-09-21）
+
+`tools/mbtools/src/migrate_scan.mbt`（`bash tools/mb.sh migrate-scan --root <项目>`）——
+PLAN §5.1 的 F1：扫一个既有的 rabbita 项目，把会**静默失效**的东西逐条点名。
+第一次拿真实项目（`interest/yi`）跑，撞出三件事，其中一件**不在 yi 里，在我们自己的文档里**。
+
+### 坑一：`.repos/` 没剪 → 报告被标准库淹没
+
+第一版数出 **881 个候选文件 / 219886 行**。查下去：**700+ 个来自
+`.repos/moonbitlang/core/…`** —— `interest/yi` 里有一份 MoonBit 标准库的**源码检出**。
+它不是"要迁移的项目代码"，但它的 `.mbt` 全被当成候选。
+
+处置：剪枝表加 `.repos`（连带 `dist` / `.expo` / `.cache`）。修完是 **6 个文件 / 3139 行**。
+
+> 教训：**"扫一个别人的项目"会撞见我们仓库里根本不存在的东西**（标准库检出、
+> 桌面打包产物、编辑器缓存）。所以这一层的剪枝表**刻意不与 `cr-scan` 共用** ——
+> 两者扫的对象不同，共用一张表等于假设"别人的项目长我们这样"。
+
+### 坑二：`name(` 不等于"用了这个标签"
+
+第一版按裸子串数标签，结果 `tag.outside` 报出 **27 处**（而 yi 只用了 8 个标签）。
+真因：`arr.map(…)` 里的 `map`、`x.time(…)` 里的 `time`、`data.slot(…)` 里的 `slot`
+**都是 HTML 标签名**（`<map>` `<time>` `<slot>`）—— 于是 `Array::map(` 被数成了"用了 `<map>` 标签"。
+
+处置：判据从"子串出现"改成"**调用点前面是分隔符位置**"（行首 / 空白 / `(` / `,` / `[` / `=` / `>`），
+或显式前缀 `@html.`。`x.map(` 前面是 `.` → 排除。修完 `tag.outside` 归零、`tag.excluded` **7 处全中**。
+
+> 教训：**"报告里全是噪声"和"报告漏了东西"一样致命** —— 前者会让人干脆不看。
+> 而且这个假阳性**只在真项目上才暴露**：拿我们自己写的样例跑永远不会撞上 `arr.map(`。
+
+### 坑三：我们自己文档里的标签表条数**一直是错的**
+
+工具解析 `render.mbt` 数出 **44 条**映射（不是文档里到处写的 42）。
+核对：`git show 4c3ec2d:render.mbt` 里**也是 44** —— 也就是说这个数字**从写下那天起就不对**，
+而它同时躺在 `README.md`、`docs/ARCHITECTURE.md`（两处）、`docs/design/SCAFFOLD.md`、
+`docs/design/DESIGN-COMPONENT-LIBRARY.md`（六处）里。
+
+处置：全部改成 44；`docs/FINDINGS.md` 里我自己那句引用**去掉硬数字**（改成"标签表"，
+附一句为什么不留数字）；归档的 `PLAN-2026Q3` 是事实陈述，改准。
+
+> 这条不是"又有文档漂了"，而是**工具的价值证明**：F1 **解析真源**（`render.mbt`）而不是抄一份清单，
+> 于是它顺手把我们自己的错数了出来。**同一份报告，既扫别人的项目，也照出我们的账本不对。**
+
+### 判据达成：机器清点 vs 人工清点，**逐项一致**
+
+F1 的判据是"与人工清点**零遗漏**"（SCAFFOLD §3.7.6 的 S9-2）。第一次对账（`interest/yi`，
+候选 6 个文件 / 3139 行）—— 人工那边用 `grep | wc -l` 独立数，**逐项相等**：
+
+| 项 | 机器 | 人工 | | 项 | 机器 | 人工 |
+|---|---|---|---|---|---|---|
+| `style.class` | 122 | 122 | | `css.var` | 166 | 166 |
+| `dom.direct` | 15 | 15 | | `:hover` | 16 | 16 |
+| `gesture.mouse` | 4 | 4 | | `@media` | 2 | 2 |
+| `gesture.dpr` | 2 | 2 | | `display: grid` | 5 | 5 |
+| `input.controlled` | 1 | 1 | | `sticky` | 2 | 2 |
+| `net.http` | 1 | 1 | | `dep.rabbita` | 1 | 1 |
+| `canvas.api` | 11 | 11 | | `target.build` | 2 | 2 |
+| `tag.excluded` | 7 | 7 | | `getBoundingClientRect` | 0 | 0 |
+
+⚠️ 但要说清这条判据的**边界**：它是"**在这一个项目上**、对这 15 类、逐项相等"。
+换一个项目若有新的失效形态（比如 `@dom` 之外的 `localStorage`），这一类**不在表里**，
+两边都会是 0 —— **"零遗漏"是相对于规则表说的**，不是"什么都能发现"。规则表本身要随新项目长。
+
+---
+
+## 补记（手势试金石：RNGH 能不能用、`translationX` 的一个坑，2026-09-21）
+
+试金石在 `examples/apps/gesture-spike/`（15 项判据 + 三盒对照）。起因是 PLAN §7 的**决策点 19**：
+手势通道该用 `PanResponder`（RN 内置、零依赖）还是 `react-native-gesture-handler`（RNGH）。
+**两条都不能靠读文档定**，所以搭了个最小实验，在我们的 **RNW(web) 宿主**上真拖。
+
+### 结论一：RNGH **能**在 react-native-web 宿主上跑 —— 但要打包器给两个全局
+
+RNGH 包里有 **275 个 `.web.js`**（`GestureHandlerRootView.web.js` / `GestureComponents.web.js` …）。
+两个坑都是**裸 esbuild** 才撞得到（Metro / Expo 自带，真实宿主不受影响）：
+
+| 坑 | 症状 | 处置 |
+|---|---|---|
+| `.web.js` 没优先解析 | esbuild 挑到**原生实现** → 装载就摸 `NativeModules` | `resolveExtensions: ['.web.js', …]` |
+| `__DEV__` / `global` 没定义 | `ReferenceError: __DEV__ is not defined`，接着 `global is not defined`（RNGH 的 web 实现里有 Node 风格的 `global`） | banner 里 `var __DEV__ = true; var global = globalThis;` |
+
+> ⚠️ 注意"`define` 里写了 `__DEV__: 'true'`"**不够**：`define` 只替换**标识符表达式**，
+> 这两处是**自由变量查找** —— 所以必须写成 bundle 外层的 `var`（IIFE 闭包能看见）。
+
+### 结论二（更值钱）：RNGH 的 `translationX` **不是"按下即起算"**
+
+实测（鼠标横向拖 40px，6 步）：
+
+```
+kind          x       tx    absoluteX         ← 起点 absoluteX=72，终点应为 112
+begin         48      0     72
+update        68      0     92                ← 已经移动 20px，tx 还是 0！
+update        74.67   6.67  99
+update        88      20    112               ← tx 只有 20，而指针走了 40
+end           0       20    112
+```
+
+**`tx` 从"激活点"起算**（默认 Pan 有激活阈值，跨过它之前恒为 0），所以它比真实位移**少一截**。
+把 yi 的 `e.offset.x` 天真地换成 `e.translationX` → **罗盘一上手就跳**。
+
+**处置（实测有效）**：显式 `Gesture.Pan().minDistance(0)` → `tx` 精确等于 40。
+**所以这条要写进契约**：如果采用 RNGH，`minDistance(0)` 是**硬性配置**；
+更稳的做法是**契约里把 `dx/dy` 定义为"从按下起算"，由宿主算** —— 应用不该知道底下是哪个实现。
+
+对比：**`PanResponder` 的 `locationX/Y`（元素内）与 `pageX`（屏幕）都精确**，
+零新依赖，同一份代码在两个宿主上跑。但它跑 **JS 线程**（RNGH 可跑 UI 线程）—— 这条**没测**。
+
+### 教训：判据要挑**语义**，别挑**实现字段**
+
+第一版我拿 `end.translationX` 当"跟手"判据 → RNGH 报 26.67 而断言期望 40，看着像**实现坏了**，
+其实是**我拿错了字段**（那个字段的语义本来就不是"按下起算"）。
+
+> **判据应该问"位置有没有跟着指针走"（`absoluteX`），而不是"某个字段等不等于位移"。**
+> 这与 N5b 那条"断言粒度"是同一类错误的两面：那边是采样点太少，这边是**字段语义没搞清**。
+> 一次实测（把字段全打出来对照）就分清了"实现不对"和"判据不对"。
+
+### 顺带：`restore` 之外还有一处同类陷阱（记下来备查）
+
+RNGH 的 `end` 事件里 **`x` 是 0**（不是终点坐标），终点在 `absoluteX`。也就是说
+"同一个手势的不同阶段，同一个字段的可用性不同" —— 写适配器时必须**逐阶段**确认字段，
+不能假设"事件对象形状一致"。
+
+---
+
+## 补记（真机验证画布通道：四个"装得上 ≠ 用得了"的坑，2026-09-21）
+
+为回答"`<canvas>` 在**真机**上到底画不画得出来"（`STATUS.md` §4 第 7 条那个未验项），
+走了完整一遍"装依赖 → prebuild → 构建 APK → 装真机"。四个坑里有**三个对任何使用者都成立**，
+所以记在这里而不是只写在 spike 里。
+
+### 坑一：`npx expo install` 在**镜像源**上会因为 audit 端点 404 而报失败
+
+```
+npm ERR! ... 404 Not Found - POST https://registry.npmmirror.com/-/npm/v1/security/audits/quick
+              - [NOT_IMPLEMENTED] /-/npm/v1/security/* not implemented yet
+```
+
+**包其实装上了**，但 npm 退 1 → `expo install` 判失败。用 `--no-audit` 或
+`npm config set audit false` 就过（实测：`npm install --no-audit` 16 秒装完 25 个包）。
+
+> 这条**不是我们仓库的怪癖**：任何用 npmmirror 的用户都会撞上，而且报错信息指向的
+> 是一个跟"装包"无关的接口 —— **症状与原因离得很远**，值得写进用户文档。
+
+### 坑二：SDK 57 **不需要** `babel.config.js`（我加了一个，然后删了）
+
+宿主目录的 `AGENTS.md` 写着"先读版本化文档"，照做之后发现两条**直接否掉直觉**的话：
+
+- `babel.config.js` 那页：**"There is no need to create a babel.config.js file unless you need to customize the Babel configuration."**
+- Reanimated 那页：**"No additional configuration is required. Reanimated Babel plugin is automatically configured in `babel-preset-expo` when you install the library."**
+
+我原本按"reanimated 要 worklets babel 插件"的老经验建了一个 —— **那是多余且可能重复应用插件**。
+删掉即正确。
+
+> 教训：**"某个库要配 babel 插件"这类知识是会过期的**，而它过期的方式很隐蔽
+> （手动配了通常也能跑，于是永远不会有人发现它是多余的）。
+> 文档还说：`https://docs.expo.dev/versions/<ver>/<page>.md` **加 `.md` 就是给 AI 读的纯文本** ——
+> 比抓渲染后的 HTML 靠谱得多（这次第一次抓 HTML 只拿到导航栏）。
+
+### 坑三：`expo prebuild` 会把 4 处本机配置打回默认（`android_env_setup.sh` 就是为它写的）
+
+实测 `--check` 报 4 处 `[need]`：Gradle wrapper 版本（→9.3.1，**必然构建失败**）、
+覆盖块（jvmargs / ABI / JDK 路径）、`build.gradle` 与 `settings.gradle` 的镜像。
+跑一次 `bash tools/android_env_setup.sh` 修好，`--check` 归零。
+
+### 坑四（**架构级**，比上面三条都重要）：可选特性**不能**往 demo/template 这一对里塞
+
+想验画布，第一反应是"给 todo-app 加一个画布节点"。结果 **T1 同源门立刻红了**：
+
+```
+FAIL  模板同源 T1（生成物 vs demo，清单外差异即红）
+```
+
+因为**模板是真源、demo 是它的产物**（`SCAFFOLD.md` §3.4）—— 给 demo 加依赖，
+就等于要求模板也加，而模板是**每个使用者拿到的东西**。
+
+> **结论**：画布是**可选特性**（要原生依赖、要 prebuild），它不该进模板；
+> 它该有自己的**示例应用**（先例：`antd-demo` 就是给"可选特性"准备的）。
+> 本轮的处置：在 demo 上**临时**接线做真机验证 → 验完回滚 → 特性验证留证据，
+> 示例应用另立（这正是"库优先"该有的形状：模板保持最小，特性各有示例）。
+
+> 顺带一条：[`examples/apps/todo-app/host/AGENTS.md`](../examples/apps/todo-app/host/AGENTS.md)
+> 那句"Expo HAS CHANGED，先读版本化文档"**是有回报的** —— 这次它直接省掉了一个多余的 babel 配置。
+
+---
+
+## 补记（画布通道**真机验证**：两个真 bug + 一条"设备上看不见错误"的技术，2026-09-21/10-01）
+
+结论先行：**`<canvas>` 在 Android 模拟器上真的画出来了** ——
+`画布 ops=9` token + 截图里 **品红 4016 px / 绿 1600 px** + 切到无画布那屏 **0/0**（证伪），
+7 项判据全过（`examples/apps/canvas-spike/host/device_check.mjs`）。
+`docs/STATUS.md` §4 第 7 条那个"真机未验"从此划掉**一半**（挂载与绘制验了；手势仍未验）。
+
+过程中撞出**两个我们自己的真 bug**，都只在真机上才暴露。
+
+### 真 bug 一：`installHost` 号称幂等，其实会把已注册的组件全冲掉
+
+文档（`npm/moobile-host/index.js` 的注释）写着"**mountApp 再装一次是幂等的（同参数）**"，
+推荐写法是：
+
+```js
+installHost();                                  // ① 先装
+registerLibrary({ namespace: 'antd', … });      // ② 再注册组件库
+export default mountApp(app);                   // ③ mountApp 内部**又装一次**
+```
+
+而 `installHostCore` 的实现是 `globalThis.MOBILE_HOST = { … }` —— **整个对象被替换**，
+②注册的组件全丢。真机上的表现是：
+
+```
+ReactNativeJS: registerSkiaCanvas ok: ["moobile:Canvas"]      ← ② 明明成功了
+ReactNativeJS: fatal=true moobile: 宿主没有注册组件 "moobile:Canvas"
+```
+
+**为什么本机测不到**：生成路径（`mountApp(app, { registry })`）的注册发生在 install **之后**，
+所以 antd 那条路一直是对的；只有"**手写 registerLibrary**"这一条会踩 —— 而 `canvas-skia` 正是手写的。
+**没有任何本机判据覆盖"先注册、后 mount"这个顺序。**
+
+处置：`installHostCore` 改成**真幂等**（合并到既有 `MOBILE_HOST`，保留 `components` / `events` / `wrapRoot`）。
+
+### 真 bug 二：`registerLibrary` 的 `components` 只认数组，传对象的报错毫无帮助
+
+```js
+registerLibrary({ namespace: 'moobile', components: { Canvas: MyCanvas } })   // 手写组件的自然写法
+// → TypeError: iterator method is not callable     （栈里只有 registerLibrary，看不出是形状不对）
+```
+
+Hermes 的报错完全指不到"`components` 应该是名字数组"。处置两条：
+① 两种形状都收（对象=实现映射，数组+`module`=按名字挑）；② 形状真不对时给**说得出两种合法写法**的错误。
+
+> 教训：**"使用者会怎么写"决定的 API 形状，不能只按我们自己的调用点设计**。
+> 这两条都是"库要好用"的具体形态 —— 而它们是被**真机**、不是被本机测试逼出来的。
+
+### 技术：真机上的 JS 错误**默认看不见**（这条值得长期留着）
+
+- **LogBox（红屏）的正文读不到**：`uiautomator dump` 只给得出 `DISMISS` / `RELOAD` 两个按钮，
+  正文那个文本节点在 dump 里是空的（偶发能读到 `[runtime not ready]` 那类早期错误，运行时错误读不到）。
+- **`adb logcat` 里也没有**：只有原生侧的软异常（`Tried to access onWindowFocusChange while context is not ready`），
+  JS 的异常栈不在里面。于是"为什么白屏"在设备上**几乎无法回答**（实测卡了很久）。
+
+处置（这次靠它定位）：在入口装一个**带标记的全局兜底**，把错误变成一条 `console.error` ——
+RN 的 console 会进 logcat：
+
+```js
+globalThis.ErrorUtils?.setGlobalHandler?.((e, isFatal) => {
+  console.error(`MOOBILE_JS_ERROR fatal=${isFatal} ${e?.message}\n${e?.stack}`);
+});
+// 然后：adb logcat -d | grep MOOBILE_JS_ERROR
+```
+
+⚠️ 它是**诊断脚手架**，查完就撤（本轮验完已从 `App.js` 撤掉）。
+
+### 环境坑：磁盘满 + 联接（这一组也值得记）
+
+D: 盘 **238G 用满（只剩几百 MB）**，而原生构建（Skia / reanimated / worklets）要几个 GB。踩了一串：
+
+| 现象 | 真因 | 处置 |
+|---|---|---|
+| `fatal error: error in backend: IO failure on output stream: No space left on device` | 磁盘满 | 产物挪到 E: |
+| `ninja: error: manifest 'build.ninja' still dirty after 100 tries` | **同一个磁盘满**（CMake 写不出自己的输出 → 反复"重新生成"）。**完全不像磁盘问题** | 同上 |
+| `FileNotFoundException: …/hash_key.txt` | 只清了 `.cxx` 的**内容**、联接还在 → AGP 记账文件没了 | **拆掉联接**再重建 |
+| `this and base files have different roots: E:\… 和 D:\…` | node 解析 realpath → E:，Gradle 给的是联接路径 D: → RN codegen 的相对路径跨根 | `NODE_OPTIONS=--preserve-symlinks` |
+| `Process 'node' finished with non-zero exit value 1` | 真目录被改名成 `node_modules_todoapp` → **node 的祖先链里不再有 `node_modules` 段**，嵌套 `require.resolve(…, {paths})` 失败 | 真目录**必须叫 `node_modules`** |
+| `robocopy` 报"无效参数 #3: `D:/Program Files/Git/MOVE`" | **MSYS 把 `/MOVE` 当成路径改写了**（与 `/sdcard/ui.xml` 同一个坑） | `MSYS_NO_PATHCONV=1` |
+| 链接类包（npm 的 `file:` 依赖）搬完就不见了 | `robocopy /XJ` 跳过链接，而 `/MOVE` **仍删源** | 别用 `/XJ`；搬完 `npm install` 复验 |
+
+> **两条通用教训**：
+> ① **"磁盘满"的报错长什么样是不确定的**（backend IO / ninja manifest / CMake 循环…），
+>    所以 `tools/link_builddirs.ps1` 现在会**主动打印工作盘剩余空间**并在 <5G 时提示 ——
+>    把真因提前暴露，比事后猜便宜得多。
+> ② **联接（junction）会改变工具看到的路径**，而很多工具（node 的解析、RN codegen 的相对路径）**对路径敏感**。
+>    用联接腾空间之前先想清楚"谁会因此看到两个不同的路径"。
+
+### 还有一条小坑：`.ps1` 里别写中文（我自己踩了两次）
+
+Windows PowerShell 5.1 按**系统 ANSI 代码页（本机 GBK）**读 `.ps1`，除非文件带 UTF-8 BOM。
+不带 BOM 的 UTF-8 中文会被误解码，而**误解码产生的字节里可能冒出引号** —— 于是字符串提前结束、
+报错指向别处（`Unexpected token 'ok]'`）。`tools/link_builddirs.ps1` 因此**保持纯 ASCII**。
+
+### 判据上的两条（沿用本仓库的老规矩，这次又验证了一遍）
+
+- **轮询，不要固定 sleep**：debug 包要等 Metro 现打 bundle（带 Skia 首次 **52 秒**）；
+  Skia 出第一帧也有延迟 —— 同一份代码，固定等待有时截到画面、有时截到空白。
+- **只认错误级的日志**：应用自己的诊断标记（`MOOBILE_JS_ERROR … ok`）会被宽泛的 `/Error/` 撞成假阳性。

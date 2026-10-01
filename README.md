@@ -114,11 +114,12 @@ cd <Expo 工程> && npx expo start --port 8081     # 浏览器打开 http://loca
 
 | 项 | 现状 |
 |---|---|
-| 支持的标签 | 42 条 HTML 标签有映射（`div`→`View`、`span`→`Text`…）；`img` `video` `audio` `canvas` `svg` `table` `iframe` `select` `details` `summary` `dialog` `marquee` **明确不支持** |
+| 支持的标签 | 44 条 HTML 标签有映射（`div`→`View`、`span`→`Text`…）；`img` `video` `audio` `canvas` `svg` `table` `iframe` `select` `details` `summary` `dialog` `marquee` **明确不支持** |
 | 未收录标签 | 兜底渲染成 `View`（不崩），但会被计数，便于你发现迁移漏项 |
 | 样式 | 类型化：`Attrs::styles(Style::new().font_size(16.0))`。**`class=` 与 `style="…"` 在 RN 上不生效**（不报错，只是没效果） |
 | 事件 | `click`→`onPress`、`input`→`onChangeText` 这类映射可用，**落点由宿主决定**（可覆盖，组件库的回调靠这个接上）；老的 `on_*` 处理器在 React 后端**载荷是零值**（能写、不崩、拿不到坐标）；**要真实值就用 `Attrs::on_raw` + `@html.Payload` 提取器**（`text()` / `json()` / `num()` / `bool()` / `field()`），受控组件走这条 |
-| 第三方组件库 | 标签写 `库名:组件名`（如 `antd:Button`）就**直通**宿主注册的 React 组件，props 走 `Attrs::prop_*`（结构化值传 JSON 文本），回调走 `on_raw` 拿真实值。antd 6 已在 Web 宿主上端到端跑通（[试金石](examples/apps/antd-spike/)，26 项，含受控 `Input` 的回填） |
+| 第三方组件库 | 两条路：① **手写**——标签写 `库名:组件名`（如 `antd:Button`）直通宿主注册的 React 组件，props 走 `Attrs::prop_*`（结构化值传 JSON 文本）、回调走 `on_raw` 拿真实值；② **生成**——`npx moobile-host libgen` 从组件库的类型定义生成清单 + 宿主注册 + **MoonBit DSL 包**，于是调用点写成 `@antd.button(type_="primary", on_click=…, "加一条")`（与 `@html` 同款形状、**写错 prop 名是编译错误**）。antd 6.6.4 已在 Web 宿主上端到端跑通：[试金石](examples/apps/antd-spike/) 26 项（库本体）+ [全组件 demo](examples/apps/antd-demo/) 24 项（71 个组件、受控 `Input` 回填、复合子组件 `Form.Item`） |
+| 生成器的边界 | 它读的是**类型定义**，所以有边界（都在 demo 的 README 里写清了）：渲染型回调（`itemRender`）过不来；`children` 挂在组件类型上而没进 props 接口的（`Splitter`）认不出；多参数回调只给得到第一个参数；`string | string[]` 这类联合按规则走 JSON 通道（调用点要写 JSON 文本） |
 | 副作用 / 订阅 | `Cmd`（`@cmd.perform` 等）与 `subscriptions?` 都可用；持续型原生流建议走 `@sub.custom_sub` |
 | 原生能力 | 生态里有现成 RN / Expo 包的（数据库、剪贴板、文件、相机…）→ 在 MoonBit 里写绑定即可，**不需要写 Kotlin/Swift**；需要自研原生模块时才要 |
 | 平台 | 库与 RN 版本无关；换平台通常等于**换一个宿主**，而不是改库 |

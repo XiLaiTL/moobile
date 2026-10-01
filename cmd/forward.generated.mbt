@@ -8,5 +8,5 @@
 
 ///|
 // 转发 XiLaiTL/moobile/vendor/rabbita/cmd 的公开面。
-pub using @vendor {type Cmd, type EffectKind, type Emit, type Injector, type Op, type OpCont, type Runner, type Settle, after_render, attempt, batch, custom_cmd}
-pub using @vendor {delay, effect, immediately, none, perform}
+pub using @vendor {type Cmd, type EffectKind, type Emit, type HostCapability, type HostSubscription, type Injector, type Op, type OpCont, type Runner, type Settle, after_render, attempt}
+pub using @vendor {batch, custom_cmd, delay, effect, host_capability, host_has_dom, immediately, none, perform}

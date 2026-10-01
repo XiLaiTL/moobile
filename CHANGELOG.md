@@ -5,6 +5,37 @@
 
 ---
 
+## 未发布 —— canvas 通道（`<canvas>` 的平台替代物）
+
+**新能力：`<canvas>` 在原生端画得出来了 —— 走的是既有组件通道，不是新通道**
+
+```moonbit
+let ctx = @canvas.OpCtx::new()
+ctx.set_fill_style("#f6efe0")
+ctx.fill_rect(0.0, 0.0, 720.0, 720.0)
+ctx.set_stroke_style("#b8902f")
+ctx.begin_path()
+ctx.arc(360.0, 360.0, 300.0, 0.0, 2.0 * @math.pi)
+ctx.stroke()
+@canvas.canvas(ctx.take(), 720.0, 720.0)
+```
+
+- **新包 `XiLaiTL/moobile/canvas`**：18 条有界绘制指令（`DrawOp`）+ 收集器 `OpCtx` +
+  `canvas()` 节点。指令集是**量出来的**：`interest/yi` 的罗盘恰好用 18 种 canvas 调用。
+  `OpCtx` 的方法名与 DOM 的 `CanvasRenderingContext2D` 逐字相同，
+  所以 `@dom.CanvasRenderingContext2D` → `@canvas.OpCtx` 是**换类型**，绘制代码一行不用改。
+- **载荷走既有 `prop_json` 通道**（组件通道），序列化成紧凑数组 JSON。
+  六十四卦那一档实测 5335 条 op / 181 KB（比对象编码省 31%）。
+- **宿主侧 `moobile-host/canvas-ops`（纯翻译器）与 `moobile-host/canvas-skia`（React 桥）**：
+  指令列表 → Skia 元素树 → `<Canvas>`。**宿主包不依赖 Skia**（它带 reanimated + worklets
+  两个原生依赖），由应用 `import` 进来传给 `registerSkiaCanvas({ skia })`。
+- 判据：`examples/apps/canvas-spike/` 的 32 项（含**跨语言对账**：MoonBit 编出来的载荷与
+  JS 镜像程序**逐字节相同**，两份载荷各自过真 Skia 出图**像素逐点相同**）。
+  用真 Skia（CanvasKit）渲染 yi 的六十四卦罗盘，**384 个采样点**的颜色逐一等于卦爻数据推出的颜色。
+- ⚠️ **真机未验**：`<Canvas>` 的组件挂载与文字字形还没在真机上跑过（要 `expo prebuild` + 重建 APK）。
+
+---
+
 ## 未发布 —— 第三方 React 组件库接入（**契约 `1 → 2`，破坏性**）
 
 **新能力：React 生态的组件库能当 moobile 的标签用**
@@ -65,18 +96,114 @@
 
 **证据**（都是可复现的命令，见设计稿附录）：
 
-- `bash tools/verify_all.sh` → **10/10 通过**（新增一项"组件库接入（antd 试金石，26 项）"）。
+- `bash tools/verify_all.sh` → **13/13 通过**（含"组件库接入（antd 试金石，26 项）"与
+  "模板同源 T1"这一条 —— 后者是 2026-09-21 补的，见下）。
 - antd 6.6.4 端到端：`node examples/apps/antd-spike/host/verify.mjs` → **26/26**
   —— SSR 断言 antd 自己的类名与 Table 数据、jsdom 真实点击回到 `update` 并重渲染、
   **受控组件打字后值对上了**（3 条）、四个负例/对照（写错名字点名报错 / 不给事件覆盖则点击无效 /
   全局覆盖能兜住 / `change` 不靠覆盖也能通而 `click` 不行）。
   离线可跑：不需要浏览器、不需要 Metro、不需要后端。
 
+**生成器（组件库的清单 + DSL 包）—— 已落地**（`PLAN.md` §3.8 的 I2 / I5 / I3）：
+
+```bash
+cd examples/apps/antd-demo/host && npm run check   # 生成物一致 + 24 条判据
+```
+
+- **新增 `moobile-host libgen`**（`npm/moobile-host/libgen/`，~1800 行，**0 个 runtime 依赖**，
+  刻意不起 TypeScript）：从 `node_modules/<lib>/**/*.d.ts` 抽「组件 → prop 名 + 类别」，
+  一次生成三份产物 —— **manifest JSON**（入库、可 diff）+ **宿主注册调用** + **MoonBit DSL 包**。
+  三份同源于一份 manifest，`libgen --check` 任一侧被手改都会红（已做证伪测试）。
+- **读数**（antd 6.6.4）：**71 个组件 / 65 个复合子组件（注册 136 个键）/ 9317 个 prop（其中 4965 个进 DSL）**，
+  抽取 ~0.6s；生成的 `components.generated.mbt` **12062 行**、`moon check` 0 错误。
+- **新示例** [`examples/apps/antd-demo/`](examples/apps/antd-demo/)：用生成的 `@antd` DSL
+  把 71 个组件全渲染出来，24 条判据（覆盖 / 两侧同源 / 交互）。
+  **它刻意不进 `tools/verify_all.sh`** —— 那条门测库本体，这一份测应用侧生成物且跟 antd 版本走
+  （设计稿 §5 T6 的分工）。
+- **宿主包 `core.js` 兼容性扩展**：`registerLibrary` 的 `components` 支持**点号路径**
+  （`'Form.Item'` → `mod.Form.Item`），取不到照旧点名报错。旧写法不受影响。
+- **踩到的坑**（八个"形状对不上却给了结果"的解析退化，含两处会静默少一批 prop 的）：
+  见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的 I2/I3 补记。
+
 **设计文档**：[`docs/design/DESIGN-COMPONENT-LIBRARY.md`](docs/design/DESIGN-COMPONENT-LIBRARY.md)
-（机制 N1–N7、被否掉的方案、缺口清单）。**未做**：结构化 prop 的类型化（T2/T2b）、
-真浏览器/真机实测与样式交集量化（T3）。
-生成器（组件库 DSL 包）那半：难度已量测（设计稿 §5 **T7**：**~88% 的 prop 可自动分类**），
-落地形态见决策点 15（应用侧命令），**未实现**。
+（机制 N1–N7、被否掉的方案、缺口清单）。**未做**：真浏览器/真机实测与样式交集量化（T3）、
+平台矩阵实测（I4）、渲染型回调（`itemRender`）的通道、`Splitter` 那类"children 挂在组件类型上"的 props。
+
+---
+
+## 未发布 —— 脚手架（E 轨道）：模板同源门 T1（2026-09-21）
+
+**新闸门：生成物与 demo 的差异，一条条对着清单判**（`SCAFFOLD.md` §6 的 T1）
+
+- 新增 `tools/template_compare.mjs`（~1 秒，离线，已进 `tools/verify_all.sh` 的并发那一组）：
+  `moobile-host init` 现场生成一个临时项目 → 与 `examples/apps/todo-app/` 比对 →
+  **清单（`tools/template/deltas.txt`）之外的任何差异 = 红**。
+  这补上的是"**模板与 demo 还是一家人吗**"这条判据 —— 此前三条脚手架门验的都只是"模板自己好不好"。
+- 判据分三层：文件级（多/少文件）、**字段级**（声明的字段删掉之后剩下的部分必须一模一样：
+  JSON 按键、文本按"去掉注释后逐字比"）、以及**死条目**（登记着、实际已不存在的差异 ——
+  点名但**不弄红**，因为红的含义是"有漂移"，而"清单该删一行"是另一回事）。
+- **清单本身被核出是错的**（它 2026-09-20 是手量的）：漏登 3 处（`expo.web.favicon`、
+  `expo.newArchEnabled`、`moon.pkg` 里 `exports` 的排版）、多登 1 处（`package.json:private` ——
+  其实两边都是 `true`）。前者补进清单，后者删掉并变成"死条目"检查；
+  而 `exports` 那处**排版差异改成把模板对齐 demo**（能用改代码消掉的差异，就不该变成清单里的一行）。
+  真因与解法见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的 T1 补记。
+- 证伪 8 例全过：`bash tools/template_compare_falsify.sh`（5 例该红、2 例不许红、1 例基线）。
+  ⚠️ 它会**临时改工作区里真实的文件**（跑完逐文件 `cmp` 校验还原，`trap` 到 `EXIT/INT/TERM`），
+  所以**不进 `verify_all.sh`**，只在改了比对器或清单之后手动跑。
+- 顺带：模板 `moon.pkg` 的 `exports` 改成与 demo 同一排版（纯排版，语义不变）。
+
+> E 轨道其余部分（模板 / `init` / `build` / 另两条门）见 [`PLAN.md`](PLAN.md) §3.9；
+> **现状与分数一律看 [`docs/STATUS.md`](docs/STATUS.md)**（唯一来源）。
+
+---
+
+## 未发布 —— 修：打包后的 `init` 生成的项目**没有 `.gitignore`**（2026-09-21）
+
+**症状**（只有"真装一遍"才看得见）：`npx moobile-host init my-app` 出来的项目里，忽略规则文件叫
+**`.npmignore`** 而不是 `.gitignore` → 使用者会把 `moobile.js`（1 MB 构建产物）与 `_build/`
+一起提交进自己的仓库。
+
+**真因**（三份样本实测）：`files` 白名单里确实列了 `template/.gitignore`，tarball 里也**有**它
+（`npm pack --json` 与 `tar -tzf` 都看得到）—— 但 **`npm install` 解包那一步会把包里的 `.gitignore`
+改名成 `.npmignore`**（手写 `tar -xzf` 不会）。而仓库里所有脚手架门（`template_check` /
+`scaffold_probe` / T1）都是从**仓库布局**的模板生成的 —— 所以**在我们这边永远复现不出来**。
+
+**修法**：
+
+- `lib/init.js`：**永远写出 `.gitignore`**（模板里是 `.npmignore` 就把这个名字还原）；
+  模板里两个都没有时**当场报错**、不生成残缺项目（与它旁边两条断言同一个处置）。
+- **新门** `tools/package_check.mjs`：真打 tarball → 真 `npm install` → 用**装好的 CLI** `init` →
+  断言生成物里有 `.gitignore`、没有 `.npmignore`、文件集合与包内模板逐一对得上。
+  挂在 `npm/moobile-host/publish.sh` 里 —— **发布前必跑，不过就不许发**。
+- `tools/template_check.mjs` 加一条**离线代理**（把"npm 改名"这件事模拟出来），日常门就能拦住（14 → **15 项**）。
+- 两条门都做过**证伪**：关掉修复 → 离线代理红 1 项、打包门红 2 项；还原后 15/15 与 10/10 全绿。
+
+**顺带实测**：`file:` 依赖的安装形态里**没有** `template/`（那是发包时才拷进包里的），
+所以 `init` 只在"仓库布局"或"打包形态"下工作 —— demo 吃 `file:` 依赖不受影响（它不调 `init`）。
+详见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的 2026-09-21 补记。
+
+---
+
+## 未发布 —— C0：换掉宿主，库与应用一行都不用改（2026-09-21）
+
+**实测补上了 `PLAN.md` §1.2 那句断言**：「宿主是可替换件 —— 库与具体 RN 版本无关，也与 Expo 无关」。
+此前它只有**读代码 + 间接证据**（全文搜 `AppRegistry` 只搜得到"注释里说换成它会怎样"）。
+
+- 新增 [`examples/apps/host-swap-spike/`](examples/apps/host-swap-spike/)：一个**最小裸 RN(Web) 宿主** ——
+  入口是 RN 自己的 `AppRegistry`（不是 `registerRootComponent`），打包只用 esbuild
+  （`react-native` → `react-native-web` 一行 alias），服务就是一个 node http 静态文件，
+  **零 Expo、零 Metro**。它的 `App.js` 与模板那份 4 行**逐字同形**。
+- 判据是 `node examples/apps/host-swap-spike/verify.mjs`（**27 项，全过**）：编产物 → 搬产物
+  （走 `moon build` + `moobile-host build`）→ 打包 → 起服务 → 真 Chrome（CDP）→ 断言
+  首屏渲染、输入/添加/勾选/删除四条交互都回到 `update`、以及**页面上的产物 sha256 与磁盘一致**
+  （防"浏览器吃的是旧包"）。它同时断言这个工程 `import('expo')` 直接失败、打包依赖图里
+  一个 `node_modules/expo*` 都没有。已挂进 `tools/verify_all.sh --with-e2e` 的尾巴
+  （缺 Chrome / 没装依赖记 **SKIP**，**不是** PASS）。
+- ⚠️ **边界**（写在最前面免得被读大）：验的是 **web 目标**的裸 RN 宿主，**裸 native RN
+  （gradle + 真机）没验**；挂的是**零能力**的模板应用 —— `todo-app` 启动就发 db 命令，
+  而 db 能力现在由 `expo-sqlite` 实现，混进来会把"宿主能不能换"盖住。带能力的宿主是下一步。
+- 真因与踩坑（esbuild 的 `alias` 按 cwd 解析、本机 npm `omit=["dev"]` 静默跳过 devDependencies、
+  RNW 的 `<Text>` 是两层 / `Pressable` 没有 `role`）见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的 C0 补记。
 
 ---
 

@@ -11,12 +11,15 @@
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 改完必须跑什么、写文档的规矩（负面清单） |
 | [`docs/FINDINGS.md`](docs/FINDINGS.md) | 已经踩过的坑与真因 —— **动手前先看，别重复踩** |
 
+**现状与分数只在一处**：[`docs/STATUS.md`](docs/STATUS.md)（已发布版本、各门的最近分数、每条轨道还剩什么）。
+下面的项数**会变**，要数字就去那里看，别抄。
+
 ## 2. 验证入口（只记这一条）
 
 ```bash
-bash tools/verify_all.sh              # 离线 8 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / 注册表一致）
+bash tools/verify_all.sh              # 离线 15 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **宿主平台替代物** / **能力包平台矩阵** / antd 试金石 / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
-python3 tools/verify_android.py       # 真机 21 项（需要模拟器 + APK）
+python3 tools/verify_android.py       # 真机 27 项（当前 25/27，两条挂在既有问题上，见 docs/STATUS.md §2.2/§4-6；需要模拟器 + APK）
 ```
 
 **改了什么就至少跑对应的那几项**（对照表在 `CONTRIBUTING.md` §1）。
@@ -28,8 +31,10 @@ vendor 的 `.mbti` 生成的名字清单；忘了重跑，消费者 import 的 `
 ### 工具链正在从 Python 迁到 MoonBit
 
 `tools/mbtools/` 是**独立嵌套模块**（不污染库的 `moon.mod`；`.moonignore` 排除了 `/tools/`），
-经 `bash tools/mb.sh <子命令>` 调用。已迁：`cr-scan`（行尾）。迁移规矩：**新实现必须与旧实现
-逐行对账**（两边都有 `--mode list`），并做证伪测试（塞 CRLF 诱饵 → 必须点名 + 非零退出）。
+经 `bash tools/mb.sh <子命令>` 调用。已迁：`cr-scan`（行尾）、`migrate-scan`（F1 迁移动检 ——
+它扫的是**别的** rabbita 项目，判据与人工清点零遗漏已达成，见 `docs/FINDINGS.md`）。
+迁移规矩：**新实现必须与旧实现逐行对账**（两边都有 `--mode list`），并做证伪测试
+（塞 CRLF 诱饵 → 必须点名 + 非零退出）。
 
 ### 写 MoonBit 代码时：用 `moon ide` 查 API，别 grep 标准库
 
@@ -49,6 +54,8 @@ moon ide peek-def <symbol>        # 定义 + 上下文
 | "`moon add` 会把包下载下来" | ⚠️ 依赖**已写在 `moon.mod`** 时它只说 "already exists, will not update it"，**下载发生在 `moon check`** |
 | "本机 git 代理是通的" | ⚠️ `http.proxy=127.0.0.1:7890` 而代理常常没开 → `moon update` 失败，报的却是 `no version satisfies requirement …`（看着像"包没发出去"）。绕过办法见 `tools/check_published.sh` |
 | "发布包 = 工作区" | ❌ 发布包是 `.moonignore` **过滤后的产物**。发版前**必须**看 `moon package --list` |
+| "`moon build` 的 JS 产物路径可以写死" | ⚠️ **不能**：它取决于**模块在构建根里的身份** —— 工作区成员是 `_build/js/<profile>/build/<作者>/<模块>/<模块>.js`，独立模块（空目录里 `moon new`）是平铺的 `_build/js/<profile>/build/<模块>.js`。所以搬运一律走 `moobile-host build`（**发现**产物），别写死 `cp`（实测见 FINDINGS 的 E 轨道补记） |
+| "`files` 白名单里写了就一定会发出去" | ⚠️ **`.gitignore` 是例外**：`npm pack` 永远不打它（即使列了 `template/`）→ 所以 `files` 里必须单独列 `template/.gitignore`。⚠️ **但列了也不够**（2026-09-21 实测）：`npm install` 解包时会把包里的 `.gitignore` **改名成 `.npmignore`**，所以用户 `init` 出来的项目**还是没有 `.gitignore`** —— 这条我们这边复现不出来，只有"真打包 + 真安装 + 用装好的 CLI 生成"才看得见（`tools/package_check.mjs`，发布前必跑）。收口在 `lib/init.js`：它**永远写出 `.gitignore`** |
 | "同步逻辑里 id 随便生成" | ⚠️ 本地新建必须是**负 id**（"服务器还不知道"的标记）。曾经用 `MIN(id)-1` 算成正 id → 被当成"服务器已有的行"去 PATCH → 404 |
 
 ## 4. 干活时的习惯
