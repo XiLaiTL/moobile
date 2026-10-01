@@ -1,0 +1,27 @@
+{
+  "_note": [
+    "libgen 的应用侧配置（PLAN.md §3.8 的 I2/I3/I5）。",
+    "",
+    "跑法：cd host && npx moobile-host libgen        （配置从 cwd 往上找，node_modules 也一样）",
+    "校验：cd host && npx moobile-host libgen --check （进 CI：任一侧被手改都会红）",
+    "",
+    "out 里的路径**相对本文件**（应用根），不是相对 cwd —— 于是不需要写 `../`，"
+  ],
+  "libraries": [
+    {
+      "namespace": "antd",
+      "package": "antd",
+      "platforms": ["web"],
+      "provider": "ConfigProvider",
+      "out": {
+        "manifest": "generated/antd.manifest.json",
+        "host": "host/libraries.generated.js",
+        "moonbit": "antd"
+      },
+      "moonbit": {
+        "htmlPackage": "XiLaiTL/moobile/html",
+        "cmdPackage": "XiLaiTL/moobile/cmd"
+      }
+    }
+  ]
+}

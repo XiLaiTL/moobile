@@ -1,0 +1,20 @@
+{
+  "name": "antd-demo-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "antd demo 的宿主：纯 react-dom（没有 RN），装 antd + jsdom，跑 node verify.mjs",
+  "scripts": {
+    "libgen": "node ../../../../npm/moobile-host/bin/cli.js libgen",
+    "libgen:check": "node ../../../../npm/moobile-host/bin/cli.js libgen --check",
+    "verify": "node verify.mjs",
+    "check": "npm run libgen:check && node verify.mjs"
+  },
+  "dependencies": {
+    "antd": "^6.6.4",
+    "jsdom": "^26.1.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "moobile-host": "file:../../../../npm/moobile-host"
+  }
+}

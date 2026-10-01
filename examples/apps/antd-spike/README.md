@@ -51,7 +51,10 @@ node verify.mjs
 产出的 `@html.Html` 能直接混进 `@html.div([...])`。
 **但名字必须小写** —— `pub fn Button(...)` 是 parse error（大写开头是类型名），
 所以目标写法是 `@antd.button`，与 `@svg.rect` / `@html.div` 一致。
-**未做**的是生成器本身（`PLAN.md` §3.8 的 I3）。
+**生成器本身已经做完了**（`PLAN.md` §3.8 的 I3 → `moobile-host libgen`）：
+生成物与用法示例见 [`../antd-demo/`](../antd-demo/)（71 个组件用它写、24 条判据）。
+本文件留在这里是因为**它测的是另一件事**：库本体接得对不对（标签直通 / 契约 / 载荷通道），
+而 demo 测的是生成物覆盖多少、交互能不能用。
 
 ## 还有一个**生成器可行性**量测：`manifest_probe.mjs`
 

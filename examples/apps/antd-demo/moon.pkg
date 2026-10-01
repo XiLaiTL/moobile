@@ -1,0 +1,22 @@
+supported_targets = "+js"
+
+import {
+  // ★ 与消费者同路：走**公开转发包**，不是 vendor 路径。
+  //   （`antd/` 是 libgen 生成的 DSL 包，它自己也 import 这两个包。）
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/html" @html,
+  "XiLaiTL/moobile/style" @style,
+  "XiLaiTL/moobile/cmd" @cmd,
+  "XiLaiTL/moobile-antd-demo/antd" @antd,
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)
