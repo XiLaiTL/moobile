@@ -21,6 +21,8 @@ members = [
   "examples/apps/antd-spike",
   "examples/apps/template",
   "examples/apps/antd-demo",
+  // 画布 + 手势的示例（可选特性各自有示例：它要 Skia，而模板不该背这个依赖）
+  "examples/apps/canvas-demo",
   // canvas 试金石（PLAN §3.6 / P3 T3.2）：它走的是**组件通道**，
   // 而这条通道（标签直通 + jsonProps）是新加的 —— 不吃本地源码就会拿到旧库。
   "examples/apps/canvas-spike",

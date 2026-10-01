@@ -25,7 +25,7 @@ let exts : Array[String] = [
 ]
 
 ///|
-/// 不进的目录 —— 两种规则，各有理由：
+/// 不进的目录 —— 三种规则，各有理由：
 ///
 /// 1. **按路径段**（任意深度）：`.git` / `_build` / `target` / `.mooncakes` / `node_modules`
 ///    —— 这些是版本控制、构建产物与第三方缓存。**规则只该管我们自己的文件**：
@@ -35,6 +35,7 @@ let exts : Array[String] = [
 ///    于是新建的 `tools/mbtools/_build/` 里 192 个构建产物被当成候选（实测：候选数 2338 → 2531）。
 /// 2. **按精确相对路径**：fork 的 `vendor/`（由 `vendor_sync.sh` 自己规范行尾），
 ///    以及 Expo 宿主下那几个生成目录。
+/// 3. **按形状认安卓产物**（见 `is_android_build`）—— 这一条是"写死路径"栽过之后加的。
 let prune_segments : Array[String] = [".git", "_build", "target", ".mooncakes", "node_modules"]
 
 ///|
@@ -46,7 +47,30 @@ let prune_paths : Array[String] = [
 ]
 
 ///|
+/// **安卓构建产物**：`npx expo prebuild` + Gradle 会在**仓库树内**生成一批中间物
+/// （`android/build/`、`android/app/build/`、`android/.gradle/`、各原生模块的 `android/.cxx/`）。
+/// 它们全是**产物**，不该被行尾门/一致性门管 —— 而且本机为了腾 D: 盘把
+/// `android/app/build` **联到了 E:**，walker 会跟着联接走进去，于是候选里冒出 31 个 CRLF
+/// （实测：`examples/apps/canvas-demo/android/app/build/intermediates/...`）。
+///
+/// ⚠️ 为什么按**形状**而不是像 `prune_paths` 那样再写一条路径：写死只覆盖已经存在的那个应用 ——
+/// 加 `canvas-demo` 要再加一行、来第三个应用再加一行。同一个教训在
+/// `moobile-host build` 的"发现产物而不是写死路径"上已经吃过一次。
+fn is_android_build(rel : String) -> Bool {
+  let s = "/" + rel + "/"
+  // `/.cxx/` 不限定位置：它出现在 `android/.cxx/`、`android/app/.cxx/`、
+  // 以及各原生模块的 `<module>/android/.cxx/` —— 名字本身就等于"CMake 中间物"。
+  s.contains("/.cxx/") ||
+  s.contains("/android/build/") ||
+  s.contains("/android/app/build/") ||
+  s.contains("/android/.gradle/")
+}
+
+///|
 fn should_prune(rel : String) -> Bool {
+  if is_android_build(rel) {
+    return true
+  }
   for seg in rel.split("/") {
     if prune_segments.contains(seg.to_owned()) {
       return true

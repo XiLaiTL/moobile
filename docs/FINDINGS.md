@@ -2843,3 +2843,89 @@ Windows PowerShell 5.1 按**系统 ANSI 代码页（本机 GBK）**读 `.ps1`，
 - **轮询，不要固定 sleep**：debug 包要等 Metro 现打 bundle（带 Skia 首次 **52 秒**）；
   Skia 出第一帧也有延迟 —— 同一份代码，固定等待有时截到画面、有时截到空白。
 - **只认错误级的日志**：应用自己的诊断标记（`MOOBILE_JS_ERROR … ok`）会被宽泛的 `/Error/` 撞成假阳性。
+
+---
+
+## 补记（canvas-demo 真机：两条通道闭环，外加三个"版本/配置/参照系"的坑，2026-10-01）
+
+`examples/apps/canvas-demo/` 是**可选特性自己的示例**（画布 + 手势）。
+真机 **12 / 12**：`画布 ops=13` · 品红圆环 3798px / 绿方块 324px / 蓝指针 424px ·
+横滑 80px → `dx=80 dy=0 n=9` · 蓝指针质心移动 74.5px · 点按 0→1 · 证伪屏 token 全不变。
+最后一条判据同时压住了 **手势 → Msg → Model → 绘制指令 → Skia** 整条链（分开测任何一段都测不出它）。
+
+三个坑里前两个**对任何使用者都成立**。
+
+### 坑一：原生依赖装成了**比 SDK 期望更新**的版本，报错完全指不到版本
+
+用 `npm install <native-lib>` 会拿到最新版，而 Expo 的自动链接会以这种方式炸：
+
+```
+Failed to apply plugin 'expo-autolinking'.
+> A problem occurred configuring project ':expo-modules-core'.
+   > Task with name 'mergeDebugNativeLibs' not found in project ':react-native-worklets'.
+```
+
+实测（SDK 57）：`skia@2.13.1 / reanimated@4.7.0 / worklets@0.13.0` **必挂**；
+换成 SDK 期望的 `skia@2.6.2 / reanimated@4.5.1 / worklets@0.10.1` **立刻成功**。
+
+**正确姿势**是 `npx expo install <pkg>`（它按 SDK 挑版本）+ `npx expo install --check`（核对）。
+⚠️ 而本机 `npx expo install` 会因 **npmmirror 的 audit 端点 404** 报失败（见上一条补记）——
+于是人很容易退回 `npm install` 并装错版本。**两条坑叠在一起**才是真陷阱。
+
+### 坑二：**必须**有 `babel.config.js`（Expo 文档说不用）
+
+Reanimated 那页写 "No additional configuration is required. Reanimated Babel plugin is
+automatically configured in `babel-preset-expo`"。实测在 **SDK 57 + `babel-preset-expo@57.0.13`**
+这个组合下**不成立**：原生侧 `libreanimated.so`/`libworklets.so` 都进了 APK，
+JS 侧加载时报 —— 而且 **Skia 把真因吞了**（`catch (e) { throw new OptionalDependencyNotInstalledError(...) }`，
+`ModuleProxy.js`），只剩一句：
+
+```
+Error: react-native-reanimated is not installed!
+```
+
+补 `babel.config.js`（`presets: ['babel-preset-expo']` + `plugins: ['react-native-worklets/plugin']`，插件放最后）即好。
+
+> **怎么定位的**：临时改 `node_modules/@shopify/react-native-skia/.../ReanimatedProxy.js`
+> 把 catch 到的 `e` 打出来（`console.error` 会进 logcat）。**库把错误吞掉时，就自己去把它挖出来** ——
+> 这比读文档猜快得多。
+
+> 另一条同类的：**改完配置不清缓存会白排查一轮**。`babel.config.js` 加好后我没有 `--clear`
+> 重启 Metro，跑的还是旧 bundle，症状与"配置没生效"一模一样。改了 `node_modules` 里的代码
+> 或 babel 配置之后，`npx expo start --clear`。
+
+### 坑三（真机独有）：`locationX/locationY` 的参照系会**中途换**
+
+第一版包装器用 `locationX` 的差值算位移：
+
+```js
+dx: n.locationX - start.current.x      // ← 错
+```
+
+真机上实测（横滑 80px，拖动区里放了一行文字）：
+
+```
+GRANT: {"x":64,"y":9}      ← 相对**内层 Text**（文本从 x=95 开始，95+64=159=触点）
+MOVE : {"x":67} → {"x":77} …
+拖动结果：dx=155 dy=51      ← 而真实位移是 dx=80 dy=0
+```
+
+`locationX` 的参照系是"**最深的被触摸 view**"：手指滑出那行文字的范围后 RN 换了参照系
+（从 Text 变成父 View）→ 位移**凭空多出"两套坐标原点之差"**。
+
+**处置**（也正是这条通道设计时定的原则 —— "`dx/dy` 由宿主算"）：
+- `dx/dy` 用**屏幕坐标**算：`n.pageX - start.pageX`（参照系永远稳定）；
+- `x/y` 保留事件自带的 `locationX/Y`，并在契约里写清"它只表示当下位置，参照系由 RN 决定"。
+
+> **教训**：`locationX` 与"元素内坐标"**看着是一回事，其实不是**。这条只在真机上出现
+> （web 宿主上一切正常），所以"web 验过"不能代替"真机验过"。
+> 顺带一条**断言教训**：这条 bug 第一版没被抓住，因为我的判据是 `|dx| >= 40`
+> （太松，155 也"通过"）。收紧成"**约等于真实滑动距离 ±15**"之后才暴露 ——
+> **阈值松的断言 = 没有断言**。
+
+### 工作方式上的一条（值得写进 DEV.md 级别）
+
+停 Metro **不要**用 `Get-Process node | Stop-Process -Force`：它会把**宿主的 harness 自己**
+（DSH 也是 node，监听 3081）一起杀掉，表现是"我这边的会话掉线"。正确做法：
+`job_kill <job_id>`，或按端口找 PID —— `netstat -ano | findstr :8081` → `taskkill /PID <pid> /T /F`。
+⚠️ Git Bash 里还要 `MSYS_NO_PATHCONV=1`，否则 `/PID` 会被改写成路径（同一个 MSYS 坑）。

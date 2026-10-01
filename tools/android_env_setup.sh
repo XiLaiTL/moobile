@@ -19,16 +19,27 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-AND="$ROOT/examples/apps/todo-app/host/android"
-CFG="$ROOT/tools/android-config"
-
+# 目标安卓工程：默认 todo-app 的宿主；`--app <工程目录>` 可以指到别的应用
+# （为什么需要：`examples/apps/canvas-demo` 是**可选特性自己的示例**，它也要 prebuild，
+#  而这条修复对它同样必需 —— 工具不该只服务某一个 demo。）
+APP_HOST="$ROOT/examples/apps/todo-app/host"
 MODE="apply"
-case "${1:-}" in
-  --check) MODE="check" ;;
-  --save)  MODE="save" ;;
-  "")      MODE="apply" ;;
-  *) echo "未知参数: $1"; exit 2 ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check) MODE="check"; shift ;;
+    --save)  MODE="save"; shift ;;
+    --app)   APP_HOST="$2"; shift 2 ;;
+    --app=*) APP_HOST="${1#--app=}"; shift ;;
+    *) echo "未知参数: $1（用法：android_env_setup.sh [--check|--save] [--app <工程目录>]）"; exit 2 ;;
+  esac
+done
+# 相对路径按调用者的 cwd 解析（脚本自己会 cd 到别处，所以这里就定死）
+case "$APP_HOST" in
+  /*|[A-Za-z]:*) ;;
+  *) APP_HOST="$(pwd)/$APP_HOST" ;;
 esac
+AND="$APP_HOST/android"
+CFG="$ROOT/tools/android-config"
 
 GRADLE_VER="8.14.3"
 GRADLE_MIRROR="mirrors.cloud.tencent.com/gradle"
@@ -156,12 +167,12 @@ else
 fi
 # ------------------------------------------------------------------ 5) 依赖检查
 echo "=== 5) 外部依赖检查"
-[ -d "$ROOT/examples/apps/todo-app/host/node_modules/@react-native/gradle-plugin" ] && ok "node_modules 已安装" \
-  || die "node_modules 缺失：先 cd host && npm install"
+[ -d "$APP_HOST/node_modules/@react-native/gradle-plugin" ] && ok "node_modules 已安装" \
+  || die "node_modules 缺失：先 cd $APP_HOST && npm install"
 [ -x "$JDK_PATH/bin/javac" ] && ok "JDK: $JDK_PATH" || die "找不到 JDK：$JDK_PATH"
 [ -x "$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe" ] && ok "Android SDK 可达（经目录联接）" \
   || die "Android SDK 不可达"
-if [ -f "$ROOT/examples/apps/todo-app/host/node_modules/expo-modules-autolinking/build/index.js" ]; then
+if [ -f "$APP_HOST/node_modules/expo-modules-autolinking/build/index.js" ]; then
   ok "expo-modules-autolinking/build 完好（是真实目录，不是空联接）"
 else
   die "expo-modules-autolinking/build 缺失 —— 见 DEV.md §7 第 2 条的恢复命令"
