@@ -74,15 +74,31 @@ def dump():
 
 
 NODE_RE = re.compile(r'<node[^>]*?>')
-ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
+# ⚠️ **两种引号都要认**（2026-10-01 实测踩到，会静默漏掉一整类文字）：
+#    `uiautomator dump` 的 xml 里，属性值**本身含双引号**时会改用**单引号**包起来：
+#        <node text='#1 {"i":1}' … />        ← 双引号版本
+#        <node text="待办" … />              ← 寻常版本
+#    原来的正则只匹配 `="…"`，于是上面那种被读成**空字符串** —— 症状是
+#    "断言说界面上没有这条文字，而人眼/截图明明看得到"，且**不报错**。
+#    界面文字里带 `"` 并不罕见：任何显示 JSON / 代码 / 引用的应用都会撞上
+#    （本项目就是在 SSE 试金石上撞的 —— 它显示 `{"i":1}`）。
+ATTR_RE = re.compile(r"([\w-]+)=(?:\"([^\"]*)\"|'([^']*)')")
 BOUNDS_RE = re.compile(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]')
+
+
+def attrs_of(tag):
+    """一个 `<node …>` 的全部属性。两种引号都认（见 `ATTR_RE` 上面的注释）。"""
+    out = {}
+    for m in ATTR_RE.finditer(tag):
+        out[m.group(1)] = m.group(2) if m.group(2) is not None else m.group(3)
+    return out
 
 
 def parse(xml):
     """把 dump 变成节点字典列表（class / text / clickable / 坐标）。"""
     out = []
     for m in NODE_RE.finditer(xml):
-        a = dict(ATTR_RE.findall(m.group(0)))
+        a = attrs_of(m.group(0))
         b = BOUNDS_RE.match(a.get('bounds', ''))
         if not b:
             continue

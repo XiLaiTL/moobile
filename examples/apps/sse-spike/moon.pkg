@@ -1,0 +1,22 @@
+// 试金石只用到最小那几条 import（模板的下限）+ 被验的 `sse/` 包。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  // ★ 被验的东西：流式通道
+  "XiLaiTL/moobile/sse" @sse,
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)

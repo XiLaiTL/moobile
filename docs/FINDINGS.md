@@ -3472,3 +3472,84 @@ node tools/verify_headless.mjs      # → ERR_MODULE_NOT_FOUND，与 CI 同一�
 往"警告致红"引了一轮；第二次红，`verify_all.sh` 先打**错误行**、CI 再把它们发成 annotation ——
 `ERR_MODULE_NOT_FOUND ... imported from …/npm/moobile-host/core.js` **一眼就是全部线索**。
 **同样的失败，出口不同，成本差一整轮。**
+
+---
+
+## 补记（SSE 流式通道：一条通道、两份传输，2026-10-01）
+
+**起因**：要给手机 LLM chat 应用做"边生成边显示"。库里原来**只有一问一答**
+（`@http` 的 `expect_json` / `expect_text` 都会把整个响应读完才交回来），于是新开了
+`XiLaiTL/moobile/sse`（`sse/sse.mbt`）—— 一个请求、**很多条消息**回到 `update`。
+试金石 `examples/apps/sse-spike/`（无头 12 项 + 真机 14 项），已接成 `verify_all.sh` 的第 17 条门。
+
+### 一、**RN 的 `fetch` 没有 `response.body`** —— 平台上必须有**两份**传输
+
+| 平台 | 传输 | 判据 |
+|---|---|---|
+| Web / Node | `fetch` + `response.body.getReader()` | 无头 12 项 ✅ |
+| **React Native** | **`XMLHttpRequest` 渐进读 `responseText`** | **真机 14 项** ✅ |
+
+- RN 的 `fetch` 基于 whatwg-fetch，**拿不到流式 body**。照 fetch 写法写出来的"流式"在真机上
+  **一条 `Delta` 都收不到，而且不报错** —— 正好是最容易想当然的地方。
+- ⚠️ **必须在发请求之前判平台**（`navigator.product === "ReactNative"`）。
+  "先用 fetch 试、不行再换 XHR"会把**同一个 POST 发两遍**（对 LLM 接口就是双倍扣费 + 双份生成）。
+- 好消息：RN 的 XHR **支持**增量（`__didReceiveIncrementalData`；只要挂了 `onreadystatechange`
+  或 `onprogress` 就会走这条路），`readyState === 3` 时 `responseText` 是**累积**的。
+  真机实测（`adb logcat` 里的临时探针，验完已撤）：
+
+  ```
+  rs=3 status=200 len=15 → len=30 → len=45 → len=59   ← 一帧一次，边收边长
+  rs=4 status=200 len=59                              ← 收尾
+  ```
+
+- **诊断路径**（值得记）：`console.log` 在 RN 里会进 **logcat**（`ReactNativeJS` 标签）。
+  "真机上什么都没发生"的时候，这是最快分清"没收到数据"与"收到了但没渲染"的办法。
+
+### 二、`Emit[Msg]` 返回的是一个 **Cmd** —— 光调 `emit` 消息会**静默丢掉**
+
+`pub(all) struct Emit[Msg]((Msg) -> Cmd)`。也就是说 `emit(msg)` **只是造了个命令**，
+不把它交给运行时，那条消息**永远不会到 `update`**，而且**不报错**。
+
+从外部（JS 回调、定时器）送消息进来的官方路径是：
+
+```moonbit
+@cmd.custom_cmd(scheduler => {
+  some_js_thing(..., ev => scheduler.add(emit(Msg(ev))))   // ← scheduler.add 才是"送达"
+})
+```
+
+这与 `@sub.every` 的加载器是同一条路（`scheduler.add(tagger.val)`）。
+⚠️ 两个真 bug 都是判据第一天抓到的，且都属于"**静默**"那一类：
+
+1. **收尾事件被自己挡掉**：`finish()` 先把 `terminal = true` 再调 `send()`，
+   而 `send()` 第一行就是 `if (terminal) return` —— 于是 `Done`/`Fail` **一条都没发出去**。
+   症状：分片全对，界面永远停在"接收中"。修法是把"裸投递"与"带闸门的投递"分开。
+2. **探针自己成了被测物**（见下条）。
+
+### 三、`uiautomator dump` 的**单引号**陷阱 —— 真机判据读不到含 `"` 的文字
+
+真机判据一开始报"一帧都没有"，而**界面上明明有**。抓下原生节点树才看清：
+
+```
+<node index="0" text='#1 {"i":1}' … />      ← 属性值里含双引号 → xml 用**单引号**包起来
+<node index="0" text="待办" … />            ← 寻常情况
+```
+
+`tools/verify_android.py` 的 `ATTR_RE` 原来只匹配 `="…"`，于是这类文字被读成**空字符串** ——
+**不报错**，只表现为"断言说没有、人眼看得到"。**界面文字里带 `"` 并不罕见**：
+任何显示 JSON / 代码 / 引用的应用都会撞上（本项目正是在显示 `{"i":1}` 时撞的）。
+
+**证伪用真实那份 dump 做的**（修前 vs 修后）：修前读出 4 条文字，修后 **7 条**
+（多出 `#1 {"i":1}`、`#2 {"i":2}`、`#3 {"i":3}`）。两边的解析器都改了
+（`tools/verify_android.py` 与 `sse-spike/device_check.mjs`）。
+
+> 教训与"红的是探针不是被测物"同源，但这次**更阴**：不是探针红，而是**探针给了个错的"绿/否"**
+> —— 它说"界面上没有"，而这与截图矛盾。**看到"断言说没有、人眼说有"时，先怀疑解析器。**
+
+### 四、顺带重踩的两个已知坑（说明它们值得写在显眼处）
+
+- **`CI=1` 会让 Metro 关掉文件监听**：改了 JS 重新构建后，app 拉到的还是**旧 bundle** ——
+  表现是"我加的探针日志一条都没出现"。这一条 `FINDINGS` 里早有记录，我仍然踩了。
+- **冷启动拉 bundle 有时序**：改了 `moobile.js` 之后立刻拉 app，可能正好卡在 Metro 重新打包上，
+  停在 "Unable to load script"，**再起一次就好**。判据因此加了"重试一次"，
+  免得把**时序问题记成功能缺陷**。

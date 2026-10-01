@@ -22,6 +22,8 @@ members = [
   "examples/apps/template",
   "examples/apps/antd-demo",
   // 画布 + 手势的示例（可选特性各自有示例：它要 Skia，而模板不该背这个依赖）
+  // SSE（流式）试金石：它验的正是**还没发布**的 `sse/` 包（边收边显示 + 分帧边界 + 停止）
+  "examples/apps/sse-spike",
   "examples/apps/canvas-demo",
   // canvas 试金石（PLAN §3.6 / P3 T3.2）：它走的是**组件通道**，
   // 而这条通道（标签直通 + jsonProps）是新加的 —— 不吃本地源码就会拿到旧库。

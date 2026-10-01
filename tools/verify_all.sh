@@ -130,6 +130,22 @@ else
   skip "组件库接入（antd 试金石）" "examples/apps/antd-spike/host/node_modules 没装（cd 进去跑 npm install）"
 fi
 
+# SSE（流式）通道 —— 试金石在 `examples/apps/sse-spike/`。
+#
+# 为什么必须有这一条：它是库里**第一个"一个请求、很多条消息"**的通道（`@http` 是一问一答），
+# 而它横跨四层（MoonBit 的 Cmd → 编译出来的 JS → 网络 → 消息回到 update）。
+# 只测其中一层都会漏：**光调 `emit(msg)` 而不把返回的 Cmd 交给 scheduler，消息是静默丢掉的**
+# —— 这条判据第一天就抓到了两个真 bug（收尾事件被自己挡掉、以及探针自己的引号盲点）。
+#
+# ⚠️ 它验的是 **web/node 那条传输**（fetch + ReadableStream）。**RN 那条是另一份代码**
+#    （RN 的 fetch 没有 `response.body`，走 XHR 渐进读）—— 只有真机验得到：
+#    `node examples/apps/sse-spike/device_check.mjs`（要模拟器 + Metro）。
+if [ -d "$ROOT/examples/apps/sse-spike/node_modules" ]; then
+  run "SSE 流式通道（试金石，12 项）" node "$ROOT/examples/apps/sse-spike/verify.mjs"
+else
+  skip "SSE 流式通道（试金石）" "examples/apps/sse-spike/node_modules 没装（cd 进去跑 npm install）"
+fi
+
 # ── 脚手架（E 轨道）────────────────────────────────────────────────────────────
 # 模板是**唯一真源**（docs/design/SCAFFOLD.md §3.4）：生成出来的项目才是用户拿到的东西，
 # 而"模板自己坏了"以前没有任何一条门看得见 —— 因为模板当时还不存在。
