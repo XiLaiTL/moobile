@@ -196,6 +196,26 @@ const COMPONENTS = {
 };
 core.installHostCore({ react: React, components: COMPONENTS, platform: "web", apiBase: "" });
 
+// ★ 助手那条走的是 **markdown 组件**（`md:Markdown`，宿主侧 `App.js` 用 `registerLibrary`
+//   注册的真身是 `react-native-markdown-display`）。**无头环境里没有 react-native**，
+//   所以这里给它一个替身：把 markdown 文本原样当文字渲染。
+//
+//   这不是"把被测物换掉"——它是**换一个宿主实现**，正是"宿主是可替换件"这条设计的用法
+//   （与 `MOBILE_HOST.db` 那个内存版同一个道理）。
+//   ⚠️ 边界说清楚：这条判据**不验 markdown 渲染成什么样**（那是 web/真机上的事，
+//   要真 `react-native`）。它验的是"助手那段文字到了界面上、且随时在长"。
+core.registerLibrary({
+  namespace: "md",
+  // ⚠️ 文本走的是 **prop**（`markdown`），不是 children —— 真机上实测：我们的组件通道
+  //    会把字符串子节点包成 `<Text>`，而 markdown 组件要裸字符串（宿主侧 `App.js` 有适配层）。
+  //    替身必须**跟着真身走同一个接口**，否则判据验的是另一个东西。
+  components: {
+    Markdown: ({ markdown, ...rest }) => h("div", rest, String(markdown ?? "")),
+  },
+  platforms: ["web"],
+  quiet: true,
+});
+
 async function boot() {
   const mod = await import(pathToFileURL(artifact).href);
   const handles = mod.app();
@@ -215,7 +235,16 @@ function texts(node, out = []) {
     for (const c of node) texts(c, out);
     return out;
   }
-  if (typeof node === "object" && node.props) texts(node.props.children, out);
+  if (typeof node === "object" && node.props) {
+    // ⚠️ **本判据只读元素树、从不渲染它**（与 `verify_headless` 同一套路子）。
+    //    而助手那条的文字是走 `markdown` **prop** 交给 markdown 组件的（见 app.mbt 的注释：
+    //    字符串走 children 会被包成 `<Text>`，组件的 markdown-it 会当场抛错）。
+    //    组件在自己的实现里把 prop 渲染成视图 —— 那个实现（真身是 RN 组件）在 node 里跑不了。
+    //    所以这里**把 prop 当文字读**：与替身是同一个性质（"换一个宿主实现"），
+    //    它验的是"助手那段文字到了界面这一层"，不是"markdown 长什么样"（那在 web/真机上验）。
+    if (typeof node.props.markdown === "string") out.push(node.props.markdown);
+    texts(node.props.children, out);
+  }
   return out;
 }
 function walk(node, fn) {

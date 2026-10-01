@@ -14,11 +14,13 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
     "expo": "~57.0.24",
+    "expo-sqlite": "~57.0.3",
     "moobile-host": "file:../../../npm/moobile-host",
+    "punycode": "^2.3.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-web": "^0.21.2",
-    "expo-sqlite": "~57.0.3"
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-web": "^0.21.2"
   }
 }

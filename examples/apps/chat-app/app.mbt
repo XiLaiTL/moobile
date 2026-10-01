@@ -405,11 +405,51 @@ fn bubble_row(b : Bubble, streaming_tail : Bool) -> @html.Html {
         attrs=attrs(@style.Style::new().font_size(12.0).color(c_dim).margin_bottom(@style.px(4.0))),
         if mine { "你" } else { "AI" },
       ),
-      @html.span(
-        attrs=attrs(@style.Style::new().font_size(15.0).color(c_ink)),
-        // 正在生成时挂个光标 —— **"还在长"与"卡住了"要看得出来**
-        if streaming_tail { b.text + "▍" } else { b.text },
-      ),
+      // ★ 助手那条走 **markdown 渲染器**（一个现成的 RN 组件，由宿主的组件注册表提供）：
+      //   `md:Markdown` 是命名空间标签，宿主侧 `App.js` 用 `registerLibrary` 注册的。
+      //   我们**不自己写 markdown 解析/渲染** —— 那正是"组件库接入"这条通道要解决的问题。
+      //
+      //   用户那条**保持纯文本**（他打的是字，不是文档；而且把用户输入当 markdown 渲染
+      //   会让"我输了个星号"变成意外格式）。
+      //
+      //   正在生成时给尾巴挂个光标 —— **"还在长"与"卡住了"要看得出来**；
+      //   光标是普通 `span`，与 markdown 组件并排（它俩都是宿主组件）。
+      if mine {
+        @html.span(
+          attrs=attrs(@style.Style::new().font_size(15.0).color(c_ink)),
+          b.text,
+        )
+      } else {
+        @html.div(
+          attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Row)),
+          [
+            @html.div(
+              attrs=attrs(@style.Style::new().flex(1.0)),
+              // ⚠️ 文本走 **prop**，不走 children：我们的组件通道会把字符串子节点包成
+              //    `<Text>`（RN 的规矩），而 markdown 组件要的是裸字符串 —— 宿主侧 `App.js`
+              //    有一层适配把它接回 `children`。这条是**真机上才暴露**的（web 上字符串直接
+              //    就是字符串，看不出差别）。
+              @html.node(
+                "md:Markdown",
+                attrs(@style.Style::new().font_size(15.0).color(c_ink)).prop_str(
+                  "markdown",
+                  b.text,
+                ),
+                // 空子节点（**显式标类型**：`[]` 会被推成 `Array[Unit]`）
+                ([] : Array[@html.Html]),
+              ),
+            ),
+            if streaming_tail {
+              @html.span(
+                attrs=attrs(@style.Style::new().font_size(15.0).color(c_ink)),
+                "▍",
+              )
+            } else {
+              @html.span(attrs=attrs(@style.Style::new()), "")
+            },
+          ],
+        )
+      },
     ],
   )
 }

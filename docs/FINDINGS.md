@@ -3553,3 +3553,95 @@ node tools/verify_headless.mjs      # → ERR_MODULE_NOT_FOUND，与 CI 同一�
 - **冷启动拉 bundle 有时序**：改了 `moobile.js` 之后立刻拉 app，可能正好卡在 Metro 重新打包上，
   停在 "Unable to load script"，**再起一次就好**。判据因此加了"重试一次"，
   免得把**时序问题记成功能缺陷**。
+
+---
+
+## 补记（接一个**现成的 RN 组件**：markdown 渲染，2026-10-02）
+
+**起因**：chat-app 的助手回复原来是**纯文本**渲染的。LLM 的输出基本都是 markdown —— 这不该
+自己写解析器/渲染器，**组件库接入机制**（antd 那条，I 轨道）正是为这件事准备的。
+选 `react-native-markdown-display@7.0.2`：**纯 JS**（依赖只有 `markdown-it` / `css-to-react-native`），
+渲染的是 `react-native` 原语 —— 所以**同一份代码在 RNW(web) 上也是这套**。
+接的方式：宿主 `App.js` 里 `registerLibrary({namespace:'md', …})`，MoonBit 侧写 `@html.node("md:Markdown", …)`。
+
+接的过程撞了**四个坑，三个在真机上才露头**。全部有真机/无头判据压着（`device_check.mjs` 17 项、
+`verify.mjs` 21 项）。
+
+### 一、`markdown-it` 依赖 Node 内置的 `punycode` → **Android 打包直接失败**
+
+```
+The package at "node_modules/markdown-it/lib/index.js" attempted to import
+the Node standard library module "punycode".
+```
+
+web 上打包器会去 node builtin 里取，**真机打包不认**。修法：`npm i punycode` + `metro.config.js` 里
+`config.resolver.extraNodeModules = { punycode: require.resolve('punycode/') }`
+（必须是一条**依赖**，不能只在配置里写路径 —— 那样新鲜克隆会缺件）。
+
+### 二、`registerLibrary` 必须在 `installHost()` **之后**调
+
+真机上启动即抛：
+
+```
+moobile-host: registerLibrary 必须在 installHost 之后调用（MOBILE_HOST 还没装）。
+```
+
+而 `MOBILE_HOST` 是在 `mountApp` 里才装的。正确写法（`npm/moobile-host/index.js` 的文件头也写了）：
+
+```js
+installHost();                  // 先装
+registerLibrary({ namespace: 'md', module: … });
+export default mountApp(app, { registry });   // 再装一次是幂等合并
+```
+
+### 三、★ **字符串 children 会被包成 `<Text>`** —— 自定义组件要裸字符串时接不上
+
+这条最值钱。`render.mbt` 的 `render_node` 对 `VNode::Text(s)` 的规定是
+**包一层宿主 `Text` 组件**（RN 的规矩：裸字符串不能当 `View` 的子节点）。
+
+于是 `@html.node("md:Markdown", attrs, b.text)` 交给组件的是**一个 React 元素**，不是字符串，
+`markdown-it` 当场抛 `Error: Input data should be a String` —— **每个字一次**，刷满 logcat，
+而界面上只表现为"AI 那条空着"，**看不出是这条**。
+
+修法（不去改库的渲染规则）：**文本走 prop，宿主侧套一层适配**：
+
+```js
+// App.js
+components: {
+  Markdown: ({ markdown, ...rest }) => React.createElement(Markdown, rest, String(markdown ?? '')),
+}
+```
+```moonbit
+@html.node("md:Markdown", attrs(...).prop_str("markdown", b.text), ([] : Array[@html.Html]))
+```
+
+这与 `jsonProps`（给结构化 prop 套解析器）是**同一个手法**：形状对不上的组件在**宿主侧**适配。
+⚠️ 边界：库现在**没有**"给自定义组件传裸字符串子节点"的表达方式；要的话得改渲染规则，
+而那会**反过来**弄坏"自定义组件把字符串当 RN 子节点"的用法。**记在这里，别当已支持。**
+
+### 四、判据自己是"只读元素树、从不渲染"——所以读不到 prop 里的文字
+
+无头判据（`verify.mjs`，与 `verify_headless` 同一套路子）**只遍历 `handles.element()` 的元素树**，
+从不真的渲染它。助手文字现在在 `markdown` **prop** 里（见坑三），而遍历器只看 `props.children`
+→ **文字对它不存在**。处置：遍历时**把 `markdown` prop 也当文字读**，并在注释里说明
+"这与替身是同一个性质（换一个宿主实现）；它验的是'文字到了界面这一层'，不是'markdown 长什么样'"。
+
+### 五、真机探针侧的两个坑（都不是应用的问题）
+
+- **`adb shell input text` 会丢字符**，而且**丢的位置随机**（`sk-device-test` → `sk-ice-t`、
+  `http://…` → `hp://…`）。块打丢得更多，**逐字符慢打（160ms/字符）+ 回读校验 + 重试**才稳。
+  ⚠️ 形状与"**受控输入框在输入快于往返时丢键**"一模一样（每次按键都要 emit → update → 重渲染，
+  值从 Model 回灌）。**真用户粘贴一大段文本时可能撞上同一件事** —— 记在这里，值得单独查。
+- **软键盘会盖住底部的「发送」**：症状是"点了没反应、草稿还留着"，看起来像应用不工作。
+  要先 `input keyevent 4` 收键盘再点。
+- 另外：判据要先 `pm clear`（否则上一轮的 key 还在库里，应用**正确地**直接进聊天页，
+  而"首次打开落在设置页"那条就没法验）——⚠️ `pm clear` 会连 Metro 的 bundle 缓存一起清，
+  冷启动必须轮询。
+
+### 判据
+
+- 无头 **21 / 21**（假 OpenAI 服务 + 假 `MOBILE_HOST.db`，`md:Markdown` 用替身）；
+- **真机 17 / 17**：界面上读到 `AI | 标题一 | 这是粗体和行内代码。 | const a = 1; | • | 列表甲 | • | 列表乙`
+  —— `#` / `**` / 反引号 / 围栏**全被吃掉**，标题、粗体、行内代码、代码块、列表都渲染出来了；
+  而**流到一半**时读到的是 `AI | 标题一 | 这是** | ▍ | 生成中…`（未闭合的 `**` 当普通文本，
+  这正是"边收边渲染"该有的样子）。
