@@ -1,6 +1,12 @@
 # moobile
 
-> **用 MoonBit 写一次 UI，通过可插拔后端运行在 Web 与 React Native 上。**
+> ⚠️ **已过时（2026-09 归档）**：这是**设计阶段**的草案 README，写于代码开始之前
+> （当时的状态是"草案 / 待验证，代码尚未开始"）。现行版本请看根目录的
+> [`README.md`](../../README.md)；设计细节在 [`DESIGN.md`](DESIGN.md)，
+> 写代码之前的实测在 [`DESIGN-FEASIBILITY.md`](DESIGN-FEASIBILITY.md)。
+>
+> 保留它的理由：里面有当时对"内联文本流能不能跑"的**原始判断**，与后来 R1 的实测对照着看更有价值。
+
 
 把 [RabiTa](https://mooncakes.io/docs/moonbit-community/rabbita) 的视图树翻译成 React 元素，
 由 React 负责调和、React Native 负责布局与文字渲染。
@@ -17,7 +23,7 @@
 ---
 
 > 📌 **这是设计期的项目导读，已留档。** 项目当前的门面是 [`../README.md`](../README.md)（实现侧），
-> 工作计划在 [`../PLAN.md`](../PLAN.md)，环境手册在 [`../DEV.md`](../DEV.md)。
+> 工作计划在 [`../PLAN.md`](../../PLAN.md)，环境手册在 [`../DEV.md`](../../DEV.md)。
 
 ---
 
@@ -26,7 +32,7 @@
 | 文档 | 内容 |
 |---|---|
 | [`DESIGN.md`](DESIGN.md) | **设计文档（主）** —— 定位、架构、路线图、风险、未决问题 |
-| [`EVIDENCE.md`](EVIDENCE.md) | **验证记录** —— 全部实测数据、原始输出、复现方式、已否决方案的论证链 |
+| [`EVIDENCE.md`](DESIGN-FEASIBILITY.md) | **验证记录** —— 全部实测数据、原始输出、复现方式、已否决方案的论证链 |
 
 建议阅读顺序：先 `DESIGN.md` §0–§4 建立整体认识，再按需查 `EVIDENCE.md` 核对依据。
 

@@ -1,0 +1,16 @@
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style" @style,
+  "XiLaiTL/moobile/vendor/rabbita/html" @html,
+  "XiLaiTL/moobile/vendor/rabbita/cmd" @cmd,
+  "XiLaiTL/moobile/sqlite" @sqlite,
+  "XiLaiTL/moobile/vendor/rabbita/sub" @sub,
+}
+
+options(
+  link: {
+    "js": { "format": "esm", "exports": [ "app" ] },
+  },
+)

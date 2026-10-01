@@ -1,0 +1,8 @@
+import {
+  "XiLaiTL/moobile/vendor/rabbita/js" @js,
+  "moonbitlang/core/json" @json,
+}
+
+options(
+  targets: { "*": [ "js" ] },
+)

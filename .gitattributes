@@ -1,17 +1,17 @@
 # .gitattributes —— 行尾策略
 #
 # 为什么必须显式管：本机 `core.autocrlf=true`，默认会把检出内容转成 CRLF。
-# 而 `_tools/patches/*.patch` 的上下文行一旦变成 CRLF，`patch -p1` 就贴不上
+# 而 `tools/patches/*.patch` 的上下文行一旦变成 CRLF，`patch -p1` 就贴不上
 # （vendor_sync.sh 会把 pristine 规范成 LF，两边就对不上了）。
 # 所以：**凡是「内容必须逐字节稳定」的文件，一律钉成 LF。**
 #
-# 第三方 fork 的代码不进仓（生成物，由 _tools/vendor_sync.sh 铺开并统一成 LF），
+# 第三方 fork 的代码不进仓（生成物，由 tools/vendor_sync.sh 铺开并统一成 LF），
 # 所以这里不需要管它们。
 
 # patch 与脚本：字节必须稳定
-_tools/patches/** -text
+tools/patches/** -text
 *.sh              -text
-_tools/vendor.lock -text
+tools/vendor.lock -text
 
 # ignore 文件：moon 与 git 都按行解析，统一 LF
 .gitignore   -text

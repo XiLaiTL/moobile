@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # moobile —— 仓库根就是模块根（模块名 moobile/moobile）。
 # 原则：**源码与证据入库，生成物不入库**（都能用一条命令重建）。
-# 重建方式：moon check/build、./build.sh、npm install、expo prebuild、android_env_setup.sh。
+# 重建方式：moon check/build、./tools/build.sh、npm install、expo prebuild、android_env_setup.sh。
 # ---------------------------------------------------------------------------
 
 # ---- MoonBit ----
@@ -11,40 +11,45 @@ target/
 .mooncakes/
 
 # ---- Expo / React Native 宿主 ----
-host/node_modules/
-host/.expo/
-host/dist/
-# 构建产物：./build.sh 从 _build/js/<profile>/build/demo/demo.js 拷过来
-host/moobile.js
-# prebuild 生成，且被 _tools/android_env_setup.sh 幂等重写；
-# 已知良好副本在 _tools/android-config/（那份是入库的）
-host/android/
+examples/apps/todo-app/host/node_modules/
+examples/apps/todo-app/host/.expo/
+examples/apps/todo-app/host/dist/
+# 构建产物：./tools/build.sh 从 _build/js/<profile>/build/examples/apps/todo-app/demo.js 拷过来
+examples/apps/todo-app/host/moobile.js
+# prebuild 生成，且被 tools/android_env_setup.sh 幂等重写；
+# 已知良好副本在 tools/android-config/（那份是入库的）
+examples/apps/todo-app/host/android/
 *.apk
 *.aab
 
 # ---- 验证脚本的产出 ----
-# _verify.js 每次跑都会重新截三张图（证据类产出在 _r1/ 里，那份入库）
+# tools/verify_web.js 每次跑都会重新截三张图（证据类产出在 docs/evidence/r1/ 里，那份入库）
 shot-*.png
+
+# ---- 一次性探路用的临时模块（探针等）----
+.scratch/
+
+# ---- 依赖（各处通用；examples/apps/todo-app/host/node_modules 上面已单独列过）----
+node_modules/
+
+# ---- Todo 示例后端的运行时状态 ----
+examples/services/todo-server/todos.json
+examples/services/todo-server/todos.json.tmp
 
 # ---- 杂项 ----
 *.log
 
-# ---- 第三方代码（rabbita fork）：**不进仓**，靠 _tools/vendor_sync.sh 重建 ----
-# 真相 = _tools/vendor.lock 的版本 + _tools/patches/*.patch
+# ---- 第三方代码（rabbita fork）：**不进仓**，靠 tools/vendor_sync.sh 重建 ----
+# 真相 = tools/vendor.lock 的版本 + tools/patches/*.patch
 # （MoonBit 的 internal 可见性要求 fork 必须铺在模块根，所以这是生成物）
-/clipboard/
-/cmd/
-/common/
-/dialog/
-/dom/
-/html/
-/http/
-/internal/
-/js/
-/nav/
-/server/
-/sub/
-/svg/
-/url/
-/variant/
-/websocket/
+#
+# ⚠️ `server/` 曾经在这个列表里（rabbita 的 SSR 包），**现在不在了，别加回来**：
+#    那个包早已有意裁掉（见 `tools/vendor_sync.sh` 的注释与 `FORK.md` §2.5），
+#    而 `examples/services/todo-server/` 这个名字现在是**我们自己的 Todo 示例后端**（native 嵌套模块）。
+#    这条旧规则会静默吞掉它 —— 实测踩到过（`git check-ignore` 才看出来）。
+# ⚠️ 整个 `vendor/` 都是生成物（fork 铺在这里）。
+#    曾经是 16 个目录**直接铺在模块根** —— 实测发现那**不是**技术必需：
+#    `internal` 的可见性只认**路径段恰好等于 internal**，所以把 `internal/*` 摊平成
+#    `vendor/rabbita/*`（丢掉那一段）之后，根包照样能 import 并使用它们（含枚举变体匹配）。
+#    见 docs/FINDINGS.md 的 R3 实验记录。
+/vendor/

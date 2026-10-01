@@ -3,13 +3,13 @@
 // 目的：不靠肉眼，用几何数据回答「RN 能不能接受 yi 那种文本排版」。
 // 手法：`Range.getClientRects()` 数**行盒**（line box）—— 直接看出有没有换行、换了几行。
 //
-//   node _r1.js
+//   node tools/measure_r1.js
 const fs = require("fs");
 const { spawn, execSync } = require("child_process");
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const PORT = 9235;
-const OUT = __dirname + "/_r1"; // 从脚本位置推导，不写死盘符
+const OUT = require("path").join(__dirname, "..", "docs", "evidence", "r1"); // 从脚本位置推导，不写死盘符
 const URL = "http://localhost:8081";
 const PROFILE = process.env.TEMP + "\\chrome_r1_" + Date.now();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -1,66 +1,16 @@
 ///|
-/// 惰性持有 `Mount`。
+/// **应用入口 —— 全部就这一行（H2 的单导出）。**
 ///
-/// 为什么不能在模块初始化时构造：`mount` 会立刻求值 duplix 图并排队初始命令，
-/// 那时宿主还没把 `MOBILE_HOST`（React、组件表、调度钩子）装上。
-/// 所以由 `demo_start()` 显式触发。
-priv struct Holder {
-  mut m : @moobile.Mount?
-}
-
-///|
-let g : Holder = { m: None }
-
-///|
-/// 挂载 + 同步画出首帧。宿主在设好 `MOBILE_HOST` 之后调用一次。
-pub fn demo_start() -> Unit {
-  let m = @moobile.mount(initial(), update, view)
-  m.start()
-  g.m = Some(m)
-}
-
-///|
-/// 给 `useSyncExternalStore` 的快照。
-pub fn demo_snapshot() -> Int {
-  match g.m {
-    Some(m) => m.snapshot()
-    None => 0
-  }
-}
-
-///|
-/// 给 `useSyncExternalStore` 的订阅。返回退订闭包。
-pub fn demo_subscribe(f : (Int) -> Unit) -> () -> Unit {
-  match g.m {
-    Some(m) => m.subscribe(f)
-    None => () => ()
-  }
-}
-
-///|
-/// 当前帧的 React 元素（还没画过时是 JS `null`）。
-pub fn demo_element() -> @moobile.JsValue {
-  match g.m {
-    Some(m) => m.element()
-    None => @moobile.js_null()
-  }
-}
-
-///|
-/// 不可移植节点（`Children::RawHtml`）的计数。
-/// 验证脚本断言它是 0 —— 让"可移植性缺口"变成可测量的东西。
-pub fn demo_unsupported() -> Int {
-  @moobile.unsupported_count()
-}
-
-///|
-/// 诊断：标签表**未收录**的标签数。断言为 0 才算标签表覆盖住这棵树。
-pub fn demo_unmapped() -> Int {
-  @moobile.unmapped_tag_count()
-}
-
-///|
-/// 诊断：未收录标签的名字（便于修表）。
-pub fn demo_unmapped_names() -> String {
-  @moobile.unmapped_tag_names()
+/// 交出的是整张句柄表 `{contract, start, snapshot, subscribe, element, …诊断}`，
+/// 宿主（`moobile-host` 的 `mountApp`）拿到它就能把应用挂起来 ——
+/// 宿主不需要知道 `Model` / `Msg` 是什么，也不需要逐个 import 导出名。
+///
+/// 用的是 `mount_with_init`：首帧之前先去本地库把清单读回来
+/// （`init` 返回的命令由 rabbita 运行时排队执行，不阻塞挂载）。
+///
+/// ⚠️ 为什么 0.1.0 里做不到这一行：那时 `Mount` 的四个入口要应用自己写四个导出
+/// （因为 `mount` 对 `Model`/`Msg` 泛型）。而 `Mount` 本身是**非泛型**的具体类型，
+/// 于是"泛型只存在于构造那一刻"—— 库替应用把这件事做掉了。见 `PLAN.md` §3.7。
+pub fn app() -> @moobile.JsValue {
+  @moobile.handlers_with_init(init=init_app, update~, view~, subscriptions~)
 }

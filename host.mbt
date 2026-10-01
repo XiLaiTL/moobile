@@ -12,6 +12,31 @@ extern "js" fn js_obj_set(o : JsValue, k : String, v : JsValue) -> Unit =
   #| (o, k, v) => { o[k] = v }
 
 ///|
+/// 把 MoonBit 闭包包成**原生 JS 箭头函数**（零参 / 返回 Int / 返回 JS 值 / 收一个回调）。
+///
+/// 为什么要显式包而不用 `%identity`：与 `js_as_handler` 同一个理由 —— 函数类型的值经过
+/// 泛型 `%identity` 不一定以 JS 认得的形态到达。**H2 的单导出（`handlers`）就是靠这四个
+/// 包装把整张句柄表交给宿主的**（PLAN §3.7）。
+extern "js" fn js_closure0(f : () -> Unit) -> JsValue =
+  #| (f) => () => f()
+
+///|
+extern "js" fn js_closure_int(f : () -> Int) -> JsValue =
+  #| (f) => () => f()
+
+///|
+extern "js" fn js_closure_value(f : () -> JsValue) -> JsValue =
+  #| (f) => () => f()
+
+///|
+extern "js" fn js_closure_string(f : () -> String) -> JsValue =
+  #| (f) => () => f()
+
+///|
+extern "js" fn js_closure_sub(f : ((Int) -> Unit) -> (() -> Unit)) -> JsValue =
+  #| (f) => (cb) => f(cb)
+
+///|
 extern "js" fn js_str(s : String) -> JsValue =
   #| (s) => s
 

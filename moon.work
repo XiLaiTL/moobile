@@ -1,0 +1,9 @@
+// 工作区：把库本体与 Todo 演示应用连起来，让 demo 直接吃**本地源码**（而不是已发布的 0.2.0）。
+// —— 开发时改库代码立刻生效；发版前想验"用户视角"，跑 `tools/check_published.sh`。
+//
+// ⚠️ 示例后端（`examples/services/todo-server/`）**刻意不在这个工作区里**：
+//    它只支持 native 目标，拉进来会让默认的 `moon check` 依赖 MSVC 工具链。
+members = [
+  ".",
+  "examples/apps/todo-app",
+]

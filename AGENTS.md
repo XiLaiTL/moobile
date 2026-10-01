@@ -1,0 +1,53 @@
+# AGENTS.md —— 给 AI 协作代理的须知
+
+人看的贡献指南在 [`CONTRIBUTING.md`](CONTRIBUTING.md)；这里是**代理容易踩、而人不太会踩**的那几条。
+本仓库有大量工作是代理做的（R1/R2/R3 三轮实测都是），所以把规矩写下来是有回报的。
+
+## 1. 先读哪三份
+
+| 文档 | 为什么 |
+|---|---|
+| [`docs/README.md`](docs/README.md) | 三类读者三条路线 —— 先弄清你这次是"用库 / 改库 / 查历史" |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 改完必须跑什么、写文档的规矩（负面清单） |
+| [`docs/FINDINGS.md`](docs/FINDINGS.md) | 已经踩过的坑与真因 —— **动手前先看，别重复踩** |
+
+## 2. 验证入口（只记这一条）
+
+```bash
+bash tools/verify_all.sh              # 离线 6 项（编译 / 行尾 / 链接 / vendor 一致 / 外部模块 / 注册表一致）
+bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
+python3 tools/verify_android.py       # 真机 21 项（需要模拟器 + APK）
+```
+
+**改了什么就至少跑对应的那几项**（对照表在 `CONTRIBUTING.md` §1）。
+动了 `vendor/rabbita/**` **必须**先 `tools/vendor_sync.sh --capture` 再 `--check` ——
+第三方目录是 gitignore 的，`git status` 不会提醒你漏了回写。
+
+## 3. 本仓库的硬性事实（代理最容易想当然的地方）
+
+| 别想当然 | 事实 |
+|---|---|
+| "MoonBit 的 `internal` 按前缀判，所以 fork 必须铺在模块根" | ❌ **旧结论已推翻**：只认**路径段恰好等于 `internal`**；现在 fork 摊平在 `vendor/rabbita/`（见 `docs/FINDINGS.md` R3） |
+| "加一层公开再导出包就能绕过 internal" | ❌ 类型只能被**命名**、不能被**使用**（变体匹配 / 构造 / 字段 / 方法全报错） |
+| "`demo/` 会在发布包里" | ❌ 不在。但**依赖声明是模块级且随包发布**：`moon.mod` 里写了什么，使用者就要下载什么（实测：声明了没人 import 的依赖照样被拉） |
+| "`moon add` 会把包下载下来" | ⚠️ 依赖**已写在 `moon.mod`** 时它只说 "already exists, will not update it"，**下载发生在 `moon check`** |
+| "本机 git 代理是通的" | ⚠️ `http.proxy=127.0.0.1:7890` 而代理常常没开 → `moon update` 失败，报的却是 `no version satisfies requirement …`（看着像"包没发出去"）。绕过办法见 `tools/check_published.sh` |
+| "发布包 = 工作区" | ❌ 发布包是 `.moonignore` **过滤后的产物**。发版前**必须**看 `moon package --list` |
+| "同步逻辑里 id 随便生成" | ⚠️ 本地新建必须是**负 id**（"服务器还不知道"的标记）。曾经用 `MIN(id)-1` 算成正 id → 被当成"服务器已有的行"去 PATCH → 404 |
+
+## 4. 干活时的习惯
+
+- **先测再断言**。想不清就问自己："哪条命令的输出能证明这句话？" 没有就不写。
+- **改前先看 `docs/FINDINGS.md`**，改后把新踩的坑**带真因与解法**补进去（不要只写现象）。
+- **报错的第一行不一定是真因**。R3 里我把 match 的**模式**写在主语位置，报的错却像可见性问题。
+- **工具的产出要能自证新鲜**：`uiautomator dump` 失败时不会清掉上一次的 xml，读到陈旧 UI 会给出
+  完全错误的结论；`pm clear` 会连 Metro 的 bundle 缓存一起清掉，冷启动要**轮询**而不是固定 sleep。
+- **验证脚本要能识别"我拿到的是不是这次的"**，而不是无条件相信返回值。
+- **断言粒度要能抓住设计错误**：只断言"界面上多了一条"会漏掉负 id 那类 bug。
+
+## 5. 禁区
+
+- 不要为了让检查过而放宽断言（那是把 bug 藏起来，注释里写清为什么放宽才算合格）。
+- 不要在没跑验证的情况下说"已完成"。
+- 不要往库本体的 `moon.mod` 加依赖（会连带所有使用者；先问"能不能放到独立模块里"）。
+- 不要擅自 `git commit` / `git push`，除非用户明确要求。

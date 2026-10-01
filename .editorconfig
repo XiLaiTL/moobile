@@ -1,0 +1,46 @@
+# .editorconfig —— 让编辑器在**你敲下回车的那一刻**就用对行尾
+#
+# 为什么这个仓库特别需要它：第三方 fork 是用 patch 系列维护的（`tools/patches/*.patch`），
+# 而 **CRLF 会把 patch 的上下文打乱**，表现成"内容漂移"这种极难查的报错。
+# 仓库里已经有 `tools/lf_normalize.sh --check` 兜底，但那要等到跑检查；
+# `.editorconfig` 是编辑器级的：新建/保存时就是 LF。
+#
+# 参考：ratatui / Dioxus / Tauri 这类项目都在根上放这个文件。
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# 代码：4 空格（MoonBit 生态惯例；moon fmt 也是 2，但我们的手写代码统一 2 空格缩进）
+[*.mbt]
+indent_style = space
+indent_size = 2
+
+[*.{json,yml,yaml,toml}]
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# 生成物与第三方：不要动它们（patch 与 vendor_sync 负责）
+[vendor/**]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+[*.{patch,diff}]
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+[*.md]
+# Markdown 里行尾两空格 = 硬换行，不能自动删
+trim_trailing_whitespace = false

@@ -1,0 +1,41 @@
+{
+  "name": "moobile-host",
+  "version": "0.2.0",
+  "description": "React Native / Expo host for moobile (MoonBit UI): implements the MOBILE_HOST contract and generates the capability registry.",
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "bin": {
+    "moobile-host": "bin/cli.js"
+  },
+  "files": [
+    "index.js",
+    "capabilities/",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "moonbit",
+    "moobile",
+    "react-native",
+    "expo",
+    "cross-platform",
+    "ui"
+  ],
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.70"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XiLaiTL/moobile.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
+}

@@ -10,7 +10,7 @@
 
 > **用 MoonBit 写一次 UI，交给 React / React Native 渲染。**
 >
-> **R1 已判决：可接受 ✅** —— `docs/DESIGN.md` §6 说它是
+> **R1 已判决：可接受 ✅** —— `docs/design/DESIGN.md` §6 说它是
 > 「**唯一可能"做完了发现效果不可接受"的地方**」。已在 **Android 14 真模拟器**上用
 > 真实文本引擎量过：最长的爻辞正确换行成 2 行、小象的行内流成立、
 > `min-width` 与 grid→flex 降级都精确吻合。**详见文末「R1 判决」**。
@@ -33,9 +33,9 @@
 | **`DEV.md`** | **环境与运行手册** —— 工具链版本、磁盘布局与目录联接、怎么起 Web / 安卓、验证脚本、排错表、**禁区** | **动手前必读** |
 | `FORK.md` | **对 rabbita 的 diff 清单** —— 跟版重放步骤 + 上游化提案 | 要动 vendor 代码时 |
 | **`docs/ARCHITECTURE.md`** | **架构总览 + 「发布成 MoonBit 库」可行性** —— 分层与契约、包依赖闭包、发布体检（体积账/元数据/许可证/命名空间）、四种发布形态 | 想让**别人用上**这个库时 |
-| `docs/DESIGN.md` | **设计文档（主）** —— 定位、架构、路线图、风险、未决问题 | 想查设计意图时 |
-| `docs/EVIDENCE.md` | **可行性验证记录** —— 全部实测数据、复现方式、已否决方案的论证链 | 想查依据时 |
-| `docs/DESIGN-README.md` | 设计期的项目导读（留档） | 考古时 |
+| `docs/design/DESIGN.md` | **设计文档（主）** —— 定位、架构、路线图、风险、未决问题 | 想查设计意图时 |
+| `docs/design/DESIGN-FEASIBILITY.md` | **可行性验证记录** —— 全部实测数据、复现方式、已否决方案的论证链 | 想查依据时 |
+| `docs/design/DESIGN-README.md` | 设计期的项目导读（留档） | 考古时 |
 | 本文件 | **实现侧的实测结论** —— R1 判决、样式差集、DOM 缝隙普查 | 想查依据时 |
 
 **代码侧的目录**（就在本目录下）：
@@ -47,23 +47,23 @@
 | `style/` | **公开包**：类型化样式层（使用者写视图的入口） |
 | `internal/rabbita/` | vendor 的 rabbita **主包**（`App` / `run` / `Val` / `elmish`），2026-09 从模块根挪进去 |
 | `internal/vdom/` `html/` `cmd/` `dom/` … | vendor 的 rabbita（改动清单见 `FORK.md`） |
-| `demo/` | 演示应用：`ui.mbt`（待办）+ `r1.mbt`（R1 样本） |
-| `host/` | Expo 宿主（`App.js` 只有一个根组件） |
-| `_tools/` | 环境脚本（`android_env_setup.sh` 等） |
-| `_r1/` | R1 的测量产出与原始数据 |
+| `examples/apps/todo-app/` | 演示应用：`ui.mbt`（待办）+ `r1.mbt`（R1 样本） |
+| `examples/apps/todo-app/host/` | Expo 宿主（`App.js` 只有一个根组件） |
+| `tools/` | 环境脚本（`android_env_setup.sh` 等） |
+| `docs/evidence/r1/` | R1 的测量产出与原始数据 |
 
 ---
 
 ## 跑起来
 
 ```bash
-./build.sh                                  # moon build --target js → host/moobile.js
+./tools/build.sh                                  # moon build --target js → examples/apps/todo-app/host/moobile.js
 cd host && npm run web                      # Expo web，http://localhost:8081
 
-node _verify.js                             # 另开一个终端；需 dev server 已在 8081
+node tools/verify_web.js                             # 另开一个终端；需 dev server 已在 8081
 ```
 
-`_verify.js` 用无头 Chrome（390×844 / DPR 2）真实加载页面，用**真实鼠标与键盘事件**走一遍
+`tools/verify_web.js` 用无头 Chrome（390×844 / DPR 2）真实加载页面，用**真实鼠标与键盘事件**走一遍
 点击过滤 / 勾选 / 输入 / 添加 / 删除，并对每一步断言状态与 DOM，最后截图 + 做布局审计。
 
 ```
@@ -85,13 +85,13 @@ moobile/              ← 库：moobile 本体（目标无关）
   render.mbt             ★ 4 分支递归 + 标签表 + 事件映射 + 样式键白名单
   host.mbt               ★ 与 JS 宿主对话的唯一一层（extern "js"）
   store.mbt              极简 Val：版本号 + 订阅/退订              ★ 玩具，非 rabbita 的 Val
-demo/                 ← 应用：全新的小应用（待办清单，TEA）
+examples/apps/todo-app/                 ← 应用：全新的小应用（待办清单，TEA）
   app.mbt                Model / Msg / update / view
   main.mbt               dispatch（带相等性判断）+ 三个导出给 JS 的入口
-host/                 ← 宿主：Expo（React + React Native + react-native-web）
+examples/apps/todo-app/host/                 ← 宿主：Expo（React + React Native + react-native-web）
   App.js                 一个根组件 + useSyncExternalStore，仅此而已
-  moobile.js             ← build.sh 生成的产物，不要手改
-_verify.js            ← 端到端验证
+  moobile.js             ← tools/build.sh 生成的产物，不要手改
+tools/verify_web.js            ← 端到端验证
 shot-*.png            ← 验证时的截图
 ```
 
@@ -473,7 +473,7 @@ RNW 忠实还原 RN 的**样式语义与 flexbox 子集**，但在**文字度量
 
 ## 杂项
 
-- `host/` 里有 create-expo-app 留下的独立 `.git`（只有模板初始提交）。要做整体仓库的话建议先 `rm -rf host/.git`
+- `examples/apps/todo-app/host/` 里有 create-expo-app 留下的独立 `.git`（只有模板初始提交）。要做整体仓库的话建议先 `rm -rf examples/apps/todo-app/host/.git`
 
 ---
 
@@ -620,7 +620,7 @@ div(class="m-yao", on_click=emit(ToggleBian(i)), [...])
 **结果：25 / 25 通过，而且这次跑的是真实 `@html` DSL + 真实 `emit(Msg)`。**
 
 ```moonbit
-// demo/ui.mbt —— 与 yi 的写法一致，不再是 moobile 自造的 DSL
+// examples/apps/todo-app/ui.mbt —— 与 yi 的写法一致，不再是 moobile 自造的 DSL
 @html.button(attrs=attrs(...), on_click=emit(Toggle(t.id)), [ ... ])
 @html.input(value=model.draft, on_input=emit.map(s => SetDraft(s)), attrs=attrs(...))
 ```
@@ -840,3 +840,566 @@ Android 侧的关键换算：density 440 → **2.75×**，所有 px 除以 2.75 
 | Gradle / npm 下载卡死 | `services.gradle.org`、Expo CDN 不通 | Gradle 走腾讯镜像、Maven 走阿里云镜像 |
 | Kotlin daemon 卡死在 `compileKotlin` | GraalVM 当 JDK | 换纯 `jdk-17.0.5` |
 | 构建报"磁盘空间不足" | C 盘 392K / D 盘 2.6G | 见上表的目录联接方案 |
+
+---
+
+# R2 —— 把"真应用"跑起来之后（2026-09：N1 / H 轨道）
+
+R1 验的是**排版**。R2 验的是**一个真应用能不能活**：本地库 + 网络同步 + 多页面 + 后端。
+做的是一个前后端俱全的 Todo（`examples/apps/todo-app/` 前端、`examples/services/todo-server/` 后端），四道门都过了：
+
+| 门 | 脚本 | 结果 |
+|---|---|---|
+| UI 全链路（Web） | `node tools/verify_web.js` | **26 / 26** |
+| 本地库（Web，含刷新后仍在） | `node tools/db_probe.js` | **8 / 8** |
+| 同步链路（Web，推拉 + 换 id） | `node tools/sync_probe.js` | **14 / 14** |
+| 真机（Android 14 / x86_64） | `python3 tools/verify_android.py` | **13 / 13** |
+
+## N1：`mount` 之前**缺了半条 TEA**
+
+`app.mbt` 里的 `mount` 把两处硬编码成 `@cmd.none`，签名是 `(Model, Msg) -> Model`，
+而且**没有** `subscriptions?` —— 而它上面那句注释写着"签名与 `rabbita.elmish` 对齐"。
+
+上游（`internal/rabbita/top.mbt:33`）是这样的：
+
+```moonbit
+pub fn[Model : Eq, Msg] elmish(
+  update~ : (Model, Msg, Emit[Msg]) -> (Model, Cmd),
+  subscriptions? : (Model, Emit[Msg]) -> @sub.Sub,
+)
+```
+
+**代价很具体，不是风格问题**：
+
+- `update` 里发起不了副作用 → "点一下按钮改状态、然后顺便读个本地库"这条**写不了**；
+- 没有 `subscriptions` → 持续数据流（传感器 / 定位 / 网络状态 / 返回键）**一个都接不上**。
+
+0.2.0 补齐：`mount` 现按上游形状收 `update~ : (Model, Msg, Emit[Msg]) -> (Model, Cmd)`
+与 `subscriptions?`，另外加了 `mount_with_init`（对齐 `create_state_with_init`）——
+**首帧之前要做的事**（读本地库）终于有地方放了。
+
+> 教训：注释里的"已对齐"要有测试兜着。这句假注释存在了很久，而它是**迁移者最先读到的字**。
+
+## H2：MoonBit 构造的 JS 对象**能**穿过 Metro（原来唯一的未知量）
+
+0.1.0 里应用必须自己写 4 个导出（`start/snapshot/subscribe/element`），理由是
+"`mount` 对 `Model`/`Msg` 泛型，导出的函数必须单态"。
+
+但 `Mount` 本身是**非泛型**的具体类型 —— 泛型只存在于**构造那一刻**。于是库可以替应用把
+这四个入口包进**一张句柄表**（`Mount::handles`），应用侧只剩一行：
+
+```moonbit
+pub fn app() -> @moobile.JsValue { @moobile.handlers_with_init(init=init_app, update~, view~) }
+```
+
+**实测结论**：MoonBit 构造的 JS 对象里放 4~7 个闭包，经 Metro 打包、交给 React 调用，
+**完全可用**（`tools/verify_web.js` 26/26 就是走这条路）。`examples/apps/todo-app/moon.pkg` 的导出从 **7 个降到 1 个**。
+
+两条必须记住的实现细节：
+
+1. 每个闭包都要**显式**包成 JS 箭头函数（`host.mbt` 的 `js_closure0/int/value/string/sub`）——
+   与 `js_as_handler` 同一个理由：函数值经过泛型 `%identity` 不一定以 JS 认得的形态到达；
+2. 卸载/诊断钩子也一并放进句柄表（`unsupported` / `unmapped` / `unmapped_names`），
+   于是验证脚本不再需要单独 import 三个导出。
+
+## H1 / H6：宿主抽成 npm 包 `moobile-host` —— 踩到的两件事
+
+宿主侧的 40 行（`MOBILE_HOST` 四件套 + 根组件 + 组件表 + 后端地址）抽成 npm 包后，
+应用的 `App.js` 只剩：
+
+```js
+import { mountApp } from 'moobile-host';
+import { app } from './moobile.js';
+import { registry } from './registry.generated.js';
+
+export default mountApp(app, { registry });
+```
+
+**坑 1：`npm install file:...` 在 Windows 上是"拷贝"而不是"符号链接"。**
+改了 `npm/moobile-examples/apps/todo-app/host/index.js` 之后，`examples/apps/todo-app/host/node_modules/moobile-host` 里还是旧副本 ——
+表现是"我明明加了 `__moobileApp`，浏览器里就是 undefined"。
+解法：改完包**重跑一次 `npm install file:../npm/moobile-host`**（或者用 `npm link`）。
+
+**坑 2：新增 npm 依赖之后必须重启 Metro。**
+不重启的表现极其误导：**页面整片空白、控制台一条错都没有**（脚本请求发了、bundle 也 200，
+但就是不执行）。重启后立刻看到真正的报错。
+→ 顺带产出 `tools/console_dump.js`：白屏时先跑它，它会把 console / exception /
+network-loadingFailed 三类事件原样打出来。
+
+**坑 3（自己写出来的）**：`App.js` 里 `import { app } from './moobile.js'`，
+而 MoonBit 侧导出名当时叫 `demo_app` → `TypeError: app is not a function`。
+**导出名对不上不会在打包期报错**，只在运行时炸。
+
+## H7：能力注册表 —— 生成，不手写
+
+`npx moobile-host regen` 读应用 `package.json` 的依赖，产出 `registry.generated.js`
+（**静态 import**：Metro 不能靠运行时拼字符串 import），并在注释里列出
+"识别了什么 / 哪些没装"。运行期再核对一遍：注册表声明了 `db`，但装完
+`MOBILE_HOST.db` 还是空的 → 报错**点名**能力与提供它的包。
+
+MoonBit 侧同样 fail-fast（`sqlite/sqlite.mbt` 的 `ensure()`）：缺能力时打印
+"怎么装、在哪注册"，而不是让你对着 `Cannot read properties of undefined` 猜。
+
+## expo-sqlite 在两端的实测
+
+| 事实 | 值 |
+|---|---|
+| SDK 57 统一版本号 | `expo-sqlite` 是 **~57.0.3**（不是记忆里的 ~15/~16），依据 `examples/apps/todo-app/host/node_modules/expo/bundledModules.json` |
+| Android 侧负担 | **无** —— 预编译 AAR + Gradle 期 autolink，**不需要重跑 `expo prebuild`**，`./gradlew assembleDebug` 即可 |
+| Web 侧 | 官方标注 **alpha**；`metro.config.js` 要加 `assetExts: wasm` 与 COOP/COEP |
+| **COOP/COEP 实测只作用在 bundle 路由上** | `curl -D -` 看 `/index.bundle` 有头，看 `/`（文档本身）**没有** → `crossOriginIsolated === false` |
+| **但异步 API 照样能用** | 6/6 + 8/8 全过。这与代码一致：只有**同步** API 才构造 `SharedArrayBuffer`（`invokeWorkerSync`），异步走 postMessage |
+| 布尔 | SQLite 没有布尔：绑定前转 0/1，读回来是数字 → MoonBit 侧用 `Int` 接，别用 `Bool`（`derive(FromJson)` 不做转换） |
+| 刷新后仍在 | OPFS 持久化实测有效（db_probe 的"刷新后清单仍在"） |
+
+## 后端：MoonBit 的 native HTTP 服务端（`examples/services/todo-server/`）
+
+- `@http.Server(@socket.Addr::parse("127.0.0.1:8787"))` + `server.run_forever() <| ((request, body, conn) => ...)`；
+- 读 body：`body.read_all().json()`；回响应：`conn.send_response(...)..write(bytes).end_response()`；
+- **CORS 得自己写**（async 只给裸 HTTP 原语，没有中间件）——Web 端在另一个端口，必然跨域，
+  且带 `Content-Type: application/json` 的 POST/PATCH 会先发**预检**，OPTIONS 必须处理；
+- 存储用 JSON 文件 + 写临时文件再 `@fs.rename`（原子替换），重启后状态还在（实测）；
+- Windows 上原生构建**需要 MSVC**：moon 自己用 `vswhere.exe` 找到 VS 2022 BuildTools，
+  **不用手动 vcvars**；`moon run --target native` **必须带包路径**（`moon run --target native .`）；
+- ⚠️ **`println` 是块缓冲的**：stdout 被重定向时日志会"消失"，要用 `@stdio.stdout.write`；
+- ⚠️ 嵌套模块（`examples/services/todo-server/`）必须**有自己的 `moon.mod`**，否则会被当成父模块（`+js`）的包而编不出 native。
+
+## 这一轮踩到的 MoonBit 语法/API 坑（都实际报过错）
+
+| 现象 | 真因 | 解法 |
+|---|---|---|
+| `` `init` function must have no arguments and no return value `` | **`init` 是保留形状**（模块初始化） | 改名（我们用 `init_app`，与 yi 一致） |
+| `Constr Type Mismatch: has type Msg, wanted Cmd` | `@cmd.perform` 的 `msg` 参数要返回 **`Cmd`**，不是 `Msg` | `@cmd.perform(r => emit(...), ...)` |
+| `This expression has type (Model, Cmd), cannot be implicitly ignored` | 上一条的连带错（函数体被当成语句块） | 同上 |
+| `Array[Todo] has no method find_first` | 这个版本没有它 | 自己写 `for` 循环找一个 |
+| `Package "time" not found` | 没有 `core/time` 这个包 | 用 `@env.now()`（毫秒） |
+| `Using constructors as higher order function directly is forbidden` | `emit.map(SetEditing)` | `emit.map(s => SetEditing(s))` |
+| `the labels old~, new~ are required by this function` | `String::replace` 是带标签的 | 改用绑定参数，别拼 SQL |
+| `Lexing error: (unterminated string literal)` | MoonBit 字符串字面量**不能裸换行** | 拆成多条语句 |
+| `Type _/0 has no method map` | 泛型推断顺序：`@cmd.perform` 的 msg 先推 | 给闭包参数标类型 |
+| 未使用的泛型函数**不进产物** | JS 后端的单态化 | 找刷新标记别用它（例如 `mount_with_init` 在没人调用前不存在于 bundle 里） |
+
+## 同步设计里一个真的 bug（值得记）
+
+本地新建的条目用**负数 id** 表示"服务器还不知道"。第一版 SQL 是 `MIN(id) - 1`（**没限负数**），
+当库里只有服务器来的 `6, 7` 时，新条目 id 算成 **5（正数）** → 同步时被当成"服务器已有的行"去
+`PATCH` → 服务器 404 → 整轮同步失败。
+
+**修法**：`SELECT COALESCE(MIN(id), 0) - 1 FROM todo WHERE id < 0`。
+这个 bug 是 `sync_probe` 的"新条目是负 id 且标记为 dirty"这条断言抓出来的 ——
+**断言写得具体，才抓得住设计错**。
+
+## Android 验证的坑
+
+| 现象 | 真因 | 解法 |
+|---|---|---|
+| `INSTALL_FAILED_NO_MATCHING_ABIS` | 默认 AVD `moobile` 是 **Android 10 / x86（32 位）**，而 APK 按 `reactNativeArchitectures=x86_64` 只打了 64 位 | 用 `moobile64`（Android 14 / x86_64），它在 `ANDROID_AVD_HOME=E:\avd` 下 —— **不设这个变量 `emulator -list-avds` 根本看不到它** |
+| `adb shell ... /data/local/tmp/ui.xml` 报路径不存在 | **Git Bash 把 `/data/...` 转成了 `C:/Files/Git/data/...`** | 用 Python 脚本调 adb（不经 MSYS 转换），或 `MSYS_NO_PATHCONV=1` |
+| `adb shell input text 'android-local-add'` 输入成了 `andr-ldd` | `input text` 会吞字符 | 断言里**别依赖输入文本**（我们改成只断言"条数 +1、且先只落在本地"） |
+| Gradle 报 `SDK location not found` | 新 shell 没设 `ANDROID_HOME` | 现在有 `tools/env.sh`（`source` 一下） |
+
+## N4（前半）：`subscriptions?` 真的通了 —— 心跳
+
+N1 给 `mount` 补上了 `subscriptions?`，但**补完不等于通了** —— 在有人真的用它之前，
+这条线一直是"写了、没验过"。所以加了一个最小的订阅做验收：
+
+```moonbit
+pub fn subscriptions(_model : Model, emit : @cmd.Emit[Msg]) -> @sub.Sub {
+  @sub.every(5000, emit(Tick))     // 运行时每 5 秒推一个 Tick
+}
+```
+
+界面把计数显示出来（`… · 心跳 N`），于是断言变成"**这个数字自己会涨**"：
+
+| 端 | 断言 | 结果 |
+|---|---|---|
+| Web | `tools/verify_web.js`：「订阅（Sub）在跑：心跳计数自动增长」 | 心跳 19 → 22 ✅ |
+| 真机 Android 14 | `verify_android.py`：同一条 | 心跳 0 → 3 ✅ |
+
+这条断言的价值在于它区分了两种东西：**用户点出来的变化**（几乎所有别的断言都是这个）
+和**运行时主动推进的变化**（只有订阅能产生）。
+
+### 为什么是 5 秒而不是 1 秒（被工具逼出来的）
+
+一开始是 1 秒一跳，结果**安卓验证整片失败**，而且失败得很误导。链条是：
+
+1. `uiautomator dump` 要等界面进入 **idle**；
+2. 一秒一次重绘 → 永远等不到 idle → 报 `ERROR: could not get idle state.`；
+3. **dump 失败时不会清掉上一次的 xml** —— 脚本 `cat` 到的是**上一次运行的陈旧 UI**；
+4. 于是脚本拿着旧界面，得出一堆莫名其妙的结论（"同步状态已是已与服务器同步"、
+   条数对不上……），而真因完全在别处。
+
+改成 **5 秒**一跳后 dump 就正常了（两次 tick 之间有足够长的安静窗口）。
+同时给 `dump()` 加了两道保险：**先 `rm` 掉旧 xml**，并**检查 dump 真的报了成功**。
+
+> 教训（两次都是同一个形状）：**验证工具本身会骗你**。`uiautomator` 留下陈旧文件、
+> Metro 留下失效的模块图 —— 都会让"失败"指向错误的地方。所以脚本要能识别
+> "我拿到的东西是不是这次的"，而不是无条件相信。
+
+### 另一个坑：`pm clear` 之后启动要等更久
+
+`pm clear` 会把 **dev bundle 的缓存**一起清掉，冷启动要先从 Metro 下 3MB 的包
+（实测 20s+，加首帧更久）。固定 `sleep 25` 不够 → 改成**轮询**：
+dump 到我们的标题才算起来，dump 失败就当没起来、重试，最长等 150 秒。
+
+### 真机覆盖到 ⑦ 的全部五项（21 项断言）
+
+`tools/verify_android.py` 现在对**新增 / 完成 / 删除 / 离线落库 / 同步**都成对断言：
+
+| 操作 | 成对的断言 |
+|---|---|
+| 新增 | 先只落本地库（服务器 2 条不变、界面 3 条）→ 同步后服务器 3 条（POST） |
+| **完成**（勾选） | 界面未完成数 -1 → 服务器上那条 `done` **仍是 false** → 同步后变 **true**（PATCH） |
+| **删除**（✕） | 界面条数 -1 → 服务器**还有**那条 → 同步后没了（墓碑推出 DELETE） |
+
+这个"先只落本地"的中间态断言是关键：它把**离线优先**这件事变成了可失败的检查，
+而不是靠"最后结果对了"来推断。
+
+写这套脚本时又踩了两个坑，都值得记：
+
+| 现象 | 真因 | 解法 |
+|---|---|---|
+| 整轮验证报"app 在 150 秒内没起来" | **dev 客户端偶发在拉 bundle 的过程中整个进程消失**（本轮撞到两次）。`wait_for_app` 只是干等，等不到就放弃 | 轮询时用 `pidof` 看进程在不在，不在就**重新拉起**（带 20 秒节流），最多多等一会儿 |
+| 删除断言把条目认成了「改」 | UI dump 里「条目文本」与「改」（编辑按钮标签）**在同一 y 上**，按"第一个文本节点"取会取错 | 以 **✕ 为锚点**（每行恰好一个），再在同一 y 上取**最左**的文本节点作为条目文本 | 
+
+### 发布之后：`tools/check_published.sh`（验"registry 上那一版"）
+
+新增的第四类检查，与既有三个的分工：
+
+| 脚本 | 验什么 |
+|---|---|
+| `check_external.sh` | **本地工作区**能被外部模块依赖并编译（改本库时跑） |
+| `check_published.sh` | **registry 上那一版**能被别人装下来并编译（发版后跑） |
+
+**为什么必须分开**：发布包是 `.moonignore` **过滤后的产物**，跟工作区不是同一份东西 ——
+本仓库就出过"把截图、安卓构建配置、计划书一起发出去"的事（262 个文件里 41% 是垃圾）。
+只有从 registry 装下来编译过，才算"这一版对外可用"。
+
+实测（2026-09，`XiLaiTL/moobile@0.2.0`）：
+
+| 步骤 | 结果 |
+|---|---|
+| 在空模块里 `moon add XiLaiTL/moobile@0.2.0` | 装上 |
+| 模板按 **0.2 的公开 API** 写（单导出 `handlers_with_init`、`update` 返回 `Cmd`、`subscriptions?` + `@sub.every`、能力包 `sqlite`） | `moon check --target js` **0 errors** |
+| 发布产物里有 `sqlite/` | ✓ |
+
+这一步同时把 **N1/H2 的公开 API 形状**在"外部使用者"视角下钉住了 —— 我们自己仓库里
+能编，不代表别人拿到的包能编。
+
+三个坑，都值得记：
+
+| 现象 | 真因 | 解法 |
+|---|---|---|
+| `moon add XiLaiTL/moobile@0.2.0` 报 `no version satisfies requirement 0.2.0`，看着像"包没发出去" | 本机 `git config --global http.proxy = 127.0.0.1:7890`，而**代理没开** → `moon update` 拉 registry 索引（走 git）失败，用的是**陈旧索引** | 绕过代理：`GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=http.proxy GIT_CONFIG_VALUE_0= … moon update`（脚本里已内置"失败就绕过重试"） |
+| `moon add` 说成功，但 `.mooncakes/` 里什么都没有 | 依赖**已经**写在 `moon.mod` 里时，`moon add` 打印 "already exists, will not update it" 并且**不下载** | 下载发生在 **`moon check`**；脚本站位按真实用户流程排：空 `moon.mod` → `moon add` → `moon check` |
+| 装完目录位置和预期不一致 | 上面的顺序问题会让人以为是路径写错了 | 顺序对了，`.mooncakes/<module>/` 就在那儿 |
+
+### 发布前把"打包出来的那份"也验一遍（tarball 视角）
+
+发版前做的一件事：**把 `npm pack` 出来的 tarball 装进宿主工程，再跑四道门**。
+
+为什么值得单独做：我们此前只验过 `file:../npm/moobile-host` 这种**源码拷贝**形态，
+而 `npm publish` 上传的是 **`files` 白名单过滤后的 tarball** —— 两者不是同一份东西。
+少一个目录（比如 `capabilities/` 被漏掉），发出去就是一个"装得上、跑不起来"的坏包，
+而 npm **不能撤回**。
+
+实测（2026-09）：
+
+```bash
+cd npm/moobile-host && npm pack          # → moobile-host-0.2.0.tgz（10.9 KB，6 个文件）
+cd ../../host && npm install ../npm/moobile-examples/apps/todo-app/host/moobile-host-0.2.0.tgz
+# 依赖变了 → 按经验重启 Metro（--clear），再跑四道门
+```
+
+| 门 | 结果 |
+|---|---|
+| Web UI（`tools/verify_web.js`） | **27 / 27** |
+| 本地库（`db_probe.js`） | **8 / 8** |
+| 同步（`sync_probe.js`） | **14 / 14** |
+| 真机 Android 14（`verify_android.py`） | **21 / 21** |
+| `npx moobile-host regen --check`（走 tarball 里的 bin） | 一致 ✓ |
+
+tarball 内容正好是预期的那 6 个：
+
+```
+package/LICENSE  package/README.md  package/bin/cli.js
+package/capabilities/db.js  package/index.js  package/package.json
+```
+
+顺手把这条经验固化成**发布脚本里的自检**：`npm/moobile-examples/apps/todo-app/host/publish.sh` 在发布前
+先 `npm pack --dry-run`，并断言"入口 / 能力目录 / CLI / README / LICENSE"都在 ——
+缺任何一个就直接**拒绝发布**（而不是发出去之后再发现）。
+
+验证完把宿主工程**改回 `file:`**（开发时改包里的代码不用重新打包；代价是
+`npm install file:` 是拷贝而非符号链接，改完要重装一次 —— 见上面 H1/H6 那一节）。
+
+---
+
+# R3 —— 仓库治理：fork 从模块根搬进 `vendor/rabbita/`（2026-09）
+
+## 被推翻的旧结论
+
+`tools/vendor_sync.sh` 的头注释里长期写着：
+
+> 「MoonBit 的 `internal` 可见性按**包路径前缀**判，所以 fork 必须铺在模块根
+> （放 `vendor/` 子目录的话，`vendor/rabbita/internal/*` 对模块根包不可见）」
+
+**前半句对，结论错了。** 真相是：可见性只认**路径段恰好等于 `internal`**。
+把 `internal/*` **摊平**（丢掉那一段）之后，模块根包照样能 import 并使用它们。
+
+## 五个实验（都在 `_scratch/layout_probe/` 里跑过，可复现）
+
+| # | 试的是什么 | 结果 |
+|---|---|---|
+| 1 | 根包 import `vendor/rabbita/internal/vdom` | ❌ `Cannot import internal package … due to internal visibility rules` |
+| 2 | 根包只 import 同前缀下的**公开**包做中转，fork 包之间互相 import internal | ✅ 通过 |
+| 3 | 在公开包上**再定义** internal 类型的方法 | ❌ `Cannot define method tag for foreign type` |
+| 4 | 用 `pub using @vdom {type VNode}` 再导出，根包**使用**它（变体匹配 / 构造 / 字段） | ❌ 全挂：<br>`is an alias to a type in …internal/vdom, which is not imported`（变体匹配）<br>`Value ReactHost not found in package api`（结构体构造）<br>`…type and not a struct`（字段访问） |
+| 5 | 路径段改成 `internal_vdom` / `_internal2`（**不是**恰好 `internal`），根包直接 import | ✅ **通过**（变体匹配 + 构造都行） |
+
+**结论**：`internal` 是**精确的路径段匹配**。于是搬家的方式只有一种 —— **摊平改名**，
+不是"加一层再导出"（实验 2~4 说明那条路只能"命名"、不能"使用"）。
+
+> 顺带一条方法论：实验 4 我一开始把 match 的**模式**写在了主语位置上，报的错看着像可见性问题，
+> 其实是语法错。**报错的第一行不一定是真因**，要连着上下文看。
+
+## 搬完的样子
+
+```
+vendor/rabbita/            ← 1 个目录，代替原来铺在根的 16 个
+├── vdom/ runtime/          ← 原 internal/vdom、internal/runtime
+├── rabbita/                ← 原 internal/rabbita（fork 的主包：App / elmish / Val）
+├── any/ duplix/ key/ slotmap/   ← 原 internal/ 下其余子包
+└── html/ cmd/ dom/ common/ js/ sub/ variant/ svg/ url/ nav/ dialog/ clipboard/ websocket/ http/
+```
+
+**根目录：44 项 → 24 项**（其中 16 项是 fork；`)` 待续治理见 PLAN 的 A 轨道）。
+
+实现方式：`tools/vendor_relocate.py`（`to-vendor` / `to-legacy` 两个方向）+
+`vendor_sync.sh` 新增步骤 3.5。两个方向都要，因为：
+
+- **`--apply`/`--check`** 要"旧布局 → vendor"：patch 的 `+++ b/路径` 是按旧布局写的，所以
+  **先打 patch、后搬家**；
+- **`--capture`** 要"vendor → 旧布局"：不然回写出来的 patch 打不上 pristine。
+
+不变量仍然成立：`vendor_sync.sh --check` → **197 个文件 / 197 个，[OK] 一致**。
+
+## 这一趟踩到的三个坑
+
+| 现象 | 真因 | 解法 |
+|---|---|---|
+| 搬家后编译报 `Cannot find import 'XiLaiTL/moobile/internal/key'` | 我的映射表把 internal 子包写成了 `<模块>/key → <模块>/vendor/rabbita/key`，而**源路径带 `internal/` 前缀**（`<模块>/internal/key`） | 映射改成 `<模块>/internal/<x> → <模块>/vendor/rabbita/<x>`；`internal` 本身**不能**进通用表（否则会生成 `vendor/rabbita/internal/…` 这种错映射） |
+| `git mv _tools tools` 之后变成 `tools/_tools/` | 我先 `mkdir -p tools`（为了建别的目录），于是 `git mv` 把 `_tools` **塞进了已存在的 `tools/`** | 移动前别预建目标目录；或者用 `mv _tools/* tools/` 确认后再删空壳 |
+| `mv host …` 报 `Device or resource busy` / `Permission denied` | Gradle/Kotlin **daemon** 还在握着 `host/android/**` 的文件（之前那次 `assembleDebug` 留下的） | 先 `gradlew --stop`（必要时停掉残留 daemon 进程）再搬 |
+
+## 治理后的两项机制性收益
+
+1. **发布包更干净**：`moon package --list` → 212 个文件，只有库本体
+   （根包 + `style/` + `sqlite/` + `vendor/rabbita/` + 三个声明文件）；
+   `examples/`、`npm/`、`tools/`、`docs/`、`moon.work`、根上的截图**全部排除**。
+   ⚠️ 重写 `.moonignore` 时我把 `/*.png` 弄丢过，三张 70KB 的截图当场混进发布包 —— 这次是
+   `moon package --list` 抓出来的（**发版前一定要看一眼这个清单**）。
+2. **demo 变成独立模块**：库的依赖闭包永远只有 `moonbitlang/async` 一个，
+   demo 想加什么（比如 ORM）都不会牵连使用者。依据是实测：
+   `moon.mod` 里声明了但**没人 import** 的依赖，照样会被消费者拉下来
+   （`moonorm` + `moondb` = **11 MB**，而库自己的发布包才 ~200 KB）。
+
+---
+
+# R4 —— 文档与工程化治理（2026-09）
+
+## 先立工具，再动文件
+
+文档一挪目录，相对链接就**静默失效**（GitHub 上点进去 404，本地看不出来）。
+所以这一轮**先写检查器**再搬文件：`tools/check_links.py`。
+
+它第一次跑就抓出 **14 处断链**，其中 **12 处是我自己刚写的 `docs/README.md`** ——
+文档在 `docs/` 下，链接却按仓库根写的（`DEV.md` 而不是 `../DEV.md`）。
+另外 2 处是**误报**：文档里有 `` `struct Val[A](@duplix.Node[A])` `` 这种行内代码，
+长得像 Markdown 链接。修法是**先剥掉围栏代码块与行内代码再扫**。
+
+现在 `tools/verify_all.sh` 里它是第 3 项 —— 链接失效再也不会悄悄溜进去。
+
+## `docs/` 按**读者**分家
+
+原来的问题是"职责重叠"（`docs/EVIDENCE.md` 与 `docs/FINDINGS.md` 都记实测、
+`docs/DESIGN-README.md` 是设计期的重复 README）。现在：
+
+```
+docs/
+├── README.md                       ← 索引：三类读者三条路线
+├── ARCHITECTURE.md                 ← 给贡献者：分层与契约
+├── FINDINGS.md                     ← 实测记录（R1–R4）
+├── design/                         ← 给维护者：设计期的东西
+│   ├── DESIGN.md                   设计文档（草案/待验证，保留原始判断）
+│   ├── DESIGN-FEASIBILITY.md       写代码之前的可行性实测（原 EVIDENCE.md）
+│   └── DESIGN-README.md            设计期草案 README（已加"过时"抬头 + 指路）
+├── plan/PLAN-2026Q3-yi-port.md     ← 归档的旧计划
+└── evidence/r1/                    ← 测量数据与截图
+```
+
+命名冲突（`EVIDENCE.md` vs `evidence/`）随之消失：设计期实测叫
+`DESIGN-FEASIBILITY.md`，实现期实测叫 `FINDINGS.md`。
+
+> 顺带把根上的"大项目标准件"补齐：`CONTRIBUTING.md`、`CHANGELOG.md`、`AGENTS.md`、
+> `.editorconfig`、`.github/{workflows/ci.yml, PULL_REQUEST_TEMPLATE.md, ISSUE_TEMPLATE/*}`。
+> `.editorconfig` 在这里不是装饰：fork 是用 patch 维护的，**CRLF 会打乱 patch 上下文**，
+> 而 `lf_normalize.sh` 要等到跑检查才发现，编辑器级约定更早。
+
+## 又踩到一个"直接跑通过、放进脚本就失败"
+
+`tools/verify_all.sh` 里那一项 `check_links` 报了 FAIL，而**同样一条命令手敲却是通过的**。真因：
+
+> Windows 上 Python 的输出编码跟随 locale（GBK）。脚本会把 stdout **重定向到文件**，
+> 这时打印中文里的 `✓` 直接抛 `UnicodeEncodeError` → 非零退出 → 被记成"检查失败"。
+
+修法：给所有会打印中文的 Python 工具加一段兜底
+
+```python
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+```
+
+已经加在 `check_links.py` / `vendor_relocate.py` / `verify_android.py` 上。
+**这类"环境差异导致的假失败"最消耗人**：如果当时只看汇总，会去查链接，而真因在编码。
+
+## 一条纪律：发布前看清单
+
+这轮加完根上的元数据文件后，我又跑了一次 `moon package --list` —— 仍是 **212 个文件、
+只有库本体**（`AGENTS.md` / `CONTRIBUTING.md` / `.editorconfig` / `.github/` 都没进去：
+`*.md` 规则覆盖了前者，点文件与点目录 moon 默认不带）。
+上一轮就是这条纪律抓出了混进包里的 `moon.work` 与三张 70 KB 截图。
+
+---
+
+# R5 —— 出版卫生：本机路径真的发出去过（2026-09）
+
+## 事实
+
+`README.md` 里那段"本地工作区"示例写着维护者机器的绝对路径：
+
+```
+members = [ "D:/ai_project/interest/moobile", ... ]
+```
+
+而 **README 是随发布包一起发出去的**（`.moonignore` 只放行 `README.md` / `FORK.md` /
+`THIRD-PARTY-NOTICE.md` 三个 md）。所以 **mooncakes 上已发布的 0.1.0 与 0.2.0 里都带着它**：
+
+```
+$ python3 tools/check_public_leaks.py --zip _build/publish/XiLaiTL-moobile-0.2.0.zip
+LEAK（必须改）2 处：
+  XiLaiTL-moobile-0.2.0.zip::README.md:35  [本机绝对路径]  D:/ai_project
+```
+
+只能靠**发新版本**补救（`moon` CLI **没有** yank/unpublish 子命令 —— 实测 `moon --help`
+里只有 `publish`；registry 的 manifest 里有 `yanked` 字段，但网页端能不能撤没验证）。
+
+## 做成了什么
+
+`tools/check_public_leaks.py`：扫**本机绝对路径 / 家目录用户名 / 凭据**，仓库与**产物**
+（zip 与 tgz 都支持）都能扫。分级：**LEAK**（必须改）与 **WARN**（本机信息，多在开发文档里）。
+
+- 接进 `tools/verify_all.sh`（第 4 项）→ 想再犯也过不了检查；
+- 接进 `npm/moobile-host/publish.sh` → 发布前是**闸门**，不是提醒；
+- `tools/env.sh` 的 JDK / AVD 路径改成可被环境变量覆盖；
+- 维护者本机专用的两个磁盘迁移脚本（`link_builddirs.ps1` / `migrate_c_to_e.ps1`）
+  移到 `tools/local/` 并写明"换机器未必适用"。
+
+## 扫描器本身踩的两个坑（都是"噪声淹掉真信号"）
+
+1. **盘符正则太松**：`[A-Za-z]:[\/]…` 把 `https://` 里的 `s:` 当盘符，一次报出 **590 处**
+   "泄漏" —— 真信号（README 那条）完全被淹没。修法是加 lookbehind，要求盘符是 token 开头。
+2. **测试夹具里的示例邮箱**：上游 MoonBit core 的 `js/value_test.mbt` 里有
+   `burtdominguez@geekwagon.com` 之类的假数据。它进了包但不是我们的泄漏，
+   所以对 `vendor/**` 与 `*_test.mbt` 里的邮箱降级成 WARN。
+3. （又一次）**忘了给新的 Python 工具加编码兜底** → `verify_all.sh` 里报"检查失败"而手敲通过。
+   这已经是这个坑第二次咬人，所以现在四个工具都加了 `sys.stdout.reconfigure(encoding="utf-8")`。
+
+> 教训：**检查工具本身要有人看它报的东西是否可信**。一个 590 处噪声的检查，等于没有检查。
+
+---
+
+# R6 —— 验证闸门提速：9 分钟 → 24 秒，以及一次"改快改瞎"（2026-09）
+
+## 起因：verify_all 为什么这么慢
+
+`bash tools/verify_all.sh` 全程 **≈ 9 分钟**。逐步计时（同一台机器，各步单跑）：
+
+| 步骤 | 耗时 |
+|---|---|
+| `moon check --target js` | 2s |
+| **`lf_normalize.sh --check`** | **262s** ← |
+| `check_links.py` | 1s |
+| `check_public_leaks.py` | 1s |
+| **`vendor_sync.sh --check`** | **267s**（其中 ~262s 是它**内部又调了一次 lf_normalize**） |
+| `check_external.sh` | 5s |
+
+**没有任何 sleep**：慢的是 `lf_normalize.sh` 里的 CR 判定写法 ——
+
+```bash
+has_cr() { [ "$(tr -cd '\r' < "$1" 2>/dev/null | wc -c)" -gt 0 ]; }
+```
+
+它对**每个**候选文件起两个进程（`tr` + `wc`）。本仓有 **2539** 个候选文本文件
+（这个数是用 `find` + 同一份白名单独立数出来的）≈ **5000 次进程启动**，
+而 Windows 上每次 spawn 是几十毫秒 → 单这一项 260 秒。翻倍是因为
+`vendor_sync.sh --check` 为了"先查行尾"**又调了一次同一个脚本**。
+
+> 顺带修正一句长期不成立的注释：`verify_all.sh` 头注释写着"一起跑也就几十秒"。
+> 那句话在写下时就不成立（实际 9 分钟）—— 又是"注释里的已对齐没有测试兜着"。
+
+## 第一次改法是错的：快，但是瞎
+
+把逐文件 fork 换成一次 `grep`：
+
+```bash
+printf '%s\0' "${cands[@]}" | xargs -0 -r grep -lIUZ -- $'\r'
+```
+
+跑下来 **0.19 秒**，看起来完美。**但它是错的**：对同一个仓库它报出 **2537 个"带 CR"**，
+而真值是 **0**。真因是本机 Git Bash（MSYS）**会把命令行参数里的裸 CR 弄坏**。
+用一个亲手造的已知 CRLF 文件校准四种判据：
+
+| 判据 | 已知 CRLF 文件 | 本仓真值 |
+|---|---|---|
+| `tr -cd '\r' \| wc -c` | 2 ✅ | 0 |
+| `grep -c $'\r'` | **0** ❌ | — |
+| `grep -Uc $'\r'` | — | **2537（几乎全是假阳性）** ❌ |
+| Python `b"\r" in open(p,"rb").read()` | 2 ✅ | **0** ✅ |
+
+**它"快"是因为它几乎匹配了所有文件** —— 一个永远说"有问题"的检查，和永远说"通过"的检查
+一样没用。这次是 `verify_all.sh` 汇总里的 `FAIL`（rc=1）把它暴露出来的；
+如果当时只单独跑那条 grep 看速度，就会带着一个坏检查去发版。
+
+## 最终的改法：一次进程，按字节读
+
+新增 `tools/cr_scan.py`（白名单与排除目录都搬进去，单一实现），`lf_normalize.sh` 只做 CLI 包装：
+
+- 判据是 `b"\r" in data` —— 不经过文本模式、不经过 argv 编码，因此不受 MSYS 影响；
+- 一次进程扫完 2539 个文件：**1 秒**（比原来快 ~260 倍）；
+- 输出里**带上候选文件数**（`候选 2539 个文本文件，带 CR 的 0 个`）：
+  一个"什么都没查"的检查同样会报通过，所以这个数字本身就是"检查有效"的证据。
+
+## 改完必须做的一件事：证伪
+
+换了实现，就必须证明它还**抓得住**问题（否则就是上面那个坏 grep 的重演）：
+
+| 场景 | 期望 | 实测 |
+|---|---|---|
+| 正常仓库 | rc=0 | `候选 2539 … 带 CR 的 0 个` → rc=0 ✅ |
+| 塞诱饵 `printf 'x\r\ny\r\n' > tools/_crlf_bait.md` | rc≠0 且**点名**该文件 | `[CR] tools/_crlf_bait.md` → rc=1 ✅ |
+| `bash tools/lf_normalize.sh`（apply） | 真修掉 | `已转 LF: tools/_crlf_bait.md`，`od -c` 得 `x \n y \n` ✅ |
+| 删掉诱饵 | 回到 rc=0 | ✅ |
+
+## 结果
+
+```
+通过 7  失败 0  跳过 0        # 总耗时 24s（原 ≈9 分钟）
+```
+
+7 项与提速前完全一致（`moon check` / 行尾 / 链接 / 泄漏 / vendor / 外部模块 / 注册表），
+**没有放宽任何断言** —— 只是把同一条断言的实现从 ~5000 次 spawn 换成 1 次进程。
+
+> 这一轮与 R2 的 `uiautomator dump` 陈旧文件、R5 的 590 处噪声是**同一个形状**：
+> **验证工具本身会骗你**（第三次了）。区别是这次骗的方向是"快"：
+> 一个 0.19 秒的检查让人想立刻收工，而它其实什么都没查。
+

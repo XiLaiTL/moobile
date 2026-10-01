@@ -3,22 +3,21 @@ supported_targets = "+js"
 import {
   "XiLaiTL/moobile" @moobile,
   "XiLaiTL/moobile/style",
-  "XiLaiTL/moobile/html",
-  "XiLaiTL/moobile/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/sub" @sub,
+  "XiLaiTL/moobile/sqlite" @sqlite,
+  "XiLaiTL/moobile/vendor/rabbita/http" @http,
 }
 
 options(
   link: {
     "js": {
       "format": "esm",
+      // ★ H2 之后只剩一个导出名（0.1.0 是 7 个）。
+      //   诊断用的 unsupported / unmapped / unmapped_names 已经进了句柄表。
       "exports": [
-        "demo_start",
-        "demo_snapshot",
-        "demo_subscribe",
-        "demo_element",
-        "demo_unsupported",
-        "demo_unmapped",
-        "demo_unmapped_names",
+        "app",
       ],
     },
   },

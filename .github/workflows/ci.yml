@@ -1,0 +1,50 @@
+# CI —— 只跑"离线检查"（PLAN 的 C3）
+#
+# 为什么只有这些：其余几类验证需要本机资源，放进 CI 会变成永远红/永远跳过的噪声 ——
+#   · Web 端到端（tools/verify_web.js、db_probe、sync_probe）：要 Metro 在 8081 + 本地后端；
+#   · 真机（tools/verify_android.py）：要 Android 模拟器 + 装好的 APK；
+#   · 发布后验证（tools/check_published.sh）：要"已经发出去的那一版"，属于发版流程。
+# 这几类在本地一条命令跑：`bash tools/verify_all.sh --with-e2e`、`python3 tools/verify_android.py`。
+#
+# 这里跑的 `tools/verify_all.sh` 恰好是本地同一个入口（6 项）：
+#   moon check / 行尾规范 / 文档链接 / vendor 一致性 / 外部模块可用性 / 能力注册表一致性
+#
+# ⚠️ vendor 一致性与外部模块那两项需要网络（拉 pristine 制品、`moon add`）。
+
+name: offline-checks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 宿主 npm 包存在时，verify_all 会额外检查"能力注册表与依赖是否仍一致"
+      - name: Install host deps (optional)
+        continue-on-error: true
+        run: |
+          if [ -f examples/apps/todo-app/host/package.json ]; then
+            (cd examples/apps/todo-app/host && npm install --no-audit --no-fund)
+          fi
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: moon version
+        run: moon version
+
+      - name: 一条命令跑完离线检查
+        run: bash tools/verify_all.sh

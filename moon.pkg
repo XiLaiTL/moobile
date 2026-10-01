@@ -2,10 +2,11 @@ supported_targets = "+js"
 
 import {
   "XiLaiTL/moobile/style",
-  "XiLaiTL/moobile/internal/vdom",
-  "XiLaiTL/moobile/internal/runtime",
-  "XiLaiTL/moobile/html",
-  "XiLaiTL/moobile/variant",
-  "XiLaiTL/moobile/cmd",
-  "XiLaiTL/moobile/js",
+  "XiLaiTL/moobile/vendor/rabbita/vdom",
+  "XiLaiTL/moobile/vendor/rabbita/runtime",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/variant",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/sub",
+  "XiLaiTL/moobile/vendor/rabbita/js",
 }

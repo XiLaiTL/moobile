@@ -11,15 +11,15 @@
 |---|---|
 | 项目 | **rabbita** —— MoonBit 的声明式 UI 框架（Elm / Bonsai 风格的 TEA） |
 | 来源 | <https://github.com/moonbit-community/rabbita> |
-| 我们 vendor 的版本 | **0.15.4**（注册表制品；见 `_tools/vendor.lock`） |
+| 我们 vendor 的版本 | **0.15.4**（注册表制品；见 `tools/vendor.lock`） |
 | 许可 | **Apache License 2.0**（上游仓库根目录的 `LICENSE`；上游未附 `NOTICE` 文件） |
 | 版权 | 归 rabbita 的作者与贡献者所有（moonbit-community） |
 
 ### 我们改了什么
 
 **改动清单与逐条理由见 [`FORK.md`](FORK.md)**；机器可读的版本是
-[`_tools/patches/`](_tools/patches) 里的 15 个 patch（共约 983 行），
-`bash _tools/vendor_sync.sh --check` 可以验证「工作区 == 上游 0.15.4 + 这些 patch」。
+[`tools/patches/`](tools/patches) 里的 15 个 patch（共约 983 行），
+`bash tools/vendor_sync.sh --check` 可以验证「工作区 == 上游 0.15.4 + 这些 patch」。
 
 一句话概括：把渲染后端从 DOM 换成 React（React Native / react-native-web），
 因此需要把 `Event` 从 `@dom.Event` 解耦、把 `Props.styles` 从 `Map[String, String]`
@@ -28,7 +28,7 @@
 ### 分发形态
 
 - **源码分发**：本仓库**不含** rabbita 的代码（第三方目录在 `.gitignore` 里），
-  由 `_tools/vendor_sync.sh` 从注册表拉取指定版本再打 patch 生成。
+  由 `tools/vendor_sync.sh` 从注册表拉取指定版本再打 patch 生成。
 - **制品分发**：`moon package` 打出的包**包含** fork 后的 rabbita 源码
   （消费者需要它才能编译），该部分仍是 Apache-2.0。
 
@@ -49,5 +49,5 @@
 ## 3. 我们自己的代码
 
 本模块除 fork 部分外的代码（模块根包的 `host.mbt` / `render.mbt` / `app.mbt` /
-`store.mbt` / `schedule.mbt`、`style/`、`demo/`、`host/`、`_tools/` 等）
+`store.mbt` / `schedule.mbt`、`style/`、`examples/apps/todo-app/`、`examples/apps/todo-app/host/`、`tools/` 等）
 采用 **Apache License 2.0**，版权归 `XiLaiTL`（见 [`LICENSE`](LICENSE)）。

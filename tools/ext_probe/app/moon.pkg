@@ -1,0 +1,11 @@
+supported_targets = "+js"
+
+import {
+  // ⚠️ 库本体是 `XiLaiTL/moobile`（模块名 + 目录名）。
+  //    `XiLaiTL/moobile`（少一段）是**模块根包**，里面没有 `mount`。
+  "XiLaiTL/moobile" @moobile,
+  // ★ T0.0 从 internal/style 提出来的公开包：使用者写视图的入口
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+}

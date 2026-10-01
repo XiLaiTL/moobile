@@ -120,6 +120,21 @@ fn item_row(t : Todo, emit : @cmd.Emit[Msg]) -> @html.Html {
           .padding_vertical(@style.px(4.0))
           .margin_left(@style.px(8.0)),
         ),
+        on_click=emit(OpenEdit(t.id)),
+        [
+          @html.span(
+            attrs=attrs(@style.Style::new().font_size(14.0).color(c_ink3)),
+            "改",
+          ),
+        ],
+      ),
+      @html.button(
+        attrs=attrs(
+          @style.Style::new()
+          .padding_horizontal(@style.px(8.0))
+          .padding_vertical(@style.px(4.0))
+          .margin_left(@style.px(8.0)),
+        ),
         on_click=emit(Remove(t.id)),
         [
           @html.span(
@@ -127,6 +142,45 @@ fn item_row(t : Todo, emit : @cmd.Emit[Msg]) -> @html.Html {
             "✕",
           ),
         ],
+      ),
+    ],
+  )
+}
+
+///|
+/// 同步状态文案。
+fn sync_text(model : Model) -> String {
+  match model.sync {
+    Offline => "尚未与服务器同步"
+    Dirty => "本地有改动，尚未同步"
+    Syncing =>
+      if model.pending > 0 {
+        "同步中… 待推送 \{model.pending} 项"
+      } else {
+        "同步中…"
+      }
+    Synced => "已与服务器同步"
+    Fail(e) => "同步失败：\{e}"
+  }
+}
+
+///|
+/// 同步行：一个按钮 + 一行状态。这就是"网络请求链路"在界面上的入口。
+fn sync_line(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
+  @html.div(
+    attrs=attrs(
+      @style.Style::new()
+      .flex_direction(@style.FlexDirection::Row)
+      .align_items(@style.Align::Center)
+      .margin_top(@style.px(4.0)),
+    ),
+    [
+      chip("同步", model.sync == Syncing, Sync, emit),
+      @html.span(
+        attrs=attrs(
+          @style.Style::new().font_size(11.0).color(c_ink3).flex(1.0),
+        ),
+        sync_text(model) + " · 心跳 \{model.ticks}",
       ),
     ],
   )
@@ -188,12 +242,13 @@ fn input_row(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 }
 
 ///|
-/// 顶层视图。两个屏共用同一套 moobile 后端 —— 换屏只换这里。
+/// 顶层视图：三页共用同一套 moobile 后端 —— 换页只换这里。
 pub fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
-  if model.screen == R1 {
-    return r1_screen(emit)
+  match model.page {
+    Edit(id) => edit_screen(model, id, emit)
+    R1 => r1_screen(emit)
+    List => todo_screen(model, emit)
   }
-  todo_screen(model, emit)
 }
 
 ///|
@@ -221,7 +276,7 @@ fn r1_screen(emit : @cmd.Emit[Msg]) -> @html.Html {
           .padding_horizontal(@style.px(16.0))
           .padding_vertical(@style.px(10.0)),
         ),
-        [chip("← 回待办清单", false, SetScreen(Todo), emit)],
+        [chip("← 回待办清单", false, SetPage(List), emit)],
       ),
     ],
   )
@@ -237,9 +292,10 @@ pub fn todo_screen(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         .flex_direction(@style.FlexDirection::Row)
         .margin_bottom(@style.px(10.0)),
       ),
-      [chip("R1 样本 →", false, SetScreen(R1), emit)],
+      [chip("R1 样本 →", false, SetPage(R1), emit)],
     ),
   )
+  kids.push(sync_line(model, emit))
   kids.push(
     @html.h1(
       attrs=attrs(
@@ -309,6 +365,26 @@ pub fn todo_screen(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       "\{remaining(model)} 项未完成 · 共 \{model.items.length()} 项",
     ),
   )
+  // 本地库状态 —— 这一行是"清单来自 expo-sqlite，而不是内存"的直接可见证据。
+  kids.push(
+    @html.p(
+      attrs=attrs(
+        @style.Style::new()
+        .font_size(11.0)
+        .color(c_ink3)
+        .margin_top(@style.px(6.0)),
+      ),
+      match model.error {
+        Some(e) => "本地库出错：\{e}"
+        None =>
+          if model.loaded {
+            "清单来自本地库（expo-sqlite）"
+          } else {
+            "正在读取本地库…"
+          }
+      },
+    ),
+  )
   @html.div(
     attrs=attrs(
       @style.Style::new()
@@ -319,5 +395,85 @@ pub fn todo_screen(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       .padding_bottom(@style.px(24.0)),
     ),
     kids,
+  )
+}
+
+///|
+/// **编辑页**（第二个页面）。
+///
+/// 演示"多页面"这条：页面状态是 `Model` 里一个 `Page` 值，切换是纯 `update`，
+/// 没有任何路由库参与 —— 与 `interest/yi` 里 `ListPage` / `Detail(n)` 的写法同形。
+fn edit_screen(model : Model, id : Int, emit : @cmd.Emit[Msg]) -> @html.Html {
+  @html.div(
+    attrs=attrs(
+      @style.Style::new()
+      .flex(1.0)
+      .background_color(c_paper)
+      .padding_top(@style.px(64.0))
+      .padding_horizontal(@style.px(20.0))
+      .padding_bottom(@style.px(24.0)),
+    ),
+    [
+      chip("← 返回清单", false, SetPage(List), emit),
+      @html.h2(
+        attrs=attrs(
+          @style.Style::new()
+          .font_size(24.0)
+          .font_weight(@style.FontWeight::W700)
+          .color(c_ink)
+          .margin_top(@style.px(22.0))
+          .margin_bottom(@style.px(4.0)),
+        ),
+        "编辑这一条",
+      ),
+      @html.p(
+        attrs=attrs(
+          @style.Style::new()
+          .font_size(12.0)
+          .color(c_ink3)
+          .margin_bottom(@style.px(18.0)),
+        ),
+        "id = \{id}（负数＝本地新建，尚未推到服务器）",
+      ),
+      @html.input(
+        value=model.editing,
+        placeholder="内容",
+        on_input=emit.map(s => SetEditing(s)),
+        attrs=attrs(
+          @style.Style::new()
+          .background_color(c_card)
+          .border_radius(12.0)
+          .border_width(1.0)
+          .border_color(c_line)
+          .padding_horizontal(@style.px(14.0))
+          .padding_vertical(@style.px(12.0))
+          .font_size(16.0)
+          .color(c_ink),
+        ),
+      ),
+      @html.button(
+        attrs=attrs(
+          @style.Style::new()
+          .background_color(c_vermilion)
+          .border_radius(10.0)
+          .padding_horizontal(@style.px(18.0))
+          .padding_vertical(@style.px(10.0))
+          .margin_top(@style.px(16.0))
+          .align_items(@style.Align::Center),
+        ),
+        on_click=emit(SaveEdit(id)),
+        [
+          @html.span(
+            attrs=attrs(
+              @style.Style::new()
+              .font_size(15.0)
+              .font_weight(@style.FontWeight::W600)
+              .color(c_card),
+            ),
+            "保存",
+          ),
+        ],
+      ),
+    ],
   )
 }

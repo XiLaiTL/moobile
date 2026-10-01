@@ -712,7 +712,7 @@ pub fn Style::text_transform(self : Style, v : TextTransform) -> Style {
 
 // ---------------------------------------- 补齐：yi 的 CSS 用到的可移植属性
 //
-// 清单来自 `_r1/style_gap.md` 的差集分析（yi 的 198 条 CSS 共 57 个属性名，
+// 清单来自 `docs/evidence/r1/style_gap.md` 的差集分析（yi 的 198 条 CSS 共 57 个属性名，
 // 本层原有 34 个覆盖）。下面这批是**可移植且 RN 支持**的，补齐它们；
 // 不可移植的（grid / 伪元素 / transition / cursor …）在 README 里另有降级策略，
 // 刻意不加进类型 —— 让它们在编译期就写不出来。

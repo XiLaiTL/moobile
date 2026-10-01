@@ -5,13 +5,13 @@
 //   2. 结构化样式（styles map）真的作用到了 DOM 上
 //   3. 点击 / 输入事件真的回到了 MoonBit 的 update，并触发重渲染
 //
-//   node _verify.js
+//   node tools/verify_web.js
 const fs = require("fs");
 const { spawn, execSync } = require("child_process");
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const PORT = 9231;
-const OUT = __dirname; // 从脚本位置推导，不写死盘符
+const OUT = require("path").join(__dirname, "..", "docs", "evidence"); // 证据产物统一落 docs/evidence/
 const URL = "http://localhost:8081";
 const PROFILE = process.env.TEMP + "\\chrome_moobile_" + Date.now();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -223,7 +223,7 @@ async function main() {
   // `Children::RawHtml` 在 RN 上没有等价物。moobile 丢弃它并计数，
   // 这里断言"这棵真实 rabbita 树里一个都不到"。
   const unsupported = await evalJs(
-    "globalThis.__moobileUnsupported ? globalThis.__moobileUnsupported() : null",
+    "globalThis.__moobileApp ? globalThis.__moobileApp.unsupported() : null",
   );
   check(
     "真实 rabbita 树里没有不可移植节点（Children::RawHtml = 0）",
@@ -232,9 +232,9 @@ async function main() {
   );
 
   // 标签表覆盖度：未收录标签必须为 0，否则说明"看起来能跑"的假象
-  const unmapped = await evalJs("globalThis.__moobileUnmapped ? __moobileUnmapped() : null");
+  const unmapped = await evalJs("globalThis.__moobileApp ? globalThis.__moobileApp.unmapped() : null");
   const unmappedNames = await evalJs(
-    "globalThis.__moobileUnmappedNames ? __moobileUnmappedNames() : ''",
+    "globalThis.__moobileApp ? globalThis.__moobileApp.unmapped_names() : ''",
   );
   check(
     "标签表覆盖住了这棵树（未收录标签 = 0）",
@@ -267,6 +267,29 @@ async function main() {
     "内容高度在视口内（不会被裁）",
     audit && audit.docHeight <= 844,
     "docHeight=" + audit?.docHeight,
+  );
+
+  // ---------- 7. 订阅（Sub）真的在跑吗 ----------
+  // N1 给 `mount` 补上了 `subscriptions?`。这里验的是"这条线真的通"：
+  // 运行时每 1 秒推一个 Tick，界面上的「心跳 N」必须自己往上走 ——
+  // 不是用户点出来的，是**运行时主动推进**的。
+  //
+  // ⚠️ 正则里的 `\\s` 必须是**双反斜杠**：这段 JS 是写在模板字符串里的，
+  //    单反斜杠会被模板字面量自己吃掉（`\s` → `s`），于是正则永远不命中、
+  //    断言拿到 null。踩过一次，记在这里。
+  const beat1 = await evalJs(`(() => {
+    const m = document.body.innerText.match(/心跳\\s*(\\d+)/);
+    return m ? Number(m[1]) : null;
+  })()`);
+  await sleep(11000); // 心跳是 5 秒一跳（原因见 examples/apps/todo-app/model.mbt 的注释）
+  const beat2 = await evalJs(`(() => {
+    const m = document.body.innerText.match(/心跳\\s*(\\d+)/);
+    return m ? Number(m[1]) : null;
+  })()`);
+  check(
+    "订阅（Sub）在跑：心跳计数自动增长",
+    beat1 !== null && beat2 !== null && beat2 >= beat1 + 2,
+    `心跳 ${beat1} -> ${beat2}`,
   );
 
   // ---------- 控制台干净吗 ----------

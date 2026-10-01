@@ -9,8 +9,8 @@
 /// 移植时**故意不迁就 RN**：CSS 怎么写就怎么映射，让冲突暴露出来。
 /// 冲突点已在下面逐条标 `⚠️ R1-`。
 ///
-/// 颜色取自 yi 的 `:root`（`_r1/yi_root_vars.txt`），CSS 规则取自
-/// `_r1/yi_yao_css.txt`。
+/// 颜色取自 yi 的 `:root`（`docs/evidence/r1/yi_root_vars.txt`），CSS 规则取自
+/// `docs/evidence/r1/yi_yao_css.txt`。
 let r_paper0 : String = "#f6efe0"
 
 ///|

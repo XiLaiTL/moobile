@@ -4,9 +4,9 @@
 > （原因见 `README.md` 的「原理」一节）。当前策略是 **vendor 跟版**，
 > 所以必须有一份**精确、可重放**的改动清单 —— 否则 rabbita 一发版就得靠考古。
 >
-> 📌 **现在的真相不是本文的手抄步骤，而是 `_tools/patches/` 里的 15 个 patch。**
+> 📌 **现在的真相不是本文的手抄步骤，而是 `tools/patches/` 里的 15 个 patch。**
 > 本文的作用是：解释每个 patch 在干什么、为什么，以及跟版/升级时怎么用。
-> 机器可验证：`bash _tools/vendor_sync.sh --check`（断言「工作区 == 上游 + 这些 patch」）。
+> 机器可验证：`bash tools/vendor_sync.sh --check`（断言「工作区 == 上游 + 这些 patch」）。
 >
 > 这份清单同时也是将来上游化的提案基础（见 §3）。
 > 记录日期：2026-09（对应 rabbita 0.15.4）
@@ -17,31 +17,46 @@
 
 | 项 | 做法 |
 |---|---|
-| 位置 | 铺在**模块根**（`html/` `cmd/` `dom/` `internal/` …），与我们自己的 `style/` `demo/` 平级 |
-| 版本 | `_tools/vendor.lock` 里的 `RABBITA_VERSION=0.15.4`（**注册表制品**，不可变） |
-| 改动 | `_tools/patches/*.patch`（**14 个**，按编号顺序 `patch -p1`；原 13 号随 `server/` 一起裁掉） |
-| 生成器 | `_tools/vendor_sync.sh`（`--check` / `--apply` / `--capture` / `--from`） |
-| 是否入库 | **否**。15 个第三方目录在 `.gitignore` 里；仓库只跟踪我们自己的代码 + patch + 脚本 |
+| 位置 | **`vendor/rabbita/`**（一个目录），与我们自己的 `style/` `sqlite/` 平级 |
+| 版本 | `tools/vendor.lock` 里的 `RABBITA_VERSION=0.15.4`（**注册表制品**，不可变） |
+| 改动 | `tools/patches/*.patch`（**14 个**，按编号顺序 `patch -p1`；原 13 号随 `server/` 一起裁掉）。⚠️ patch 里的路径是**搬家前**的布局（`internal/vdom/…`、`html/…`），见 §0.1 |
+| 生成器 | `tools/vendor_sync.sh`（`--check` / `--apply` / `--capture` / `--from`）+ `tools/vendor_relocate.py`（布局搬家） |
+| 是否入库 | **否**。整个 `vendor/` 在 `.gitignore` 里；仓库只跟踪我们自己的代码 + patch + 脚本 |
 | 有意裁掉的包 | `server/`（rabbita 的 SSR/HTTP）—— 见 §2.5 |
-| 为什么必须在同一模块 | `internal` 包的可见性是**按包路径前缀**判的；只有同模块（且 `internal/` 直接在模块根下）才能 import `internal/vdom` |
-| 为什么不能放 `vendor/` 子目录 | 实测：`vendor/rabbita/internal/*` 只对 `…/vendor/rabbita/**` 可见，模块根包 import 会报 `Cannot import internal package … due to internal visibility rules` |
 | 为什么不用 git submodule | 上游 0.15.x **只有 `rabbita-v0.15.6` 一个 tag**，我们 vendor 的 0.15.4 没有 tag；能找到的最近提交跟注册表那份还差 49 处。**能精确钉住的只有注册表版本号** |
-| fork 的根包去哪了 | `top.mbt` / `incremental.mbt` / `deprecated.mbt` / `tea.mbt` / `render_test.mbt` / `moon.pkg` / `README.mbt.md` → `internal/rabbita/`（这样模块根包 = moobile 库本体，见 `docs/ARCHITECTURE.md` §5「形态 B」） |
+| fork 的根包去哪了 | `top.mbt` / `incremental.mbt` / `deprecated.mbt` / `tea.mbt` / `render_test.mbt` / `moon.pkg` / `README.mbt.md` → `vendor/rabbita/rabbita/`（这样模块根包 = moobile 库本体，见 `docs/ARCHITECTURE.md` §5「形态 B」） |
+
+### 0.1 布局：`internal/*` 被**摊平**（`internal` 的可见性规则）
+
+> ⚠️ 这一节推翻了本文件此前的说法（"fork 必须铺在模块根"）。**前半句对，结论错**。
+> 完整实验记录见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的 **R3**。
+
+| 问题 | 实测结果 |
+|---|---|
+| `internal` 的可见性怎么判 | **只认路径段恰好等于 `internal`**（`…/internal_vdom/` 不受限，`…/internal/vdom/` 受限） |
+| 铺在模块根时根包能 import 吗 | ✅ 能（根就在前缀里）—— 所以旧的"必须铺在根"当年确实能跑通 |
+| 放 `vendor/rabbita/internal/vdom` 呢 | ❌ `Cannot import internal package … due to internal visibility rules` |
+| 加一层"公开再导出包"绕过？ | ❌ **不通**：类型只能被**命名**、不能被**使用** —— 变体匹配报 `is an alias to a type in …, which is not imported`、结构体构造报 `Value X not found`、字段访问报 `… type and not a struct`、方法报 `Cannot define method for foreign type` |
+| 正确做法 | **摊平**：`internal/vdom` → `vendor/rabbita/vdom`、`internal/rabbita` → `vendor/rabbita/rabbita`（丢掉 `internal` 这一段），再把所有 `moon.pkg` 的 import 路径跟着改写 |
+
+映射与两个方向都在 `tools/vendor_relocate.py`：`--apply`/`--check` 用「旧布局 → vendor」，
+`--capture` 用「vendor → 旧布局」（否则回写出的 patch 打不上 pristine）。
+`vendor_sync.sh` 在**打完 patch 之后**才调用它 —— patch 的 `+++ b/路径` 是按旧布局写的，顺序不能反。
 
 ---
 
 ## 1. 日常怎么用
 
 ```bash
-bash _tools/vendor_sync.sh --check      # 断言「工作区 == pristine + patch」；CI / 提交前跑
-bash _tools/vendor_sync.sh --apply      # 铺开第三方代码（新克隆、或升级换版本后）
-bash _tools/vendor_sync.sh --capture    # 把工作区里的改动回写成 patch
-bash _tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配合 --check 看冲突落在哪
+bash tools/vendor_sync.sh --check      # 断言「工作区 == pristine + patch」；CI / 提交前跑
+bash tools/vendor_sync.sh --apply      # 铺开第三方代码（新克隆、或升级换版本后）
+bash tools/vendor_sync.sh --capture    # 把工作区里的改动回写成 patch
+bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配合 --check 看冲突落在哪
 ```
 
 ⚠️ **第三方目录是 gitignore 的，`git status` 不会提醒你漏了 `--capture`** ——
-所以：**改了 `html/`、`internal/vdom/` 这些地方的代码之后，提交前一定先 `--capture`，再 `--check`。**
-改完顺手 `bash _tools/lf_normalize.sh` 统一行尾（CRLF 会把 patch 的上下文打乱）。
+所以：**改了 `vendor/rabbita/html/`、`vendor/rabbita/vdom/` 这些地方的代码之后，提交前一定先 `--capture`，再 `--check`。**
+改完顺手 `bash tools/lf_normalize.sh` 统一行尾（CRLF 会把 patch 的上下文打乱）。
 
 ---
 
@@ -77,10 +92,10 @@ bash _tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），�
 | 它被编译过吗 | **没有**：它声明 `supported_targets = "native+wasm"`，而我们只跑 js |
 
 代价与收益：**裁掉一个包 = 去掉两个依赖（3 → 1）**，发布包少两个文件。
-验证：`moon check` 0 错误、`_verify.js` 26/26、`check_external.sh` 通过、`vendor_sync.sh --check` 一致。
+验证：`moon check` 0 错误、`tools/verify_web.js` 26/26、`check_external.sh` 通过、`vendor_sync.sh --check` 一致。
 恢复办法：把 `server` 加回 `vendor_sync.sh` 的 `FORK_DIRS`、恢复 13 号 patch、把两个依赖加回 `moon.mod` 即可。
 
-**不属于 patch 的三件事**（由脚本做，见 `_tools/vendor_sync.sh` 的铺开步骤）：
+**不属于 patch 的三件事**（由脚本做，见 `tools/vendor_sync.sh` 的铺开步骤）：
 
 1. **模块名替换**（`moonbit-community/rabbita` → `XiLaiTL/moobile`，影响约 13 个 `moon.pkg` 与 1 处注释）——
    用 `sed` 而不是 patch，因为**上游将来新增的文件 patch 覆盖不到，sed 才能全覆盖**。
@@ -89,7 +104,7 @@ bash _tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），�
 
 **也不属于 fork diff 的东西**：`style/`（我们自己的公开包，直接入库）、
 模块根包（`host.mbt` / `render.mbt` / `app.mbt` / `store.mbt` / `schedule.mbt`）、
-`demo/`、`host/`、`_tools/`。
+`examples/apps/todo-app/`、`examples/apps/todo-app/host/`、`tools/`。
 
 ### 2.1 核心 patch 08 的细节（`internal/vdom/vdom.mbt`）
 
@@ -102,7 +117,7 @@ bash _tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），�
 
 ### 2.2 patch 02/03/14：为什么是"一张表"而不是"逐个修"
 
-普查（`_r1/dom_survey.txt`）显示 `html/` + `svg/` 里共 **45 处 `@dom.`**，
+普查（`docs/evidence/r1/dom_survey.txt`）显示 `html/` + `svg/` 里共 **45 处 `@dom.`**，
 其中**同一形状的 panic 有 13 个**（mouse / keyboard / focus / drag / clipboard /
 composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 只修 mouse 那一处等于把同样的雷留给其余 12 个 ——
@@ -110,7 +125,7 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 
 **换来的语义要说清楚**：是"**不崩、可降级**"，不是"载荷等价"。
 `Mouse`/`Keyboard`/`Scroll` 在 React 后端一律返回**零值**，
-读取它们的处理器会拿到 0 —— 真实手势数据要接 RN 手势系统（设计文档 R2 / 旧计划 `docs/PLAN-2026Q3-yi-port.md` 的 T3.4）。
+读取它们的处理器会拿到 0 —— 真实手势数据要接 RN 手势系统（设计文档 R2 / 旧计划 `docs/plan/PLAN-2026Q3-yi-port.md` 的 T3.4）。
 
 ### 2.3 patch 15 的细节（`internal/runtime/react_host.mbt`）
 
@@ -165,9 +180,9 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 
 ```bash
 git switch -c drill/rabbita-0.16.0
-bash _tools/vendor_sync.sh --from 0.16.0 --check   # 先看冲突落在哪几个 patch
+bash tools/vendor_sync.sh --from 0.16.0 --check   # 先看冲突落在哪几个 patch
 # 逐个 --capture 重做冲突的 patch，然后：
-moon check --target js && bash _tools/check_external.sh && node _verify.js
+moon check --target js && bash tools/check_external.sh && node tools/verify_web.js
 # 判据全绿才算成功；超时/冲突爆炸就切回主分支 —— 回退只是一条 git 命令
 ```
 
