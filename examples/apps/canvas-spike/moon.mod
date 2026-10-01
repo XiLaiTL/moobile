@@ -14,5 +14,5 @@ description = "canvas 通道试金石：绘制指令 → Skia（跨语言对账 
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.2.2",
+  "XiLaiTL/moobile@0.3.0",
 }

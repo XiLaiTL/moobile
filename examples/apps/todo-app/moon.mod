@@ -19,5 +19,5 @@ description = "moobile 的 Todo 演示应用（本地库 + 网络同步 + 多页
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.2.2",
+  "XiLaiTL/moobile@0.3.0",
 }

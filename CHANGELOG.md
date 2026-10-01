@@ -5,7 +5,28 @@
 
 ---
 
-## 未发布 —— 手势通道的**边界**（三个真机才暴露的错误 + 一条契约收紧）
+## 0.3.0 —— 2026-10（**已发布**；契约 `1 → 2`，**破坏性**）
+
+> **这一版是"攒了很久的一批"**：契约 `1 → 2`（第三方组件库接入）、`canvas/` 与 `gesture/`
+> 两个新公开包、脚手架（`init` / `build` / 模板）、工具链换成 MoonBit。下面每一节都是一批改动，
+> 现在**一起发**。
+>
+> ⚠️ **月亮包与 npm 包必须同代发**：只发一边会让线上契约错配、**启动即抛**（见 `docs/STATUS.md` §1）。
+>
+> ✅ **2026-10-01 已发布，两边都核过**：
+> · 月亮包 `XiLaiTL/moobile@0.3.0` —— `bash tools/check_published.sh` 通过：**9 个公开包齐全**
+>   （`canvas` / `gesture` 补上了 0.2.2 缺的那两块），README 的 import 路径对着这一版能编过；
+> · 宿主包 `moobile-host@0.3.0` —— 线上 tarball 35 个文件，`lib/init.js`、`lib/build.js`、
+>   `bin/libgen.js`、整套 `template/`（含 `template/.gitignore`）都在；`core.js` 的 `CONTRACT = 2`。
+>
+> ⚠️ **发完那一小段时间里，本机默认的 npmmirror 镜像还没同步**（`npm install` 会报
+> `notarget … moobile-host@^0.3.0`）。这不是包没发出去 —— 官方源上已经有了；
+> 镜像按需同步（`PUT https://registry.npmmirror.com/-/package/moobile-host/syncs`）几分钟到一小时跟上。
+>
+> 给使用者的操作：**两个包一起升** —— `moon add XiLaiTL/moobile@0.3.0` +
+> `npm i moobile-host@0.3.0`；只升一边会在挂载时**同时报出两个契约版本号**。
+
+### 手势通道的**边界**（三个真机才暴露的错误 + 一条契约收紧）
 
 **三个 bug 都是在真机上才露头的**（web 宿主 40 项全绿、一条都抓不到）：
 
@@ -36,7 +57,7 @@
 
 ---
 
-## 未发布 —— canvas 通道（`<canvas>` 的平台替代物）
+### canvas 通道（`<canvas>` 的平台替代物）
 
 **新能力：`<canvas>` 在原生端画得出来了 —— 走的是既有组件通道，不是新通道**
 
@@ -67,7 +88,7 @@ ctx.stroke()
 
 ---
 
-## 未发布 —— 第三方 React 组件库接入（**契约 `1 → 2`，破坏性**）
+### 第三方 React 组件库接入（**契约 `1 → 2`，破坏性**）
 
 **新能力：React 生态的组件库能当 moobile 的标签用**
 
@@ -162,7 +183,7 @@ cd examples/apps/antd-demo/host && npm run check   # 生成物一致 + 24 条判
 
 ---
 
-## 未发布 —— 脚手架（E 轨道）：模板同源门 T1（2026-09-21）
+### 脚手架（E 轨道）：模板同源门 T1（2026-09-21）
 
 **新闸门：生成物与 demo 的差异，一条条对着清单判**（`SCAFFOLD.md` §6 的 T1）
 
@@ -188,7 +209,7 @@ cd examples/apps/antd-demo/host && npm run check   # 生成物一致 + 24 条判
 
 ---
 
-## 未发布 —— 修：打包后的 `init` 生成的项目**没有 `.gitignore`**（2026-09-21）
+### 修：打包后的 `init` 生成的项目**没有 `.gitignore`**（2026-09-21）
 
 **症状**（只有"真装一遍"才看得见）：`npx moobile-host init my-app` 出来的项目里，忽略规则文件叫
 **`.npmignore`** 而不是 `.gitignore` → 使用者会把 `moobile.js`（1 MB 构建产物）与 `_build/`
@@ -215,7 +236,7 @@ cd examples/apps/antd-demo/host && npm run check   # 生成物一致 + 24 条判
 
 ---
 
-## 未发布 —— C0：换掉宿主，库与应用一行都不用改（2026-09-21）
+### C0：换掉宿主，库与应用一行都不用改（2026-09-21）
 
 **实测补上了 `PLAN.md` §1.2 那句断言**：「宿主是可替换件 —— 库与具体 RN 版本无关，也与 Expo 无关」。
 此前它只有**读代码 + 间接证据**（全文搜 `AppRegistry` 只搜得到"注释里说换成它会怎样"）。
@@ -238,7 +259,7 @@ cd examples/apps/antd-demo/host && npm run check   # 生成物一致 + 24 条判
 
 ---
 
-## 未发布 —— 工具链改用 MoonBit（不影响库的 API 与产物）
+### 工具链改用 MoonBit（不影响库的 API 与产物）
 
 - 新增 `tools/mbtools/`（**独立嵌套模块**，不污染库的 `moon.mod`）+ `tools/mb.sh`，
   已迁第一个子命令 `cr-scan`（行尾检查/修复）；`lf_normalize.sh` 已切过去，`tools/cr_scan.py` 退役。

@@ -285,7 +285,9 @@ RN 里没有"同源"这回事，`fetch('/todos')` 没有意义：地址由宿主
 | moobile（MoonBit 包） | moobile-host | MOBILE_HOST 契约 |
 |---|---|---|
 | 0.2.x | 0.2.x | 1 |
-| 0.3.x（未发布） | 0.3.x（未发布） | **2** —— 加了 `events` / `wrapRoot` / `platform`，`components` 键空间开放 |
+| 0.3.x（**已发布** 2026-10-01） | 0.3.x（**已发布**） | **2** —— 加了 `events` / `wrapRoot` / `platform`，`components` 键空间开放 |
+
+⚠️ **两个包必须同代升**：只升一边会在挂载时**同时报出两个契约版本号**（下面那句就是它的行为）。
 
 契约版本写在两边：`app.mbt` 的 `host_contract_version` 与 `core.js` 的 `CONTRACT`。
 **改契约形状必须同时 +1**；不同代混用会在挂载时**同时报出两个版本号**。

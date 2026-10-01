@@ -20,5 +20,5 @@ description = "画布通道 + 手势通道的示例（拖动 → Model → 画�
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.2.2",
+  "XiLaiTL/moobile@0.3.0",
 }

@@ -16,5 +16,5 @@ preferred_target = "js"
 // 版本号必须写（新版 moon.mod 的 import 只接受带版本的 registry 形式）；
 // 这些源码真正被编译是在**生成出来的那个项目里**，用的是那个项目的 moon.pkg。
 import {
-  "XiLaiTL/moobile@0.2.2",
+  "XiLaiTL/moobile@0.3.0",
 }

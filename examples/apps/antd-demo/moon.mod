@@ -17,5 +17,5 @@ description = "antd 全组件 demo：用 libgen 生成的 @antd DSL 把组件库
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.2.2",
+  "XiLaiTL/moobile@0.3.0",
 }

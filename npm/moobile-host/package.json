@@ -1,6 +1,6 @@
 {
   "name": "moobile-host",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "React Native / Expo host for moobile (MoonBit UI): implements the MOBILE_HOST contract and generates the capability registry.",
   "license": "Apache-2.0",
   "main": "index.js",

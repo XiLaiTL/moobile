@@ -125,5 +125,13 @@ if [ "$DRY" = "1" ]; then
   exit 0
 fi
 
-echo "== npm publish ${ARGS[*]} =="
+# ⚠️ 回显命令时**把 OTP 打码**：它 30 秒就过期，但没有任何理由留在终端回滚缓冲、
+#    终端录制、或 npm 自己的 debug 日志里（2026-10-01 实测：`--otp=647363` 就那么被打了出去）。
+DISPLAY_ARGS=("${ARGS[@]}")
+for i in "${!DISPLAY_ARGS[@]}"; do
+  case "${DISPLAY_ARGS[$i]}" in
+    --otp=*) DISPLAY_ARGS[$i]="--otp=***" ;;
+  esac
+done
+echo "== npm publish ${DISPLAY_ARGS[*]} =="
 npm publish "${ARGS[@]}"

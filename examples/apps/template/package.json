@@ -14,7 +14,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
     "expo": "~57.0.24",
-    "moobile-host": "^0.2.0",
+    "moobile-host": "^0.3.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
