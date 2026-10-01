@@ -54,7 +54,12 @@
 
 ///|
 /// 手势的阶段。
-pub enum Phase {
+///
+/// ⚠️ `pub(all)` 不是随手加的：**应用要能写 `phase == Move`**（比如"只在 move 阶段改角度"），
+/// 而 MoonBit 里外部包**构造**不了非 `pub(all)` 枚举的变体 —— 报错是
+/// `Cannot create values of the read-only type: Move`（实测：示例应用第一次就撞上）。
+/// 这条与 `docs/FINDINGS.md` R7 记的"转发来的 struct 构造不了"是同一类边界的另一面。
+pub(all) enum Phase {
   Start
   Move
   End
@@ -115,17 +120,21 @@ pub let tap_event : String = "tap"
 
 ///|
 /// 造一份只有手势的 `attrs`（元素不需要别的属性时用它）。
+///
+/// ⚠️ 两个形态**都给 `Gesture`，不给原始 `Payload`** —— 曾经这里是 `(Payload) -> Cmd`，
+/// 与下面的合并式 `pan()`/`tap()` 不一致，于是同一个概念在两处长得不同（示例应用一写就撞上）。
+/// 内部细节（载荷字段名）不该漏给应用：那是**宿主与库之间**的约定。
 pub fn attrs(
-  on_pan? : (@html.Payload) -> @cmd.Cmd,
-  on_tap? : (@html.Payload) -> @cmd.Cmd,
+  on_pan? : (Gesture) -> @cmd.Cmd,
+  on_tap? : (Gesture) -> @cmd.Cmd,
 ) -> @html.Attrs {
   let a = @html.Attrs::build()
   let a = match on_pan {
-    Some(f) => a.on_raw(pan_event, f)
+    Some(f) => a.on_raw(pan_event, p => f(Gesture::of(p)))
     None => a
   }
   match on_tap {
-    Some(f) => a.on_raw(tap_event, f)
+    Some(f) => a.on_raw(tap_event, p => f(Gesture::of(p)))
     None => a
   }
 }

@@ -49,10 +49,17 @@ export function withGestures(Base, displayName) {
       const emit = (handler, n, phase) => {
         if (typeof handler !== 'function') return;
         handler({
+          // `x/y`：**元素内**坐标（RN 的 `locationX/locationY`）。
+          // ⚠️ 它们的参照系是"**最深的被触摸 view**"，可能不是挂着手势的那个元素 ——
+          //    实测：拖动区里放了一行文字，起始点落在文字上 → `locationX` 相对**文字**；
+          //    手指滑出文字范围后 RN 换了参照系。所以它们只适合"当下位置"，**不能拿来算位移**。
           x: n.locationX,
           y: n.locationY,
-          dx: n.locationX - start.current.x,
-          dy: n.locationY - start.current.y,
+          // ★ `dx/dy`：**从按下起算**，用**屏幕坐标**算（`pageX/pageY`）——参照系永远稳定。
+          //   用 `locationX` 差值算的话，上面那个参照系切换会让位移**跳**：
+          //   实测横滑 80px 报出 `dx=155`（多出来的正是"文字 → 父 View"那一跳）。
+          dx: n.pageX - start.current.px,
+          dy: n.pageY - start.current.py,
           ax: n.pageX,
           ay: n.pageY,
           phase,
@@ -60,12 +67,13 @@ export function withGestures(Base, displayName) {
         });
       };
       return PanResponder.create({
-        // 有点按/拖动处理器才去抢响应者 —— 没挂手势的元素行为**一字不变**。
+        // 有点击/拖动处理器才去抢响应者 —— 没挂手势的元素行为**一字不变**。
         onStartShouldSetPanResponder: () => typeof onPan === 'function' || typeof onTap === 'function',
         onMoveShouldSetPanResponder: () => typeof onPan === 'function',
         onPanResponderGrant: (e) => {
           const n = e.nativeEvent;
-          start.current = { x: n.locationX, y: n.locationY, t: Date.now() };
+          // 基准点用**屏幕坐标**（见 `emit` 里的说明），`locationX/Y` 只作为起点参考。
+          start.current = { px: n.pageX, py: n.pageY, x: n.locationX, y: n.locationY, t: Date.now() };
           emit(onPan, n, 'start');
         },
         onPanResponderMove: (e) => emit(onPan, e.nativeEvent, 'move'),
@@ -73,7 +81,8 @@ export function withGestures(Base, displayName) {
           const n = e.nativeEvent;
           emit(onPan, n, 'end');
           // 点按：位移够小、时间够短才算 —— 否则拖一下就会误触发点按。
-          const moved = Math.hypot(n.locationX - start.current.x, n.locationY - start.current.y);
+          // 位移同样用**屏幕坐标**算（与 `dx/dy` 同一个理由）。
+          const moved = Math.hypot(n.pageX - start.current.px, n.pageY - start.current.py);
           if (typeof onTap === 'function' && moved <= TAP_SLOP && Date.now() - start.current.t <= TAP_MS) {
             emit(onTap, n, 'end');
           }
