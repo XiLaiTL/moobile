@@ -38,6 +38,35 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+
+// ── 0) 软链兜底：`file:` 依赖在不同平台形态不同，而它决定 `import 'react'` 从哪解析 ──
+//
+// 2026-10-01 CI 实测：两条脚手架门红，报的是
+//     Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'react'
+//       imported from /home/runner/work/moobile/moobile/npm/moobile-host/core.js
+// 真因**不在被测物上**，在**依赖的形态**：
+//   · Linux（CI 的新鲜克隆）：`npm install` 把 `"moobile-host": "file:…"` 装成**软链**，
+//     真身就是仓库源码 `npm/moobile-host/`；而 Node 默认按**真身**解析 —— 于是 `core.js` 里的
+//     `import 'react'` 从仓库那一层往上找，**永远找不到**（仓库里没有 node_modules）。
+//   · Windows（本机）：npm 建不了软链就**拷一份**真目录，于是它就在装着 react 的那个
+//     `node_modules` 里，一切正常。
+// ⇒ **同一份代码，本机绿、CI 红**（本仓库最花钱的那类坑）。
+//
+// `--preserve-symlinks` 让解析按**链接所在位置**走 —— 语义正是"装在哪儿就从哪儿解析"。
+// **实测**（本机把那份副本换成 junction，造出 CI 的形态）：不加 → 原样复现 CI 那句错；
+// 加了 → 通过。之后整个 `template_check` / `scaffold_probe` 也都绿。
+if (
+  !process.execArgv.includes("--preserve-symlinks") &&
+  !/(^|\s)--preserve-symlinks(\s|$)/.test(process.env.NODE_OPTIONS || "")
+) {
+  const r = spawnSync(
+    process.execPath,
+    ["--preserve-symlinks", ...process.argv.slice(1)],
+    { stdio: "inherit" },
+  );
+  process.exit(r.status ?? 1);
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");

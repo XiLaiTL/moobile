@@ -3396,3 +3396,68 @@ npm install --registry=https://registry.npmjs.org/
 
 `npm/moobile-host/publish.sh` 原来把 `--otp=` **原文**打进回显（终端回滚缓冲、npm debug 日志各留一份）。
 OTP 只有 30 秒有效，但没有任何理由留痕 —— 已改成 `--otp=***`（只影响回显，真发给 npm 的参数不变）。
+
+---
+
+## 补记（CI 第二次红：`file:` 依赖在 Linux 上是**软链**、在 Windows 上是**拷贝**，2026-10-01）
+
+修完语法错误推上去之后，CI **仍红 2 条**（脚手架模板 / 承载真应用）。但这次**错误行直接读到了**
+（上一提交新加的 annotation 生效，不再是被截断的警告尾巴）：
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'react'
+  imported from /home/runner/work/moobile/moobile/npm/moobile-host/core.js
+```
+
+注意那个路径：是**仓库源码**，不是装好的副本 —— 这就是全部线索。
+
+### 真因：同一个 `package.json`，两个平台装出**不同形态**
+
+各应用的 `package.json` 用 `"moobile-host": "file:../../../../npm/moobile-host"`。于是：
+
+| 平台 | npm 装成什么 | `core.js` 里的 `import 'react'` 从哪解析 | 结果 |
+|---|---|---|---|
+| **Linux**（CI 的新鲜克隆） | **软链** → 真身是仓库源码 | Node 默认按**真身**解析 → 从 `npm/moobile-host/` 往上找 `node_modules` → 仓库里没有 | **`ERR_MODULE_NOT_FOUND`** |
+| **Windows**（本机） | **拷一份**真目录（建不了软链） | 它就在**装着 react 的那个 `node_modules`** 里 | 正常 |
+
+⇒ **同一份代码、同一个提交，本机 16/16、CI 红**。这是本仓库最花钱的那类坑的**第二个实例**
+（第一个是"新鲜克隆没有 `vendor/`"）——但这次的原因在**平台差异**，不在配方漏了一步。
+
+### 复现（本机，用 junction 造出 CI 的形态）
+
+```bash
+mv examples/apps/todo-app/host/node_modules/moobile-host /tmp/mh_backup
+powershell -NoProfile -Command "cmd /c mklink /J 'examples\apps\todo-app\host\node_modules\moobile-host' 'D:\ai_project\interest\moobile\npm\moobile-host'"
+node tools/verify_headless.mjs      # → ERR_MODULE_NOT_FOUND，与 CI 同一句
+```
+
+（junction 不需要管理员权限；`cmd //c` 会被 MSYS 吃掉，得走 PowerShell。）
+
+### 修法：`tools/verify_headless.mjs` 开头 re-exec 加 `--preserve-symlinks`
+
+让解析按**链接所在位置**走 —— 语义正是"装在哪儿就从哪儿解析"。**实测**（就在上面那个 junction 状态下）：
+
+| | `verify_headless` | `template_check` | `scaffold_probe` |
+|---|---|---|---|
+| 不加 | 复现 CI 那句错（exit 1） | 红 | 红 |
+| 加了 | **10 / 10** | **15 / 15** | **7 / 7** |
+
+真目录状态下重跑同样 10/10（**没有为了救 CI 把本机弄坏**），整个离线全集 **16 / 16**。
+
+### 试过但**没用**的那条（记下来，免得下一个人再试）
+
+**给 CI 加 `refresh_host_copies.sh` 救不了**：那个脚本是 `rm -rf node_modules/moobile-host && npm install`
+—— 而 **npm 在 Linux 上又把它装成软链**。它之所以在 Windows 上"能把副本刷成真目录"，
+靠的正是**拷贝**这个平台副作用，不是脚本本身。
+
+### 附带发现：有一条门在 CI 上**是空的**
+
+`check_npm_fresh`（宿主包副本新鲜度）在 CI 上**永远通过** —— 副本是软链时，它比的是"源码 vs 源码"，
+恒等。只有在本机（真目录）它才有意义。**这不是 bug，是那条门在软链环境下的能力边界**，
+记在这里，别在 CI 上看到它绿就以为副本被验过了。
+
+### 教训
+
+**"同一个 `package.json`，两个平台装出来的不是同一个东西"** 是一类独立于代码的坑。
+判断"CI 红是不是我们写错了"之前，先问一句：**两边环境里，这个东西是同一个东西吗？**
+这次两边差的不是文件内容，而是**文件系统里的一种形态**。
