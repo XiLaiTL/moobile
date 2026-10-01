@@ -1,0 +1,5 @@
+# 这个 spike 自带忽略规则（根 .gitignore 只单独列了 todo-app host 的那几项）
+node_modules/
+dist/
+# 产物：verify.mjs 每次从 examples/apps/template 现编现搬（不入库 —— 它是产物，不是源码）
+moobile.js

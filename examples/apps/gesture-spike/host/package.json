@@ -1,0 +1,15 @@
+{
+  "name": "gesture-spike-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "手势通道试金石：在 **RNW(web) 宿主**上真拖一次，比 PanResponder 与 react-native-gesture-handler",
+  "scripts": { "verify": "node verify.mjs" },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native-gesture-handler": "3.3.0",
+    "react-native-web": "^0.21.2"
+  }
+}
