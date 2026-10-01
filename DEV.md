@@ -16,7 +16,7 @@
 
 | 组件 | 版本 / 位置 | 备注 |
 |---|---|---|
-| MoonBit | `0.1.20260827 (d0aaa07)`，`~/.moon/bin/moon` | |
+| MoonBit | `0.1.20260827 (d0aaa07)`，`~/.moon/bin/moon` | ⚠️ **工作区钉的是这一版，而 CI 装的是 `latest`** —— 两代都该绿，见下 |
 | Node / npm | `v24.14.1` / `9.2.0` | registry 已指向 `https://registry.npmmirror.com/` |
 | **JDK** | `D:/Program Files/Java/jdk-17.0.5` | ⚠️ **不要用 GraalVM**（Kotlin daemon 会卡死在 `compileKotlin`） |
 | **Gradle** | **8.14.3**（wrapper，走腾讯镜像） | ⚠️ **不要升到 9.x**，见 §7 |
@@ -24,6 +24,16 @@
 | AVD | `moobile64`，位于 `E:\avd` | Android 14 / x86_64 / 1080×2340 @440dpi |
 | Expo / RN / React | `57.0.24` / `0.86.3` / `19.2.3` | |
 | AGP / Kotlin | `8.12.0` / `2.1.20` | AGP 8.12 **要求 Gradle ≥ 8.13** |
+
+> ⚠️ **工具链有两代，而且必须两代都绿**（2026-10-01 被 CI 咬过之后加的这一段）：
+> CI（`.github/workflows/ci.yml`）用安装脚本的默认值 **`latest`**，而本机钉的是上表那一版。
+> 差异会表现成**"CI 红、本机绿"**，而且读不到 CI 日志。当时的真因是新工具链把
+> **旧式泛型写法 `fn f[T]`** 判成了语法错误（新写法 `fn[T] f`）。
+> **办法：把 `latest` 装到 `.scratch/` 里，拿它把离线全集再跑一遍** ——
+> 配方（含 Windows 上的三条坑）在 [`HANDOVER.md`](docs/HANDOVER.md) §3-1。
+> **带日期的版本钉不住**：`cli.moonbitlang.com` 上只有 `latest` 与 `nightly`，
+> `binaries/0.1.20260827/…` 一律 403（实测）。所以"让 CI 跟本机一致"这条路是**堵死的**，
+> 只能让代码在两代上都能编。
 
 ### 每个新 shell 都要设的环境变量
 

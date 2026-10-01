@@ -16,17 +16,21 @@
 
 | 东西 | registry 上的 | 工作区里的 | 差异 |
 |---|---|---|---|
-| 月亮包 `XiLaiTL/moobile` | **`0.2.2`**（mooncakes API 实测；description / keywords 已是新版） | `moon.mod` 里**还是 `0.2.2`**，但内容含**未发布批次** | 契约 `1 → 2`（破坏性）、组件库机制、`libgen`、脚手架——**都还没发** |
-| 宿主包 `moobile-host`（npm） | **`0.2.0`**（2026-09-19 发布） | `package.json` 里**还是 `0.2.0`**，但已含 `core.js` 拆分、`lib/`（init/build/regen）、`libgen/`、模板 | ⚠️ **线上包里没有 `init` / `build` / `libgen`** —— 实测 tarball 只有 `LICENSE` / `README.md` / `bin/cli.js` / `capabilities/db.js` / `index.js` / `package.json` |
-| **契约版本** | 线上两边都是 **`1`** → **这一对是自洽的**（不会互相拒） | 工作区两边都是 **`2`**（`app.mbt:13` 与 `npm/moobile-host/core.js:24`） | **下次发版必须 lib + host 同代发**，只发一边会让线上错配、启动即抛 |
+| 月亮包 `XiLaiTL/moobile` | **`0.3.0`**（2026-10-01 发布；mooncakes API 实测版本列表 `0.3.0 / 0.2.2 / 0.2.1 / 0.2.0 / 0.1.0`） | `0.3.0` | **已对齐** —— 契约 `2`、`canvas/`、`gesture/`、组件库机制、`libgen`、脚手架都发出去了 |
+| 宿主包 `moobile-host`（npm） | **`0.3.0`**（2026-10-01 发布；`dist-tags.latest = 0.3.0`，线上 tarball **35 个文件**） | `0.3.0` | **已对齐** —— `lib/init.js`、`lib/build.js`、`bin/libgen.js`、整套 `template/`（含 `template/.gitignore`）都在线上 |
+| **契约版本** | **两边都是 `2`** | 两边都是 `2` | **已自洽**（线上 npm 的 `core.js` 是 `export const CONTRACT = 2`） |
 
-**由此推出的三件事（发版前必看）**：
-
-1. **版本号要抬**：契约 `1 → 2` 是破坏性变更 → 按 [`CHANGELOG.md`](../CHANGELOG.md) 头部的策略抬**次版本**，
-   即 `0.3.0`；月亮包与 npm 包**同步抬**。
-2. **`npm publish` 需要一次性密码（2FA）** —— 这一步只能由账号持有人做。
-3. **不发布，S1「干净机器三条命令」就不成立**：线上包没有 `init`，用户 `npx moobile-host init` 会扑空；
-   现在只能靠本地 `file:` 依赖兜（这也是 E 轨道当前最硬的阻塞）。
+> ✅ **2026-10-01：0.3.0 已发布，两个包都核过 —— §4-1 那条"最硬的阻塞"结了。**
+> 实测证据（本轮跑的，见 §2.1）：`check_published.sh` 对 **线上** `0.3.0` 通过（9 个公开包齐全）；
+> 线上 npm tarball 拉下来逐个查过；**从 registry 上两个包从零走了一遍用户的三条命令**，
+> 真 Chrome 断言 **9 / 9**（见 §2.1 的「干净机器（registry 版）」）。
+>
+> ⚠️ 两个**只在发布日成立**的坑，都记进了 [`FINDINGS.md`](FINDINGS.md)：
+> ① npm 对**未认证**的 `PUT` 回 **404**（看着像"包名不对"，其实是 token 过期）；
+> ② 发布成功时服务端回 **202 = 异步受理**，`0.3.0` **约 6 分钟后**才在 registry 上可见 ——
+> 一分钟就去查会得出"没发出去"的错误结论（我这一轮就判错了一次）。
+> ③ 本机默认的 **npmmirror 镜像还没同步**（`npm install` 报 `notarget … ^0.3.0`），
+> 官方源上已经有 —— 按需同步已触发。
 
 ---
 
@@ -37,6 +41,8 @@
 | 门 | 命令 | 日期 | 结果 |
 |---|---|---|---|
 | 离线全集 | `bash tools/verify_all.sh` | 10-01 | **16 / 16 通过、0 失败、0 跳过**（约 20 秒；`--with-e2e` 再追加 Web 端到端 3 项，本轮未跑） |
+| ↳ 同一条命令，换成 **CI 那一代的工具链**（`0.1.20260920 (914d7da)`） | 先 `moon build --target js`，再 `MOON_HOME=.scratch/moonlatest` + 该工具链的 `bin` 进 PATH，跑 `bash tools/verify_all.sh` | 10-01 | **16 / 16 通过、0 失败、0 跳过** —— 「本机绿 ≠ CI 会绿」里**工具链漂移**那一半，第一次在本机被验掉（做法见 §4-8 与 FINDINGS 的 CI 收口补记） |
+| ↳ 换回工作区钉的 `0.1.20260827 (d0aaa07)` | 同上 | 10-01 | **16 / 16 通过、0 失败、0 跳过** —— 新旧**两代都绿**，这是「改法是安全的」的判据 |
 | ↳ 其中「lockfile 的 resolved URL 与包名一致」（**新增**） | `node tools/check_lockfile_urls.mjs` | 10-01 | 通过（8 份 lockfile、2088 个 `resolved` URL）。**立它的原因**：镜像源把两条 URL 写成了 404 的畸形路径（`expo-server` / `@expo/router-server`），而**任何新鲜克隆的 `npm install` 都会挂在它们上面**（本机因 node_modules 已存在而看不出来）。**已用诱饵证伪**：塞回一条坏 URL → 点名 + exit 1 |
 | ↳ 其中「宿主平台替代物」 | `node tools/native_rn_check.mjs` | 09-21 | **15 项**通过（`visibility` / `geometry` 的形状、取整、不补发初始值） |
 | ↳ 其中「能力包平台矩阵」 | `node tools/cap_platform.mjs` | 09-21 | 通过（29 个公开 API × 31 条 DOM 链路，「哪端可用 + 失效形态」齐全，漂了就红） |
@@ -53,6 +59,7 @@
 | **canvas-demo · 真机** | `cd examples/apps/canvas-demo && node device_check.mjs`（要模拟器 + Metro + 已装 APK） | 10-01 | **12 / 12**：`画布 ops=13` · 品红 3798px / 绿 324px / 蓝 424px · **横滑 80px → `dx=80 dy=0 n=9`** · 蓝指针质心移动 **74.5px**（手势→Model→画布整条链）· 点按 0→1 · 证伪屏 token 全不变。⚠️ 过程中发现两个**对使用者都成立**的坑：原生依赖版本必须用 `npx expo install --check` 认的那套、这个组合下**必须**有 `babel.config.js`（Expo 文档说不用）—— 见 FINDINGS |
 | **画布通道 · 真机**（新增） | `cd examples/apps/canvas-spike/host && node device_check.mjs`（要模拟器 + Metro + **临时接线的 APK**，见 FINDINGS） | 10-01 | **7 / 7**：`画布 ops=9` token + 截图里**品红 4016 px / 绿 1600 px**（真 Skia 画到 Android 屏上）+ 切到无画布那屏 **0 / 0**（证伪）+ 无 JS 致命错误。**过程中抓到我们自己的两个真 bug**：`installHost` 号称幂等其实会冲掉已注册组件、`registerLibrary` 的 `components` 只认数组（详见 FINDINGS） |
 | **F1 迁移动检**（新增） | `bash tools/mb.sh migrate-scan --root ../yi/zhouyi_reader`（要 moon；被扫项目在仓库外） | 09-21 | 候选 **6 文件 / 3139 行**；**15 类命中数与人工清点逐项一致**（见 FINDINGS 的 F1 补记）。顺手照出**我们自己的错**：标签表文档写 42、真源是 **44**（已修 5 处 + 归档 1 处）。⚠️ 边界：判据是"对这 15 类、在这一个项目上零遗漏"，新失效形态要加规则 |
+| ↳ **同一项目重跑**（10-01） | 同上 | 10-01 | 候选 **6 文件 / 3139 行**、**44 映射 / 12 排除** —— 与 09-21 **逐项不变**（只改了报告里的话，没动判据）。**顺手修掉报告里三处过期的"下一步"**：`gesture.mouse` 说"手势通道尚未实现"、`canvas.api` 说"真机未验、手势未做"、`gesture.coord` 把量原点算在未做里 —— 都已被 10-01 的落地推翻，见 FINDINGS 的 F1 坑四 |
 | ↳ 其中库包本身 | `moon test canvas` | 09-21 | **7 / 7**：载荷 JSON 逐字（18 条 op）、数字格式三条契约、字符串转义、`OpCtx` 18 个方法、`arc` 默认方向、节点接线（标签 + `ops`/`width`/`height` prop 落在 VNode 上） |
 | ↳ 其中宿主包翻译器 | `moon test canvas` + canvas-spike 的形状组 | 09-21 | 指令→元素树逐条（整圆拆两段、无当前点时补 `M`、有当前点时补 `L`、`fill`/`stroke` 同路径两条、负例不许静默） |
 | antd demo（生成物 + 交互 24 条） | `cd examples/apps/antd-demo/host && npm run check` | 09-21 | **24 / 24**；`--check` 一致 |
@@ -60,6 +67,18 @@
 | 组件库生成器读数 | `npx moobile-host libgen` | 09-20 | **71 个组件 / 65 个复合子组件 / 注册 136 个键 / 9317 个 prop（其中 4965 个进 DSL）**，抽取 ~0.6s；生成的 `components.generated.mbt` **12062 行**（`moon check` 0 错误） |
 | 已发布包内容（npm） | `npm view moobile-host version` + 拉 tarball 列清单 | 09-20 | `0.2.0`，**无 `lib/`、无 `core.js`**（见 §1） |
 | 已发布包内容（mooncakes） | mooncakes API 查 `XiLaiTL/moobile` | 09-20 | `0.2.2` |
+| **已发布包到底缺什么**（10-01 复核） | `bash tools/check_published.sh XiLaiTL/moobile@0.2.2`（改成了**逐个查公开包**） | 10-01 | 9 个公开包里 **`✗ canvas`、`✗ gesture`**，其余 7 个（`cmd html http sqlite style sub vendor/rabbita`）都在 —— **独立复现了"发布用户拿不到画布与手势"这句话** |
+| 打包形态门（发布前） | `node tools/package_check.mjs`（由 `publish.sh --dry-run` 调起） | 10-01 | **10 / 10**：装成功 / 模板随包在 / 用**装好的 CLI** `init` 跑通 / 生成物**有** `.gitignore` / 没有漏出来的 `.npmignore` / 11 个文件逐一对得上 |
+| npm 发布前空跑 | `bash npm/moobile-host/publish.sh --dry-run` | 10-01 | **通过 10 / 失败 0**，版本读出来是 `moobile-host@0.3.0`；泄漏自检 ✓ —— **没有发布** |
+| 月亮包发布前空跑 | `moon publish --dry-run` | 10-01 | `Check passed`；服务端 **202 Accepted**：`Dry run completed successfully. No changes were made. The dry-run was made for package XiLaiTL/moobile version 0.3.0.` ⚠️ 命令**最后仍打 `Error: moon publish failed`** —— 那是 dry-run 的正常收尾，别当成失败 |
+| 发布包里有哪些包 | `moon package --list` | 10-01 | 303 个文件；**`canvas/` 与 `gesture/` 各 3 个文件都在**，9 个公开包齐全（所以抬版本之后一发布就补上了 0.2.2 缺的那两块） |
+| **已发布 · 月亮包 0.3.0** | `bash tools/check_published.sh`（默认就跟 `moon.mod` 的版本走） | 10-01 | **通过**：9 个公开包 `✓ canvas ✓ cmd ✓ gesture ✓ html ✓ http ✓ sqlite ✓ style ✓ sub ✓ vendor/rabbita`；README 的 5 条 import 路径对着**线上这一版**编过；外部模块装得下来也编得过 |
+| **已发布 · 宿主包 0.3.0** | `npm pack moobile-host@0.3.0 --registry=https://registry.npmjs.org/` + 解包查 | 10-01 | 线上 tarball **35 个文件**；`lib/init.js` `lib/build.js` `bin/libgen.js` `template/moon.mod` `template/.gitignore` 全在；`core.js` 里 **`export const CONTRACT = 2`**（与月亮包 `host_contract_version` 同代） |
+| **干净机器（**registry 版**）** —— 本轮最重要的一条 | `npx moobile-host@0.3.0 init hello --name hello` → `npm install` → `npm run build` → `npx expo start --web` → 真 Chrome 断言（`s1-local-run/probe-web.mjs`） | 10-01 | **9 / 9**：生成 11 个文件（**含 `.gitignore`**）→ 装到 **488 个包**（`moobile-host@0.3.0` 就是本项目自己那份）→ `moon build --target js` 用的是**线上** `XiLaiTL/moobile@0.3.0` → `moobile-host build` 出 `moobile.js` **629 KB** → Metro 服务的就是这个工程（`<title>hello</title>`）→ 浏览器：标题「待办」/ 计数「还有 0 件」/ 输入回灌 / 点「添加」→「还有 1 件」/ 列表出现 / 输入框清空 / **全程无 console 错误** |
+| ↳ 同一轮里的**镜像延迟**（不是包的问题） | `npm install`（默认源 = npmmirror） | 10-01 | **失败**：`notarget No matching version found for moobile-host@^0.3.0` —— 官方源上已有、镜像未同步。已触发按需同步（`PUT https://registry.npmmirror.com/-/package/moobile-host/syncs` → `state: waiting`）；改走官方源后安装成功（488 包 / 4 分钟） |
+| **发布后核对（扩成两个包）** | `bash tools/check_published.sh`（第 6 段是 10-01 新加的） | 10-01 | **通过**：月亮包 9 个公开包齐 + README 路径成立；宿主包线上 `latest = 0.3.0` 与工作区一致、12 个用户路径文件全在（tarball 35 个）；**契约对账 `月亮包 2 = 宿主包 2`**。⚠️ 这一条补上的是 `docs/design/SCAFFOLD.md` §6.1 早就点名的缺口（"npm 那一半从来没有发布后验"） |
+| ↳ 同一段门的**证伪**（用真实的错配组合） | `bash tools/check_published.sh XiLaiTL/moobile@0.2.2` | 10-01 | **`exit 1`** 且点名：`线上两个包的契约版本不一致（月亮包 1 / 宿主包 2）` —— 即"只发了一边"的场景，门能抓住 |
+| ↳ 同一段门的**宽松分支** | `bash tools/check_published.sh XiLaiTL/moobile@0.2.2`（历史核对） | 10-01 | 缺包/版本不一致只**提示**，不判红（`PUBLISHED_REQUIRE_ALL=0/1` 可强制） |
 
 ⚠️ **口径**：09-20 那三行是**那天**跑的，这一轮没重跑（数字本身没错，但别当成今天的）。
 `tools/verify_headless.mjs` 裸跑是 **10 通过 + 1 SKIP**，SKIP 数**取决于调用方式**
@@ -100,13 +119,19 @@
 
 ## 4. 现在最大的几处空白（按"卡不卡别人"排序）
 
-1. **线上包没有 `init`/`build`** → S1 判据不成立、E 轨道卡住。**解它只需要一次发版**（+2FA）。
+1. ~~**线上包没有 `init`/`build`** → S1 判据不成立、E 轨道卡住。~~ ✅ **2026-10-01 解决**：
+   `moon publish` + `npm publish` 都做完了，两个包都在线上是 **`0.3.0`**（见 §1）。
    ✅ 2026-09-21 补：**"干净机器三条命令"这条链路的本地代理已经两段全通**（仓库布局与打包形态各 9/9，
    见 §2.1），发版前又新抓了一个 bug（打包后 `init` 生成的项目的 `.gitignore` 被 npm 改名吃掉，
-   已修 + 已有发布前门）。所以这条现在**只剩"上传"这一步**，不再是未知量。
+   已修 + 已有发布前门）。
+   ✅ **10-01 收口**：发布后**从 registry 上两个包从零走了一遍用户的三条命令**
+   （`npx moobile-host@0.3.0 init` → `npm install` → `npm run build` → `npm run web`），
+   真 Chrome **9 / 9**（§2.1）。这条判据**这次是真的成立了**，不再是"本地代理"。
+   剩下的是**镜像延迟**（npmmirror 还没同步 0.3.0，属时间问题，见 §1 与 FINDINGS）。
 2. **I7 没做** → M9 差的这半条正是"能不能在真浏览器里看样式"。
 3. **D 整条未开始** → 没有基线，也就没有"够好了"的判据。
-4. **没有任何真实应用的完整移植**（F1 未做、G 未拍板）—— 这是从立项起就没变过的最大空白。
+4. **没有任何真实应用的完整移植**（F1 已跑出报告、G 未拍板）——
+   这仍是**从立项起就没变过的最大空白**（决策点 3）。
 
 5. **C0 只验到 web 目标那半**（09-21 新增的边界）：裸 RN **native** 宿主（gradle + 真机、不经 Expo）
    还没跑过；带能力的宿主（换一个 db 实现去挂 `todo-app`）也还没写 —— 实测下来卡点很明确：
@@ -138,6 +163,8 @@
 >   `vendor/` 是 gitignore 的生成物（`tools/vendor_sync.sh` 生成），而 **CI 每次运行都是一个新克隆**；
 >   外加 npm 安装那步 `continue-on-error: true` 把失败线索抹掉。实测：新鲜克隆 4 通过 / 8 失败，
 >   补上 `vendor_sync --apply` 后 **14 / 0 / 1、exit 0**。修法在 `.github/workflows/ci.yml`（**待推**，见 §4-8）。
+>   ✅ **10-01 收口**：剩下那 4 条红门的真因是**一条语法错误**（`gallery.mbt` 的旧式泛型 `fn f[T]`），
+>   已在本地修掉；**新旧两代工具链各 16 / 16**，但**修复本身还没推**（§4-8）。
 > · **宿主包副本新鲜度门原来只守 1 份，而仓库里有 7 份**：另有两份早就漂了。已经吃到代价 ——
 >   陈旧副本让一轮边界探测**测的是老实现**，还掩盖过一条门的假通过（antd 负例 (b)）。
 >   门已改成发现式，配 `tools/refresh_host_copies.sh` 一键全刷。
@@ -151,18 +178,28 @@
 
 ---
 
-8. **CI（C3）修到一半（2026-10-01）—— 这是当前最该接手的一件事**：它从落地起**从未运行过**
-   （提交一直没推），第一次跑就红。已修好并推上去的两处：① workflow 补上"新克隆"的第一步
-   `vendor_sync.sh --apply`（`vendor/` 是 gitignore 的生成物，而 **CI 每次都是新鲜克隆**）；
-   ② 去掉 npm 安装那步的 `continue-on-error`（装失败被吞掉了）。
-   现在 `重建 vendor` 与 `Install host deps` 两步**都绿**，但 `verify_all.sh` **仍红 4 条** ——
-   **全是"要 moon 编译"的门**（`moon check` / `gen_forwarders` / 脚手架两条）。
-   证据指向 **CI 的 moon 比 `DEV.md` 记的新**（CI 装 `latest`，仓库期望 `0.1.20260827`）；
-   但**真正的 error 文本还没读到**：公开仓库的 job log 走 API 要 403，只能靠 annotation
-   （`python3 tools/ci_status.py <sha>`，大 payload 会被 GitHub 丢掉）或运行页。
-   全过程、证据链与两条候选修法见 [`FINDINGS.md`](FINDINGS.md) 的 CI 补记。
-   ⚠️ 顺带修掉一个**对使用者成立**的坑：`todo-app/host/package-lock.json` 里两条 404 的
-   `resolved` URL 会让**任何新鲜克隆的 `npm install` 挂掉**（修法验过 integrity 一致）。
+8. **CI（C3）：真因已找到并在本地修好；修复本身「待推」（2026-10-01 收口）**：它从落地起
+   **从未运行过**（提交一直没推），第一次跑就红。分两步走的经过：
+   - 已修好并**推上去**的两处：① workflow 补上"新克隆"的第一步 `vendor_sync.sh --apply`
+     （`vendor/` 是 gitignore 的生成物，而 **CI 每次都是新鲜克隆**）；
+     ② 去掉 npm 安装那步的 `continue-on-error`（装失败被吞掉了）。这两步之后仍红 4 条。
+   - **剩下那 4 条的真因：一条语法错误，不是警告。** `examples/apps/antd-demo/gallery.mbt:10`
+     用了旧式泛型写法 `fn cell[C : …](…)`，CI 那代 moon 判 **E3002 解析错误**
+     （新写法 `fn[T] f`）；另外三条红门（`gen_forwarders` / 脚手架两条）只是**需要能编译**。
+     上一轮把 `[0079]` 当嫌疑犯是**猜错了方向** —— 那次是"322 warnings, **1 errors**"。
+   - **怎么拿到的**：不在求 CI 日志（job log 走 API 403），而是**在本地把 CI 那代工具链装出来**
+     （Windows 也有 `latest` 的 zip）：`0.1.20260920 (914d7da)`，用它**一行不差**复现了 CI 的报错形状。
+     复现配方写在 [`FINDINGS.md`](FINDINGS.md) 的 CI 收口补记里。
+   - **修法**：改那一行语法（**不钉工具链** —— 实测带日期的路径全 403，bucket 只有 `latest`/`nightly`；
+     何况用户拿到的就是 `latest`，库必须在新工具链上能编）。**新旧两代各跑一遍离线全集，都是 16 / 16**（§2.1）。
+   - ⚠️ **这条修复还没提交、也没推**：本轮按用户指示"先别推，只在本地验完"（改动都在工作区里）。
+     **所以 CI 现在仍是红的**（它跑的还是 `52784e5` 那次）。要收口，提交 + 推一次即可 ——
+     推之前建议先看一眼 §4-8 的复现配方，别再让"本机绿"冒充"CI 绿"。
+   - ⚠️ 顺带修掉一个**对使用者成立**的坑：`todo-app/host/package-lock.json` 里两条 404 的
+     `resolved` URL 会让**任何新鲜克隆的 `npm install` 挂掉**（修法验过 integrity 一致）。
+   - ⚠️ **未解决（记在这里，别当已做）**：新工具链下 `moon check` 有 **322 warnings**，
+     其中 **238 条是 `implicit_impl_as_method`**（官方说将来会从警告**变成错误**），
+     243 条落在 `vendor/rabbita/**`（我们的 fork，得走 patch 流程）。分布见 FINDINGS 的 CI 收口补记。
 
 ## 5. 维护这份文件的三条纪律
 

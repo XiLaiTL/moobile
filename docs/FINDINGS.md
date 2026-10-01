@@ -1645,6 +1645,26 @@ MoonBit : 候选 166 个文本文件，带 CR 的 0 个
 
 效果：候选 **2531 → 166**（砍掉的 2364 个全是产物与第三方）。两个实现同步改，diff 仍为空。
 
+> **2026-10-01 追加一条**：路径段表后来又加了 **`.scratch`**。
+> 它是 gitignore 的**本地草稿区**（`.gitignore:30`），放什么都不会进发布包 —— **但它会红**。
+> 当时为了诊断 CI（见本文件末尾的 CI 补记），在里面写了两份 CRLF 文本，
+> `lf_normalize --check` 与 `vendor_sync --check` **同时**变红，点名的是
+> `.scratch/ci/anns.txt` 这种**永远发不出去**的文件 —— 又是"红的是自己的草稿，不是被测物"。
+>
+> 证伪是**成对**做的（缺一不可）：草稿区里塞一个 CRLF 文件 → 候选 **320** / 带 CR **0** / exit 0；
+> 把同一个文件放到区外 → 候选 **321** / 带 CR **1** / **点名** `.scratch_decoy.txt` / exit 1。
+
+> **2026-10-01 同一天又踩了一次，但这次是"门立了功"**：抬版本号时我用 Python 批量改文件，
+> `pathlib.Path.write_text()` 在 Windows 上**默认做换行翻译**（`\n` → `\r\n`）——
+> 一次改了 **13 个文件**（`CHANGELOG.md`、7 个 `moon.mod`、模板的 `package.json` …），
+> 全部变成 CRLF，而**编辑器里看不出来**。`verify_all.sh` 当场红了三条门
+> （行尾 / vendor 一致 / 副本新鲜度），点名 13 个文件。
+> 修法就是仓库自己的工具：`bash tools/lf_normalize.sh`（不带 `--check`）—— 修完 0 个带 CR。
+>
+> **教益**：脚本化批量编辑**必须显式写 `newline="\n"`**（或写完就跑一次行尾门）。
+> 这条坑不是"文件多"，是**沉默的**：CRLF 在 Windows 的编辑器里与 LF 长得一模一样，
+> 只有门看得见它 —— 而它打乱的是 `vendor_sync` 的 patch 上下文（那才是真正会藏 bug 的地方）。
+
 ### 2. `--mode fix` 修完却返回 1（Python 版就有，一直没暴露）
 
 退出码原来两种模式共用"有没有找到 CR"，于是 `lf_normalize.sh` 的 apply 路径
@@ -2623,6 +2643,30 @@ F1 的判据是"与人工清点**零遗漏**"（SCAFFOLD §3.7.6 的 S9-2）。�
 换一个项目若有新的失效形态（比如 `@dom` 之外的 `localStorage`），这一类**不在表里**，
 两边都会是 0 —— **"零遗漏"是相对于规则表说的**，不是"什么都能发现"。规则表本身要随新项目长。
 
+### 坑四（2026-10-01）：**报告里的"下一步"自己会过期**
+
+上面三条都是**判据**的坑。第四条在**说辞**上：`migrate_scan.mbt` 里 `next:` 那几句话，
+10-01 再跑 yi 时已经**在骗人**了 ——
+
+| 类别 | 报告当时说 | 事实（10-01） |
+|---|---|---|
+| `gesture.mouse` | "手势通道（**尚未实现**，见 PLAN §8.2 ⑦ 与 T3.4）" | 手势通道**已落地**：`@gesture.attrs(on_pan=…)` / `@gesture.pan(attrs, msg)`，宿主默认装载、零新依赖，web 40/40 + 真机 18/18 |
+| `gesture.coord` | "手势通道 + 坐标换算（T3.5）" | 量原点这件事**已经收进通道**（`Gesture.x/y` 就是元素内坐标，真机验过 `深 起=130,50`）；只剩画布侧的 `devicePixelRatio`（T3.5，未验） |
+| `canvas.api` | "**真机未验**、手势未做" | 画布真机**已验**（`canvas-spike` 7/7、`canvas-demo` 12/12）；仍差**文字字形**（`makeFont`）与 `devicePixelRatio` 换算 |
+
+**为什么这算缺陷、而不是"文档旧了"**：这份报告的价值**全在"下一步"那一栏** ——
+"这个类会怎么坏"是判据，"接下来你该做什么"是**指路**。指错路的代价是
+**让人去实现一条已经存在的通道**。同一个工具**照出过我们文档里的错数（42 vs 44）**，
+这次轮到了它自己：**解析真源的那半不会漂，"下一步"这半是手写的**。
+
+处置：三条 `next:` 改成事实（含判据分数与仍然缺的那两条），并在代码里留了一条注释说明为什么改。
+**判据数没动**（重跑仍是 6 文件 / 3139 行、44 映射 / 12 排除，与 09-21 逐项一致）——
+所以这次改动**只说了话，没动判据**，也就没有"改被测物"的嫌疑。
+
+> 教益：这类"建议文本"没有门看着它。**要么给它一条门，要么承认它会漂** ——
+> 现在选的是后者，把它记在这里。哪天 F1 变成对用户的产品面，就该有一条
+> "报告里提到的通道是否真的存在"的检查。
+
 ---
 
 ## 补记（手势试金石：RNGH 能不能用、`translationX` 的一个坑，2026-09-21）
@@ -3149,3 +3193,206 @@ npm 不必再取那两个 tarball）。修法**验证过**：把真 tarball 下�
    `pub extend Snapshot with Show::{to_string, output}`（或给 `extend` 标 `#deprecated`）。
    ⚠️ 那处在 `vendor/rabbita/**` 里，而 vendor 是**生成物** —— 改动必须落成
    `tools/patches/*.patch`，再走 `--capture` / `--check` 才算数（见 `FORK.md` §0）。
+
+---
+
+## 补记（CI 那 4 条红门的真因：**一条语法错误**，2026-10-01 收口）
+
+上一节把 4 条红门留在"未解决 —— 交接项"，并把 `Warning [0079]` 当成嫌疑犯。
+**收口了：真因不是警告，是一条解析错误（E3002），而且只有一行代码。**
+
+### 真因
+
+```
+Error: [3002]
+    ╭─[ .../examples/apps/antd-demo/gallery.mbt:10:8 ]
+ 10 │ fn cell[C : @html.IsChildren](name : String, children : C) -> @html.Html {
+    │        ╰── Parse error, unexpected `fn f[T]`, you may expect `fn[T] f`.
+```
+
+新工具链把**旧式泛型写法** `fn f[T]` 判成**语法错误**，新写法是 `fn[T] f`。
+一条错误解释**全部 4 条红门** —— 另外三条都只是"需要能编译"：
+`gen_forwarders --check` 要跑 `moon info`（`.mbti` 是它的输入），脚手架两条门要编译生成物。
+
+上一节那句"`[0079]` **未必**是让 `moon check` 失败的那一行"**猜对了**，但猜的方向错了：
+那次 `moon check` 的收尾是 `Failed with 322 warnings, 1 errors` —— **error 只有 1 个**，
+就是这条 3002；`[0079]` 只是同一份日志里的一条警告。**"日志尾巴全是警告"把人往
+"警告致红"引，是因为尾巴被截断了，真因在更早的位置。**
+
+### 怎么拿到的：不再求 CI 日志，改为**在本地把 CI 的工具链装出来**
+
+这是这一轮最值钱的一条。CI 装的是安装脚本的默认值 `latest`，而**本机钉的是 `DEV.md` 那个版本** ——
+于是"CI 红、本机绿"只要工具链有差异就会发生，而**日志还读不到**（见上一节：job log 走 API 要 403）。
+
+出路是：**Windows 上也有 `latest` 的包**（unix 安装脚本只认 Linux/macOS，
+所以这条大概只有在这台机器上才会被发现）：
+
+```bash
+curl -fsSL -o moon.zip https://cli.moonbitlang.com/binaries/latest/moonbit-windows-x86_64.zip
+curl -fsSL -o core.tar.gz https://cli.moonbitlang.com/cores/core-latest.tar.gz
+unzip -q moon.zip -d <scratch>          # bin/ lib/ include/ share/
+tar xzf core.tar.gz -C <scratch>        # 解出来的是 core/ → 必须放到 lib/core
+MOON_HOME=<scratch> <scratch>/bin/moon.exe -C <scratch>/lib/core bundle --warn-list -a --all
+```
+
+（⚠️ 三步都不能省：`core` 放错位置 → 报 `prelude.mi: No such file or directory`；
+不 `bundle` → 同一条。另外 `MOON_HOME` 要传 **Windows 路径**，MSYS 路径它不认。
+`registry/`、`cache/` 从 `~/.moon` 拷过去，否则依赖图解不出来。）
+
+装完是 `0.1.20260920 (914d7da 2026-09-20)`，用它跑 `moon check --target js`，
+**一行不差地复现了 CI 的报错形状** —— 连日志尾巴那条 `impl Show for Snapshot` 警告
+（`vendor/rabbita/websocket/types.mbt:89`）都在同一个位置。这就是"同代工具链"的证据。
+
+⇒ **"CI 红了但读不到日志"不再是无解的**：日志读不到，但**工具链能装出来**。
+下一轮遇到同类问题，先按上面这段复现，再去猜。
+
+### 修法：改那一行语法（**不钉工具链**）
+
+```moonbit
+fn[C : @html.IsChildren] cell(name : String, children : C) -> @html.Html {
+```
+
+为什么是它而不是"钉住工具链"：
+
+- **钉不住**（这次是亲测，不是转述）：`binaries/0.1.20260827/moonbit-linux-x86_64.tar.gz`、
+  `cores/core-0.1.20260827.tar.gz`、`binaries/0.1.20260920/…` **一律 403**；
+  `latest` 与 `nightly` 是 200。bucket 上**没有**带日期的路径。⇒ 上一节候选修法 1 **出局**。
+- **而且钉错了靶**：用户从官网下载页拿到的就是 `latest`，所以**库必须在新工具链上能编**。
+  把 CI 钉回旧版本，只会把这个问题留到用户那里爆炸。
+
+### 判据：新旧两代**都要绿**
+
+先在小探针上把两条事实钉住（`fn[C] cell` 两代都认；`fn cell[C]` **只有旧代认**），再动仓库。
+然后整个离线全集在两条工具链上各跑一遍：
+
+| 工具链 | `bash tools/verify_all.sh` |
+|---|---|
+| `0.1.20260827 (d0aaa07)` —— 工作区钉的、`DEV.md` 记的 | **16 / 16 · 0 失败 · 0 跳过** |
+| `0.1.20260920 (914d7da)` —— ≈ CI 的 `latest` | **16 / 16 · 0 失败 · 0 跳过** |
+
+⚠️ 一个**坑中坑**：删掉 `_build` 再跑全集时，"组件库接入（antd 试金石）"会红 ——
+它要 `_build` 里**已经构建过**的 `moobile-antd-spike.js`（`verify_all.sh` 自己不 build）。
+**这条红与本次改动无关**，是因为我把 `_build` 清了；`moon build --target js` 之后即绿。
+（真要在 CI 那种新鲜克隆里判定，得先看这条门是 PASS 还是 SKIP —— 新鲜克隆没有
+`antd-spike/host/node_modules`，它是 **SKIP**。）
+
+### 顺带：把"读日志"这件事本身修好（这轮真正的教训）
+
+真因只是**一行过时的语法写法**，但**它花了很久才被看见** —— 因为出口给的信息**不指向它**。
+所以两处出口都改了：
+
+| 改哪 | 改成什么 | 验过吗 |
+|---|---|---|
+| `tools/verify_all.sh` 的失败块 | **先**打 `---- 错误行（真因常常不在尾巴上）----`（从门的完整日志里捞 `Error:` / `AssertionError:` 那类行，**带 3 行上下文**），**再**打原来的 12 行尾巴。没有错误行时这一段**不打**（不留噪声） | 本地：拿**真 `tally()` 函数**（从源码里截出）+ **真失败日志**跑，输出直接给出 `Error: [3002]` → `╭─[ …/gallery.mbt:10:8 ]` → `10 │ fn cell[C : …]` 三行；另用一条真失败门（行尾门）验了"没有错误行时不加段落" |
+| `.github/workflows/ci.yml` 的失败 annotation | 顺序改成 **门名 → 错误行 → 尾巴 → 工具链版本**；那条"装整份输出（12000 字符）"的**删掉**（实测发不出去） | ⚠️ **只在本地验过**：从 ci.yml 里原样截出那段 shell、喂真转录，跑出 22 条 annotation、顺序正确；YAML 能解析。**没在真 CI 上跑过**（要推上去才触发，而这轮没推） |
+
+为什么"错误行在前"这么重要：这次尾巴上**全是警告**，于是"警告把门弄红了"看起来像个合理解释 ——
+它是一个**能自洽的错误结论**。**入口信息不指向真因时，人不缺推理能力，缺的是线索。**
+
+### 仍未解决：警告里那颗**定时炸弹**
+
+新工具链下 `moon check` 是 **322 warnings / 0 errors**（旧工具链 **75 warnings**）。
+把每条警告归到它前面那个诊断头（`╭─[ … ]`）上，出处是这样分的：
+
+| 出处 | 条数 | 能不能改 |
+|---|---|---|
+| `vendor/rabbita/**`（**我们的 fork**） | 243 | 能 —— 但要落成 `tools/patches/*.patch` 再 `--capture`/`--check` |
+| `examples/apps/**`（示例应用） | 59 | 能 |
+| 库自己的包（`canvas/` `gesture/` `sqlite/` `style/` `host.mbt` …） | 19 | 能 |
+| `.mooncakes/` 里的上游依赖 | **0** | 改不了 —— **好在它们现在也没报** |
+
+（归到诊断头下的是 **321** 条，moon 汇总那行写 **322** —— 差 1 是口径不同：
+汇总那行把 `Warning: [0079]` 这种短式输出也算进去了。别把 321/322 当一个数用。）
+
+其中 **238 条是 `implicit_impl_as_method`**（就是 `[0079]`，其中 210 条在 vendor 里），
+官方措辞是 "deprecated and **will be removed in the future**" —— **它将来会从警告变成错误**，
+落点正是 `impl Show for X` 那类写法（新写法是 `pub extend X with Show::{…}`）。
+**好消息是它全在我们能改的地方**（vendor 是 fork，走 patch 流程就行）；坏消息是 243 条在 vendor 里。
+另有 2 条 `deprecated_syntax`（`vendor/rabbita/cmd/operation.mbt:35` 的
+`pub(all) extenum Extension {}`）—— `extenum` 也是**将来会消失**的写法。
+
+这一条**没有修**（新工具链上它只是警告，不影响任何门），但**记在这里**：
+下一代工具链冲击面的形状已经能看见了，且**不需要等 CI 红了才知道**。
+
+---
+
+## 补记（发布日：三个"看起来像别的问题"的坑，2026-10-01）
+
+`0.3.0` 发布那天，三件事都**报出了指向别处的症状**。全部是可复用的判据。
+
+### 坑一：npm 对**未认证**的 `PUT` 回 **404**，不是 401
+
+```
+npm ERR! 404 Not Found - PUT https://registry.npmjs.org/moobile-host - Not found
+npm ERR! 404  'moobile-host@0.3.0' is not in this registry.
+```
+
+这句话在说"这个包里没有这个版本"，读起来像**包名写错 / 版本号写错 / 权限不足** ——
+真因是 **`~/.npmrc` 里那个 token 已经失效**：抓下 tarball、内容全对、`publishConfig.registry` 也对。
+
+**判据（两条，都不需要猜）**：
+
+```bash
+npm whoami --registry=https://registry.npmjs.org/     # 401 Unauthorized ⇒ token 废了
+# 或者绕开 npm 客户端，直接拿 token 问 registry（排除"是客户端的问题"）：
+#   GET https://registry.npmjs.org/-/whoami  +  Authorization: Bearer <token>   → 401
+```
+
+那 token 的形状是 `npm_` 开头、**40 字符** = **granular access token**（**有有效期**，最长 90 天）。
+修法：`npm login --registry=https://registry.npmjs.org/`（npm 9 默认走浏览器授权）。
+
+⚠️ **第一手证据在 npm 自己的 debug 日志里**，不在终端上：
+
+```
+<npm cache>/_logs/<时间戳>-debug-0.log      # 本机是 E:\BACKUP\npm\_logs\
+  http fetch PUT 404 https://registry.npmjs.org/moobile-host 1409ms
+  verbose statusCode 404
+```
+
+**教训**：`404 Not Found` 在"发布"这个语境下**不等于**"资源不存在" —— npm 对匿名请求一律这么回，
+不泄露"包到底存不存在"。看到 404 先查**认证**。
+
+### 坑二：发布成功时是 **202 = 异步受理**，`0.3.0` **约 6 分钟**后才可见
+
+成功那次的日志长这样（顺序本身有信息量）：
+
+```
+http fetch PUT 401 https://registry.npmjs.org/moobile-host      ← 旧 token 先失败
+http fetch GET 202 https://registry.npmjs.org/-/v1/done?authId=…  ← **npm CLI 自己**起了 web 授权
+notice Your package is being processed and may take a few minutes to become available.
+http fetch PUT 202 https://registry.npmjs.org/moobile-host      ← 受理
+verbose exit 0
+```
+
+实测时间线：**23:09:54 受理 → 23:16:09 才在 `dist-tags` 里出现 `latest: 0.3.0`**（约 6 分钟）。
+
+> ⚠️ **这一轮我判错过一次**：受理后 1 分钟就去查 registry，看到还是 `0.2.0`，
+> 差点写下"没发出去"。**两件事都说明同一条规矩：先看 job log，再下结论；查 registry 要轮询，别单次取样。**
+>
+> 顺带：401 之后又成功**不是灵异事件** —— 那个 401 让 CLI 触发了 web 授权（`/-/v1/done`），
+> 用户在浏览器点一下确认，CLI 拿到新 token 后重试成功。
+
+### 坑三：**npmmirror 镜像会滞后**（对国内用户是真会撞上）
+
+官方源上已经是 `latest: 0.3.0`，而**默认镜像源**上：
+
+```
+npm ERR! notarget No matching version found for moobile-host@^0.3.0.
+```
+
+这不是"包没发出去"。处置：
+
+```bash
+# 触发按需同步（返回 {"ok":true,"state":"waiting"}；排队几分钟到一小时）
+curl -X PUT https://registry.npmmirror.com/-/package/moobile-host/syncs
+# 应急：直接走官方源
+npm install --registry=https://registry.npmjs.org/
+```
+
+本轮就是靠第二条把"用户路径"验完的（`npm install` → 488 个包 → 4 分钟）。
+⚠️ 这条的**边界**：它不是我们仓库的问题，但会**伪装成**"发布失败"，值得写进用户可见的排错清单。
+
+### 顺带
+
+`npm/moobile-host/publish.sh` 原来把 `--otp=` **原文**打进回显（终端回滚缓冲、npm debug 日志各留一份）。
+OTP 只有 30 秒有效，但没有任何理由留痕 —— 已改成 `--otp=***`（只影响回显，真发给 npm 的参数不变）。

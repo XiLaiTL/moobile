@@ -43,6 +43,7 @@ bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒�
 | 真机（Android 模拟器 + APK） | `python3 tools/verify_android.py` |
 | 手势边界真机 | `cd examples/apps/gesture-edges && node device_check.mjs` |
 | Web 端到端 | `bash tools/verify_all.sh --with-e2e`（要 Metro 在 8081 + 后端在 8787） |
+| **CI 那一代的工具链**（"本机绿 ≠ CI 绿"的另一半） | 见 §3-1 的配方：装 `latest` 到 `.scratch/`，再拿它跑 `verify_all.sh` |
 | 发布前 | `node tools/package_check.mjs` + `bash npm/moobile-host/publish.sh --dry-run` |
 
 ---
@@ -51,66 +52,103 @@ bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒�
 
 | 项 | 状态 |
 |---|---|
-| **1 个提交没推**：`557b342`（CI 补记 + 文档 + 两个工具提进 `tools/`） | 推送当时网络挡住（`github.com` 000），见 §4-1 |
-| **CI 修到一半，仍红 4 条** | 已修好并推上去：workflow 补了 `vendor_sync --apply`（CI 每次都是**新鲜克隆**）、去掉 npm 安装那步的 `continue-on-error`。现在那两步都绿，但 `verify_all.sh` 里**仍有 4 条红 —— 全是"要 moon 编译"的门**。证据指向 **CI 的 moon 比 `DEV.md` 记的新**；**真正的 error 文本还没读到**（公开仓库 job log 走 API 是 403）。详见 §3-1 与 `FINDINGS.md` 的 CI 补记 |
-| Metro | **已停**（交接时清掉了：占着 8081 会让接手的人拿到**别的应用**的 bundle，我这一轮就被坑过） |
+| **发版** | ✅ **2026-10-01 已发布并验证**（两个包都 `0.3.0`，契约两边都是 `2`；从 registry 从零走的用户路径真 Chrome **9 / 9**）。见 §1 与 §3-2 |
+| **2 个提交没推**（`557b342` + `8708b67`）+ **10-01 这一整轮的改动也没提交** | 推送当时网络挡住（`github.com` 000），见 §4-1。⚠️ **2026-10-01 复核**：直连仍是 000，但**边缘 IP 通**（`--resolve github.com:443:140.82.113.4` → 200、372KB、4.3s；`20.27.177.113` 也 200，`20.205.243.166` 与直连都不通）—— 所以"推不上去"是**可绕的**，绕法见 §4-1 |
+| **CI：4 条红门的真因已找到，修复在本地做完、还没推** | 真因是**一条语法错误**（`antd-demo/gallery.mbt:10` 的旧式泛型 `fn cell[C](…)`，新工具链判 E3002；新写法 `fn[T] f`），另外三条红门只是"需要能编译"。**关键突破**：不再求 CI 日志，而是**在本地把 CI 那代工具链装出来**（`0.1.20260920`）复现。**新旧两代各 16 / 16**。详见 §3-1 |
+| Metro | **已停**（交接时清掉了：占着 8081 会让接手的人拿到**别的应用**的 bundle，我这一轮就被坑过）。10-01 那轮为验 S1 又起过一次，**验完已按 PID 关掉**（注意：**不能** `Stop-Process node` 一把梭 —— 宿主 DSH 也是 node） |
 | Android 模拟器 | `emulator-5554` **还在跑**（无害，真机门要用） |
-| **CI 先搁置**（老板拍板"本地跑通就好"） | 它现在会**每次推送都挂个红叉**。想让它别再刷红：把 `.github/workflows/ci.yml` 的 `on: push` 去掉、只留 `workflow_dispatch`（一行的事）；**但请先读 §3-1 与 FINDINGS 的 CI 补记** —— 红的原因已经查清一半，别被它再骗一次 |
+| **CI 先搁置**（老板拍板"本地跑通就好"） | 它现在会**每次推送都挂个红叉**。想让它别再刷红：把 `.github/workflows/ci.yml` 的 `on: push` 去掉、只留 `workflow_dispatch`（一行的事）。**但注意：4 条红门的真因已经查清并修好了（只在本地）—— 推一次就能真绿，比关掉它有价值。** |
 
 ---
 
 ## 3. 立刻要做的三件事（按顺序）
 
-### 3-1 CI：修到一半，**剩下这 4 条红需要一个能看日志的人**
+### 3-1 CI：**真因已找到，修复已在本地做完（未推）** —— 剩下的是"推一次"
 
-**已修好并且推上去的两处**（`237f792` / `bc53f2c` / `52784e5`）：
+**一句话**：那 4 条红门不是 4 个问题，是**一条语法错误**。另外三条只是"需要能编译"。
 
-1. workflow 补上 **`bash tools/vendor_sync.sh --apply`** —— `vendor/` 是 gitignore 的生成物，
-   而 **CI 每次运行都是一个新鲜克隆**。缺这一步时 `moon check` 连包都解不出来，8 条门连锁红。
-2. 去掉 npm 安装那步的 **`continue-on-error: true`** —— 否则"装挂了"与"门红"分不开。
-   （顺带修掉一个**对使用者成立**的坑：lockfile 里两条 404 的镜像 URL 会让**任何新鲜克隆的
-   `npm install` 挂掉**；修法验过 `integrity` 一致，并立了门 `tools/check_lockfile_urls.mjs`。）
+**真因**（`examples/apps/antd-demo/gallery.mbt:10`）：
 
-**现在的状态**：`重建 vendor` 与 `Install host deps` **都绿**，`verify_all.sh` 仍红 **4 条**，
-而且**全是"要 moon 编译"的门**：`moon check --target js`、`gen_forwarders --check`、
-脚手架模板、脚手架承载真应用（其余 11 条全绿）。
+```
+Error: [3002]
+ 10 │ fn cell[C : @html.IsChildren](name : String, children : C) -> @html.Html {
+    │        ╰── Parse error, unexpected `fn f[T]`, you may expect `fn[T] f`.
+```
 
-**已有的证据链**（详见 `docs/FINDINGS.md` 的 CI 补记）：
+CI 那代 moon 把**旧式泛型写法**判成解析错误；新写法是 `fn[T] f`。改法就这一行：
+`fn[C : @html.IsChildren] cell(name : String, children : C) -> @html.Html {`。
+连带红的 `gen_forwarders --check`（要跑 `moon info`）与脚手架两条门**随之全绿**。
 
-- CI 的 `moon check` 日志里出现 `Warning (implicit_impl_as_method)` / `Warning: [0079]`
-  （`vendor/rabbita/websocket/types.mbt:89` 的 `impl Show for Snapshot`），**本机不出现**
-  ⇒ **CI 的 moon 比本机新**。
-- 本机 `moon version` = `0.1.20260827`，而 **`DEV.md` 记录的就是这个版本** ——
-  仓库自己声明了期望工具链，CI 却装 `latest`。
-- `[0079]`（E0079）按官方文档是**默认开启的警告**，所以**未必**是让 `moon check` 失败的那一行。
+**⚠️ 上一轮把 `[0079]` 当嫌疑犯 —— 那是猜错了方向**：那次 `moon check` 的收尾是
+`Failed with 322 warnings, 1 errors`，**error 只有 1 个**。日志尾巴全是警告，是因为真因在更早的位置。
 
-**接着怎么做**：**先拿到那份 error 文本**。三条路，按省事排：
+**怎么拿到的（这一条比结论更值钱）**：不要在 CI 日志上耗 —— 公开仓库的 job log 走 API 是 403、
+运行页是 JS 渲染的。**改为在本地把 CI 那代工具链装出来**（Windows 也发 `latest` 的 zip）：
 
-1. 打开运行页人肉看（公开仓库，任何人都能看到 job log）：
-   `https://github.com/XiLaiTL/moobile/actions`
-2. `python3 tools/ci_status.py <sha>` —— 读 annotation（**不需要认证**）。
-   ⚠️ 只能拿到"门名 + 12 行尾巴"：**大 payload 会被 GitHub 丢掉**（试过塞 12000 字符，那一条没出现）。
-3. 账号持有人用 token 走 REST：`GET /actions/runs/<id>/logs`。
+```bash
+curl -fsSL -o moon.zip https://cli.moonbitlang.com/binaries/latest/moonbit-windows-x86_64.zip
+curl -fsSL -o core.tar.gz https://cli.moonbitlang.com/cores/core-latest.tar.gz
+unzip -q moon.zip -d <scratch> && tar xzf core.tar.gz -C <scratch> && mv <scratch>/core <scratch>/lib/core
+MOON_HOME=<scratch> <scratch>/bin/moon.exe -C <scratch>/lib/core bundle --warn-list -a --all
+# 再把 ~/.moon 的 registry/ cache/ 拷过去（否则依赖图解不出来），然后：
+MOON_HOME=<scratch> PATH=<scratch>/bin:$PATH bash tools/verify_all.sh
+```
 
-**然后两条候选修法（都还没做）**：
+装出来是 `0.1.20260920 (914d7da)`，`moon check` **一行不差**复现了 CI 的报错形状
+（连日志尾巴那条 `impl Show for Snapshot` 警告都在同一位置）。
 
-- **钉住工具链**用到 `DEV.md` 那个版本。⚠️ 实测**安装脚本钉不住具体版本**：bucket 只提供
-  `latest` 与 `nightly`，带日期的路径一律 403。要钉得另找分发渠道。
-- **把代码升到能过新工具链**（E0079 那条要显式 `pub extend … with Show::{…}`）。
-  ⚠️ 那处在 `vendor/rabbita/**` 里，而 vendor 是**生成物** —— 改动必须落成
-  `tools/patches/*.patch`，再走 `--capture` / `--check`。
+**判据（跑过的）**：`0.1.20260827`（工作区钉的）**16 / 16**；`0.1.20260920`（≈CI 的 latest）**16 / 16**。
+⚠️ 删过 `_build` 再跑时，"antd 试金石"那条会红 —— 它要 `_build` 里已构建的产物，
+**与本次改动无关**（新鲜克隆里它是 SKIP）。先 `moon build --target js` 即绿。
 
-### 3-2 发一版（**需要账号持有人在 npm 上按 2FA**）
+**为什么是"改代码"而不是"钉工具链"**：实测带日期的路径**一律 403**（`binaries/0.1.20260827/…`、
+`cores/core-0.1.20260827.tar.gz` 都试过），bucket 只有 `latest` 与 `nightly`；
+何况**用户从官网拿到的就是 `latest`**，库必须在新工具链上能编。详见 `FINDINGS.md` 的 CI 收口补记。
 
-线上包落后于工作区，这是当前**最硬的阻塞**（`STATUS.md` §4-1）。实测核过的清单：
+**还没做的**：推上去让 CI 真绿（本轮按用户指示"先别推，只在本地验完"）。推之前建议顺手把
+CI 的失败 annotation 补一句 `moon version` —— 现在"CI 红了"能读到的只有门名 + 12 行尾巴，
+而这次的教训正是**尾巴不指向真因**。
 
-| 东西 | 线上 | 工作区 | 后果 |
-|---|---|---|---|
-| 月亮包 `XiLaiTL/moobile` | `0.2.2` —— **能装、能编、README 路径都对**（`tools/check_published.sh` 通过），但**没有 `canvas/` 与 `gesture/`**（拿一个只 import 这两个包的模块去 `moon check`，两个都报 `Cannot find import`） | 含未发布批次 | 发布用户拿不到画布与手势这两个包 |
-| 宿主包 `moobile-host`（npm） | `0.2.0` —— tarball 只有 6 个文件，**没有 `init` / `build` / `libgen` / 模板** | 已有 | 用户 `npx moobile-host init` **会扑空**，S1「干净机器三条命令」不成立 |
-| 契约版本 | 两边都是 `1`（自洽） | 两边都是 `2` | **必须同代发**：只发一边会让线上错配、启动即抛 |
+**仍未解决（别当已做）**：新工具链下 `moon check` 有 **322 warnings**，其中 **238 条
+`implicit_impl_as_method`** 官方说将来会**变成错误**，243 条落在 `vendor/rabbita/**`
+（我们的 fork，改动得走 `--capture`/`--check` → patch）。分布见 FINDINGS 的 CI 收口补记。
 
-⇒ 抬到 **`0.3.0`**（契约 `1 → 2` 是破坏性变更，策略见 `CHANGELOG.md` 头部），月亮包与 npm 包**同步抬**。
+### 3-2 发一版 —— ✅ **2026-10-01 已发布并验证（这条不再是阻塞）**
+
+接手时线上落后于工作区，那是当时**最硬的阻塞**；现在两个包都在线上是 **`0.3.0`**：
+
+| 东西 | 发布前（接手时） | 现在（10-01 发布后，实测） |
+|---|---|---|
+| 月亮包 `XiLaiTL/moobile` | `0.2.2` —— 能装能编，但 **9 个公开包里缺 `canvas` `gesture`** | **`0.3.0`** —— `check_published.sh` 通过：9 个公开包**齐全**，README 的 import 路径对着线上这一版能编过 |
+| 宿主包 `moobile-host` | `0.2.0` —— tarball 只有 6 个文件，**没有 `init` / `build` / `libgen` / 模板** | **`0.3.0`** —— 线上 tarball **35 个文件**，`lib/init.js` / `lib/build.js` / `bin/libgen.js` / 整套 `template/`（含 `template/.gitignore`）都在 |
+| 契约版本 | 两边都是 `1`（自洽） | **两边都是 `2`**（线上 `core.js` 是 `export const CONTRACT = 2`）—— 已自洽 |
+
+✅ **判据这次是真的成立了**：发布后**从 registry 上那两个包从零走了一遍用户的三条命令** ——
+`npx moobile-host@0.3.0 init hello` → `npm install`（488 个包）→ `npm run build`
+（`moon build` 用的是**线上**的 `XiLaiTL/moobile@0.3.0`，产物 `moobile.js` 629 KB）→ `npm run web`
+→ **真 Chrome 9 / 9**（首屏「待办」、计数、输入回灌、点添加 → 「还有 1 件」、无 console 错误）。
+明细在 `STATUS.md` §2.1（最后几条）。
+
+**复现这套验证**（换一版发布后照做）：
+
+```bash
+bash tools/check_published.sh                    # 月亮包：默认跟 moon.mod 的版本走，缺公开包会红
+bash npm/moobile-host/publish.sh --dry-run       # 宿主包：发布前的门（打包形态 10 项 + 泄漏）
+# 发布（需要账号持有人）：
+moon publish                                     # 先 moon login；可先 moon publish --dry-run 空跑
+bash npm/moobile-host/publish.sh                 # 交互式；或 publish.sh 123456
+# 发布后从零走一遍用户路径（本轮就是这么验的）：
+npx moobile-host@<新版本> init hello --name hello && cd hello && npm install && npm run build && npm run web
+# 再把浏览器断言跑上：node <repo外的> s1-local-run/probe-web.mjs http://localhost:8081/
+```
+
+⚠️ **发布日踩到的三个坑，都写进 `FINDINGS.md` 了，下次别再花时间**：
+① npm 对**未认证**的 `PUT` 回的是 **404**（`Not found`），看着像包名写错 —— 其实是 `~/.npmrc`
+   里那个 `npm_…` token 过期了（拿它问 `/-/whoami` 会得到 **401**）；
+② 发布**成功**时服务端回 **202 = 异步受理**，npm 自己会说"may take a few minutes" ——
+   实测 **约 6 分钟**后 `0.3.0` 才在 registry 上可见。**一分钟就去查会得出"没发出去"的错误结论**；
+③ 本机默认的 **npmmirror 镜像没同步**（`npm install` 报 `notarget … ^0.3.0`）——
+   官方源上已经有；按需同步：`curl -X PUT https://registry.npmmirror.com/-/package/<包名>/syncs`。
 
 ### 3-3 朝真实应用走：F1 + 拍决策点 3
 
@@ -118,8 +156,13 @@ bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒�
   (a) 全做 / (b) 小步（跳过罗盘）/ (c) 暂停。**从立项起就没拍过板**，这是"最大的空白"。
   ⚠️ 成本判断已更新：原以为最贵的罗盘（Skia）**已经落地且真机验过**，所以 (b) 里"跳过罗盘"的理由少了一半。
 - **F1 迁移动检**（`PLAN.md` §5.1）：扫一个既有 rabbita 项目、出一份"迁移还差什么"的报告。
-  工具已落地（`tools/mbtools` 的 `migrate-scan`），**报告本身从没对着 yi 跑过**。
-  它成本最低、不依赖任何东西，而且它能**用数据回答**决策点 3。
+  ⚠️ **这里原来写着"报告本身从没对着 yi 跑过" —— 2026-10-01 复核：那句话是错的。**
+  报告**跑过**（`docs/STATUS.md` §2.1 与 `FINDINGS.md` 的 F1 补记都记着 09-21 那次：
+  6 文件 / 3139 行、15 类命中数与人工清点逐项一致），刚才又重跑了一遍，逐项不变。
+  本轮真正修掉的是**另一件事**：报告里那三句"下一步"**已经过期、在指错路**
+  （说"手势通道尚未实现"、"画布真机未验、手势未做" —— 而这两条 10-01 都已落地并真机验过），
+  已改成事实。见 `FINDINGS.md` 的 F1 坑四。
+  ⇒ **F1 剩下的不是"跑报告"，是"用报告回答决策点 3"** —— 那需要人拍板。
 - ✅ 已落地：`tools/check_lockfile_urls.mjs` 已接进 `verify_all.sh`（**第 16 条门**，纯结构判据、
   不联网、已用诱饵证伪）。**理由**：这台机器的 npm 走 npmmirror，那个 bug 会**再次**把 404 的
   `resolved` URL 写进 lockfile，而症状是"新鲜克隆装不上、本机完全看不出来"。
@@ -143,6 +186,18 @@ git -c http.proxy= -c https.proxy= push origin main
 `140.82.113.4`、`20.27.177.113` → 200），而 `api.github.com` 一直通；
 `github.com:22` 与 `ssh.github.com:443` 的 SSH **握手是通的**，但本机 `~/.ssh/id_rsa` 没在 GitHub 注册
 （`Permission denied (publickey)`）。⇒ 长期稳的做法：**注册那把公钥，走 SSH**。
+
+> **2026-10-01 复核（推之前先看这段）**：
+> - **直连仍然是 000**（`curl https://github.com/…` 12 秒超时）；`api.github.com` 照常通 ——
+>   所以**读** GitHub（CI 状态、annotation）没有障碍，卡住的只有 **push**。
+> - `140.82.113.4` 是好的：`curl --resolve github.com:443:140.82.113.4 https://github.com/XiLaiTL/moobile`
+>   → **200、372 KB、4.3 秒**。`20.27.177.113` 也 200 但**很慢**（12 秒收不到字节）。
+>   ⚠️ 12 秒的超时**不够**，会被误判成"这个 IP 也不通" —— 加长到 60–90 秒再判。
+> - **系统的 hosts 文件可写、不需要提权**（本轮实测追加成功并已还原；路径就是 Windows 那个
+>   `<SystemRoot>\System32\drivers\etc\hosts`），所以"临时加一条 `140.82.113.4 github.com`
+>   → push → 撤掉"是可行的。**动手前先用上面那条 `--resolve` 确认 IP 当下是通的**（边缘 IP 会变）。
+> - 换个更干净的绕法（不动系统文件）：写个本地 CONNECT 代理，把 `github.com` 转到那个 IP，
+>   再 `git -c http.proxy=http://127.0.0.1:<port> push`。本轮没做，留作备选。
 
 ### 4-2 改了宿主包，要刷新 **7 份**副本
 

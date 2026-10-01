@@ -84,9 +84,19 @@ moon publish
 # 2) npm 宿主包（注意：本机默认 registry 是只读镜像，必须显式指向官方；账号开了 2FA 还要 OTP）
 bash npm/moobile-host/publish.sh <6位码>
 
-# 3) 发完从"用户视角"验一遍（默认验 moon.mod 里那一版）
+# 3) 发完从"用户视角"验一遍（默认验 moon.mod 里那一版；**两个包都验**）
 bash tools/check_published.sh
 ```
+
+⚠️ **两个包必须同代发**（契约 `1 → 2` 那次学到的）：只发一边会让线上是**错配的一对**，
+用户挂载时同时报出两个契约版本号。第 3 步的**第 6 段**就是这条的探针 ——
+它从**两个 registry** 各拉一份，比对 `host_contract_version` 与 `CONTRACT`，不一致直接红
+（已用真实的错配组合证伪过：`check_published.sh XiLaiTL/moobile@0.2.2` → `契约 1 vs 2` → exit 1）。
+
+⚠️ **发布不是"敲完就完了"**：npm 那边服务端回 **202 = 异步受理**，实测**约 6 分钟**后才可见，
+而且本机默认的 **npmmirror 镜像会更晚**（这段时间 `npm install` 会报 `notarget`）。
+所以第 3 步**要么等一会儿再跑，要么轮询** —— 别拿"刚查还是旧版本"当"没发出去"
+（这坑 2026-10-01 踩过，全过程见 [`docs/FINDINGS.md`](docs/FINDINGS.md) 的发布日补记）。
 
 **发布前必看**（发布不可逆）：
 
