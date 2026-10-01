@@ -1,0 +1,15 @@
+--- a/sub/moon.pkg
++++ b/sub/moon.pkg
+@@ -1,8 +1,8 @@
+ import {
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/common",
+-  "XiLaiTL/moobile/cmd",
+-  "XiLaiTL/moobile/url",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/common",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/url",
+   "XiLaiTL/moobile/internal/key",
+   "moonbitlang/core/ref",
+ }

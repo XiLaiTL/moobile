@@ -1,0 +1,9 @@
+--- a/dom/moon.pkg
++++ b/dom/moon.pkg
+@@ -1,5 +1,5 @@
+ import {
+-  "XiLaiTL/moobile/js",
++  "XiLaiTL/moobile/vendor/rabbita/js",
+ }
+ 
+ warnings = "-unused_package"

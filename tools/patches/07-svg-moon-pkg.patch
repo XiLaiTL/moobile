@@ -1,8 +1,15 @@
 --- a/svg/moon.pkg
 +++ b/svg/moon.pkg
-@@ -1,4 +1,5 @@
+@@ -1,8 +1,9 @@
  import {
 +  "XiLaiTL/moobile/style",
    "XiLaiTL/moobile/internal/vdom",
-   "XiLaiTL/moobile/variant",
-   "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/variant",
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/html",
++  "XiLaiTL/moobile/vendor/rabbita/variant",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/html",
+ }
+ 
+ supported_targets = "js+native+wasm"

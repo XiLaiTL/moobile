@@ -1,0 +1,13 @@
+--- a/dialog/moon.pkg
++++ b/dialog/moon.pkg
+@@ -1,7 +1,7 @@
+ import {
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/js",
+-  "XiLaiTL/moobile/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/js",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
+ }
+ 
+ warnings = "-unused_package"

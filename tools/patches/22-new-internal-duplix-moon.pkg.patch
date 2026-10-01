@@ -1,0 +1,11 @@
+--- a/internal/duplix/moon.pkg
++++ b/internal/duplix/moon.pkg
+@@ -1,7 +1,7 @@
+ import {
+   "moonbitlang/core/queue",
+   "moonbitlang/core/immut/vector",
+-  "XiLaiTL/moobile/common",
++  "XiLaiTL/moobile/vendor/rabbita/common",
+   "XiLaiTL/moobile/internal/slotmap",
+ }
+ 

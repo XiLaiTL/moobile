@@ -23,12 +23,28 @@ const path = require('path');
  *   1. npm 包里确实有 `capabilities/<name>.js` 导出安装函数；
  *   2. MoonBit 侧的能力包按名字向 `MOBILE_HOST[<name>]` 取值；
  *   3. MoonBit 侧缺这个能力时会**自己** fail-fast（参考 `sqlite/sqlite.mbt` 的 `ensure()`）。
+ *
+ * ⚠️ `from` 是**裸模块名**，不是仓库相对路径 —— 它会被原样写进**用户的**
+ *    `registry.generated.js`，由用户工程里的 Metro / node 解析。所以它必须
+ *    从"装了本包的工程根"解析得到。
+ *
+ *    这个字段踩过一次（2026-09 发现）：它曾是 `moobile-examples/apps/todo-app/host/…`
+ *    （仓库搬目录前的旧路径），于是 `regen` 生成出一个解析不了的 import。
+ *    **而 `moobile-host@0.2.0` 已按这个坏值发布出去** —— 实测 `npm pack
+ *    moobile-host@0.2.0` 解包后本行就是旧路径。后果：全新用户
+ *    `npm i moobile-host@0.2.0` + expo-sqlite + `regen` → 应用起不来。
+ *
+ *    当时为什么没被发现：`verify_all.sh` 那条门跑的是 `npx moobile-host`
+ *    （= `node_modules` 里 09-19 冻结的**副本**），而那份副本的常量恰好是好的
+ *    （来源未查明，只知它当时被改过而未回写源码）；门因此是绿的，
+ *    真正的源码与线上包都坏着。两道修法见 `tools/check_npm_fresh.mjs`
+ *    与 `verify_all.sh` 里改成跑源码那条。
  */
 const KNOWN = [
   {
     npm: 'expo-sqlite',
     name: 'db',
-    from: 'moobile-examples/apps/todo-app/host/capabilities/db',
+    from: 'moobile-host/capabilities/db',
     install: 'installDb',
     note: '本地数据库（expo-sqlite）',
   },

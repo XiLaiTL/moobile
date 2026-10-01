@@ -1,0 +1,11 @@
+--- a/cmd/moon.pkg
++++ b/cmd/moon.pkg
+@@ -1,6 +1,6 @@
+ import {
+-  "XiLaiTL/moobile/js",
+-  "XiLaiTL/moobile/common",
++  "XiLaiTL/moobile/vendor/rabbita/js",
++  "XiLaiTL/moobile/vendor/rabbita/common",
+   "XiLaiTL/moobile/internal/key",
+   "XiLaiTL/moobile/internal/any",
+   "XiLaiTL/moobile/internal/slotmap",

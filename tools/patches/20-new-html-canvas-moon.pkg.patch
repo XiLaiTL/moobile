@@ -1,0 +1,9 @@
+--- a/html/canvas/moon.pkg
++++ b/html/canvas/moon.pkg
+@@ -1,5 +1,5 @@
+ import {
+-  "XiLaiTL/moobile/dom",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
+ }
+ 
+ warnings = "-unused_package"

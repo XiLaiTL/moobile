@@ -1,0 +1,13 @@
+--- a/nav/moon.pkg
++++ b/nav/moon.pkg
+@@ -1,7 +1,7 @@
+ import {
+-  "XiLaiTL/moobile/cmd",
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/js",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/js",
+ }
+ 
+ warnings = "-unused_package"

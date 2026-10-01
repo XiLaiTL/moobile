@@ -1,16 +1,13 @@
---- a/internal/vdom/moon.pkg
-+++ b/internal/vdom/moon.pkg
-@@ -1,8 +1,9 @@
+--- a/clipboard/moon.pkg
++++ b/clipboard/moon.pkg
+@@ -1,7 +1,7 @@
  import {
 -  "XiLaiTL/moobile/dom",
 -  "XiLaiTL/moobile/cmd",
--  "XiLaiTL/moobile/variant",
 -  "XiLaiTL/moobile/js",
-+  "XiLaiTL/moobile/style",
 +  "XiLaiTL/moobile/vendor/rabbita/dom",
 +  "XiLaiTL/moobile/vendor/rabbita/cmd",
-+  "XiLaiTL/moobile/vendor/rabbita/variant",
 +  "XiLaiTL/moobile/vendor/rabbita/js",
-   "moonbitlang/core/ref",
  }
  
+ warnings = "-unused_package"

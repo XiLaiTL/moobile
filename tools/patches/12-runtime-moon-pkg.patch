@@ -1,5 +1,19 @@
 --- a/internal/runtime/moon.pkg
 +++ b/internal/runtime/moon.pkg
+@@ -1,9 +1,9 @@
+ import {
+   "XiLaiTL/moobile/internal/vdom",
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/common",
+-  "XiLaiTL/moobile/cmd",
+-  "XiLaiTL/moobile/sub",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/common",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/sub",
+   "moonbitlang/core/queue",
+   "moonbitlang/core/json",
+   "moonbitlang/async/js_async",
 @@ -23,5 +23,6 @@
      "host_browser.mbt": [ "js" ],
      "host_hydration.mbt": [ "js" ],

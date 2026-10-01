@@ -1,0 +1,24 @@
+--- a/internal/rabbita/moon.pkg
++++ b/internal/rabbita/moon.pkg
+@@ -1,15 +1,15 @@
+ import {
+-  "XiLaiTL/moobile/html",
++  "XiLaiTL/moobile/vendor/rabbita/html",
+   "XiLaiTL/moobile/internal/runtime",
+   "XiLaiTL/moobile/internal/vdom",
+-  "XiLaiTL/moobile/url",
+-  "XiLaiTL/moobile/cmd",
+-  "XiLaiTL/moobile/sub",
++  "XiLaiTL/moobile/vendor/rabbita/url",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/sub",
+   "XiLaiTL/moobile/internal/key",
+   "moonbitlang/core/queue",
+   "moonbitlang/core/ref",
+-  "XiLaiTL/moobile/js",
+-  "XiLaiTL/moobile/common",
++  "XiLaiTL/moobile/vendor/rabbita/js",
++  "XiLaiTL/moobile/vendor/rabbita/common",
+   "XiLaiTL/moobile/internal/duplix",
+   "XiLaiTL/moobile/internal/slotmap",
+   "moonbitlang/core/immut/vector",

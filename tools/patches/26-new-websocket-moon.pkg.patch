@@ -1,0 +1,13 @@
+--- a/websocket/moon.pkg
++++ b/websocket/moon.pkg
+@@ -1,7 +1,7 @@
+ import {
+-  "XiLaiTL/moobile/cmd",
+-  "XiLaiTL/moobile/dom",
+-  "XiLaiTL/moobile/sub",
++  "XiLaiTL/moobile/vendor/rabbita/cmd",
++  "XiLaiTL/moobile/vendor/rabbita/dom",
++  "XiLaiTL/moobile/vendor/rabbita/sub",
+   "moonbitlang/core/debug",
+   "moonbitlang/core/json",
+   "moonbitlang/core/ref",
