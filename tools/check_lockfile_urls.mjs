@@ -1,4 +1,4 @@
-// lockfile_url_scan.mjs —— 扫出 package-lock.json 里**只认镜像源那套写法**的坏 `resolved` URL。
+// check_lockfile_urls.mjs —— 扫出 package-lock.json 里**只认镜像源那套写法**的坏 `resolved` URL。
 //
 //   node tools/check_lockfile_urls.mjs
 //

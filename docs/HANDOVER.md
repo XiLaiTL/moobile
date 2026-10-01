@@ -51,11 +51,11 @@ bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒�
 
 | 项 | 状态 |
 |---|---|
-| **1 个提交没推**：`237f792`（CI 修复 + lockfile 坏 URL 修复） | 推送当时被网络挡住，见 §4-1 |
+| **1 个提交没推**：`557b342`（CI 补记 + 文档 + 两个工具提进 `tools/`） | 推送当时网络挡住（`github.com` 000），见 §4-1 |
 | **CI 修到一半，仍红 4 条** | 已修好并推上去：workflow 补了 `vendor_sync --apply`（CI 每次都是**新鲜克隆**）、去掉 npm 安装那步的 `continue-on-error`。现在那两步都绿，但 `verify_all.sh` 里**仍有 4 条红 —— 全是"要 moon 编译"的门**。证据指向 **CI 的 moon 比 `DEV.md` 记的新**；**真正的 error 文本还没读到**（公开仓库 job log 走 API 是 403）。详见 §3-1 与 `FINDINGS.md` 的 CI 补记 |
 | Metro | **已停**（交接时清掉了：占着 8081 会让接手的人拿到**别的应用**的 bundle，我这一轮就被坑过） |
 | Android 模拟器 | `emulator-5554` **还在跑**（无害，真机门要用） |
-| 一个待定的工具 | `.scratch/lockfile_url_scan.mjs`（被 gitignore）—— 扫 lockfile 里与包名对不上的 `resolved` URL，是本轮找到两条 404 的工具。**要不要提成正式门还没定**，见 §3-3 |
+| **CI 先搁置**（老板拍板"本地跑通就好"） | 它现在会**每次推送都挂个红叉**。想让它别再刷红：把 `.github/workflows/ci.yml` 的 `on: push` 去掉、只留 `workflow_dispatch`（一行的事）；**但请先读 §3-1 与 FINDINGS 的 CI 补记** —— 红的原因已经查清一半，别被它再骗一次 |
 
 ---
 
