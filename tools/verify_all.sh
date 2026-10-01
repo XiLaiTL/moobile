@@ -47,6 +47,20 @@ tally() { # tally <名字> <退出码> <日志>
     FAIL=$((FAIL + 1))
     LINES+=("FAIL  $name  (日志 ${log})")
     printf 'FAIL  %s\n' "$name"
+    # ★ 先捞**错误行**，再给尾巴 —— 顺序是 2026-10-01 定的。
+    #
+    # 为什么：那天 CI 上 4 条门红，而 `---- 末尾 12 行 ----` 里**全是 deprecated 警告**
+    # （真因是一条 E3002 解析错误，落在更早的位置）。于是读者只能顺着尾巴猜，
+    # 而"尾巴全是警告"看起来就像"警告把门弄红了"。**日志的尾巴不是日志的重点。**
+    #
+    # 只在真有错误行时才打这一段（否则是纯噪声）；判据放宽到 Python / node 那类
+    # `AssertionError:`、`TypeError:`（所以不是只匹配行首的 `Error`）。
+    if grep -qE '^[[:space:]]*([A-Za-z_.]*Error|ERROR|error)[: ]' "$log"; then
+      printf '      ---- 错误行（真因常常不在尾巴上）----\n'
+      # 带 3 行上下文：诊断头里有**文件与行列**，再下一行往往是**出问题的那一行源码** ——
+      # 没有它，「Error: [3002]」这种只有错误码的行等于没说。
+      grep -nE '^[[:space:]]*([A-Za-z_.]*Error|ERROR|error)[: ]' -A 3 --no-group-separator "$log" | head -20 | sed 's/^/      /'
+    fi
     printf '      ---- 末尾 12 行 ----\n'
     tail -12 "$log" | sed 's/^/      /'
   fi

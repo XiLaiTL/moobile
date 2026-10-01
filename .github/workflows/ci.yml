@@ -97,9 +97,27 @@ jobs:
           # **annotation 不用认证**，所以就把它当出口：
           #     GET /repos/{owner}/{repo}/check-runs/{id}/annotations
           #
-          # 顺序也有讲究：先把**门名**发出来（这是"哪条红了"的答案），再发日志尾巴。
+          # 顺序也有讲究：先把**门名**发出来（这是"哪条红了"的答案），再发**错误行**，最后才是尾巴。
           grep -E '^FAIL ' "$LOG" | head -10 | while IFS= read -r l; do
             echo "::error title=门失败::$l"
+          done
+
+          # ★ 12 行**不够**定位 —— 2026-10-01 实测：那次只看到一串 deprecated 警告，
+          #   看不出到底哪个 error 让门红的。
+          #
+          # ★★ 收口时又学了一条，而且它改了做法：**真因根本不在尾巴上。**
+          #   那次唯一那个 error（E3002 解析错误）落在更早的位置，尾巴上是它后面的警告 ——
+          #   于是所有人都往"警告致红"的方向猜了一轮。
+          #   所以 `verify_all.sh` 现在会**先打一段 `---- 错误行 ----`**（从门的完整日志里
+          #   捞 `Error:` / `AssertionError:` 那类行，带 3 行上下文），下面这条 awk 就是把**它**发出来。
+          #   **这才是"为什么红"的答案**；尾巴只作补充。顺序也照这个来：错误行在前，尾巴在后。
+          awk '
+            /---- 错误行（真因常常不在尾巴上）----/ { f = 1; n = 0; next }
+            /^(PASS|FAIL|SKIP) /                   { f = 0 }
+            /---- 末尾 12 行 ----/                  { f = 0 }
+            f && NF && n < 12                       { print; n++ }
+          ' "$LOG" | while IFS= read -r l; do
+            echo "::error title=错误行::$(printf '%s' "$l" | sed 's/^ *//')"
           done
 
           # `verify_all.sh` 在每条失败的门后面跟着它日志的末尾 12 行（以 6 个空格缩进）。
@@ -112,23 +130,22 @@ jobs:
             echo "::error title=日志尾巴::$(printf '%s' "$l" | sed 's/^ *//')"
           done
 
-          # ★ 但 12 行**不够**定位 —— 2026-10-01 实测：那次只看到一串 deprecated 警告，
-          #   看不出到底哪个 error 让门红的。所以再发**一条** annotation，装着**整份输出**
-          #   （换行转义成 `%0A`；annotation 是唯一不需要认证就能读到的出口）。
-          #   这样"CI 红了"对任何人都立刻变成"为什么红"。
-          python3 - "$LOG" <<'PY'
-          import sys, pathlib
-          raw = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8', errors='replace')
-          # 只留末尾 12000 字符：GitHub 对单条 annotation 有体积上限，超了会被截断甚至丢掉
-          body = raw[-12000:]
-          esc = body.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-          print(f"::error title=离线门完整输出（末尾 12000 字符）::{esc}")
-          PY
+          # ★ 顺手把**工具链版本**发出来：CI 装 `latest`，工作区钉 `DEV.md` 那一版 ——
+          #   "本机绿、CI 红"最常见的原因就是这两代不一样；而 job log 读不到时，
+          #   这一行是**唯一**能确认"我在本地复现的是不是同一代"的依据（2026-10-01 就靠它）。
+          echo "::error title=工具链::$(moon version 2>&1 | head -1)"
+          echo "::error title=node::$(node --version 2>&1 | head -1)"
+
+          # ⚠️ 曾经这里还发过一条**装整份输出（末尾 12000 字符）**的 annotation，
+          #   目的是"一眼看全"。**没用的，已删**：2026-10-01 实测那一条**根本没出现**
+          #   （同一次运行另外 12 条都在）—— GitHub 对单条 annotation 的体积上限比 12000 小得多。
+          #   记在这里，免得下一个人再试一次同样的"更全 = 更好"。
 
           {
             echo "### 离线门：失败"
             echo '```'
             grep -E '^(PASS|FAIL|SKIP) ' "$LOG" || true
             echo '```'
+            echo "工具链：\`$(moon version 2>&1 | head -1)\`"
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1

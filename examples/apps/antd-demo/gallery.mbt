@@ -7,7 +7,7 @@
 ///   · 少写一个组件 → 找不到格子 → 红；
 ///   · 组件名写错（manifest 里没有）→ 生成物里也不会有这个函数，编译期就红；
 ///   · 组件渲染成空盒子（例如名字没接上宿主注册表）→ 格子是空的 → 红。
-fn cell[C : @html.IsChildren](name : String, children : C) -> @html.Html {
+fn[C : @html.IsChildren] cell(name : String, children : C) -> @html.Html {
   @html.div(
     attrs=@html.Attrs::build()
       .data_set("demo", name)
