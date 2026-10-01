@@ -196,21 +196,31 @@ const COMPONENTS = {
 };
 core.installHostCore({ react: React, components: COMPONENTS, platform: "web", apiBase: "" });
 
-// ★ 助手那条走的是 **markdown 组件**（`md:Markdown`，宿主侧 `App.js` 用 `registerLibrary`
+// ★ 助手那条走的是 **markdown 组件**（`md:Markdown`，宿主侧 `libraries.generated.js`
 //   注册的真身是 `react-native-markdown-display`）。**无头环境里没有 react-native**，
-//   所以这里给它一个替身：把 markdown 文本原样当文字渲染。
+//   所以这里给它一个替身。
 //
 //   这不是"把被测物换掉"——它是**换一个宿主实现**，正是"宿主是可替换件"这条设计的用法
 //   （与 `MOBILE_HOST.db` 那个内存版同一个道理）。
 //   ⚠️ 边界说清楚：这条判据**不验 markdown 渲染成什么样**（那是 web/真机上的事，
 //   要真 `react-native`）。它验的是"助手那段文字到了界面上、且随时在长"。
+//
+// ★ 内容走的是 **`children` prop，而且是原始字符串**（`generated/md.manifest.json` 的
+//   `components.Markdown.props.children = {deliver:"raw", prop:"children"}`，
+//   声明在 `libgen.config.json` 的 `content` 里）。
+//
+//   ⚠️ **这套无头判据从不渲染**（它只读 React 元素树，见下面的 `texts()`）——
+//      所以替身这个函数**根本不会被调用**，往它里面塞断言是假的（第一版就这么写的，
+//      得到的是"0 次渲染"）。要看"内容以什么形态到达组件"，只能读**元素的 props**，
+//      而"哪个元素是 markdown 组件"的判据是它注册进 `MOBILE_HOST.components` 的那个对象
+//      （比对对象本身，而不是名字或形状 —— 名字会被 jsonProps 适配器包一层）。
+const mdComponent = () => globalThis.MOBILE_HOST.components["md:Markdown"];
+const mdChildTypes = [];
 core.registerLibrary({
   namespace: "md",
-  // ⚠️ 文本走的是 **prop**（`markdown`），不是 children —— 真机上实测：我们的组件通道
-  //    会把字符串子节点包成 `<Text>`，而 markdown 组件要裸字符串（宿主侧 `App.js` 有适配层）。
-  //    替身必须**跟着真身走同一个接口**，否则判据验的是另一个东西。
   components: {
-    Markdown: ({ markdown, ...rest }) => h("div", rest, String(markdown ?? "")),
+    // 形状跟着真身走：内容从 `children` 来（真身把它交给 markdown-it）。
+    Markdown: ({ children }) => h("div", null, String(children ?? "")),
   },
   platforms: ["web"],
   quiet: true,
@@ -237,12 +247,17 @@ function texts(node, out = []) {
   }
   if (typeof node === "object" && node.props) {
     // ⚠️ **本判据只读元素树、从不渲染它**（与 `verify_headless` 同一套路子）。
-    //    而助手那条的文字是走 `markdown` **prop** 交给 markdown 组件的（见 app.mbt 的注释：
-    //    字符串走 children 会被包成 `<Text>`，组件的 markdown-it 会当场抛错）。
-    //    组件在自己的实现里把 prop 渲染成视图 —— 那个实现（真身是 RN 组件）在 node 里跑不了。
-    //    所以这里**把 prop 当文字读**：与替身是同一个性质（"换一个宿主实现"），
-    //    它验的是"助手那段文字到了界面这一层"，不是"markdown 长什么样"（那在 web/真机上验）。
-    if (typeof node.props.markdown === "string") out.push(node.props.markdown);
+    //    markdown 组件那条：内容以什么形态到达，就看这个元素的 `children` **prop** ——
+    //    是字符串（原始内容通道 ✅）还是元素/数组（字符串子节点被包成了 `<Text>` ❌，
+    //    真机上 markdown-it 会抛 `Input data should be a String`）。
+    if (node.type === mdComponent()) {
+      const c = node.props.children;
+      mdChildTypes.push(Array.isArray(c) ? "array" : c === null ? "null" : typeof c);
+      if (typeof c === "string") out.push(c);
+      // 内容**就是**这个字符串，别再往下递归 —— 否则同一段文字会在树里出现两次，
+      // 而"数一数 AI 说了几个字"这类判据（`assistantText`）会被 doubles 咬到。
+      return out;
+    }
     texts(node.props.children, out);
   }
   return out;
@@ -319,6 +334,14 @@ check(
 check("生成中看得出来（状态行「生成中…」+ 光标）", early.includes("生成中") && early.includes("▍"), "");
 await sleep(700);
 check("长完了：全文在界面上", has("你好，我是助手。"), TREE().slice(-160));
+// ★ 这条盯的是**通道**，不是 markdown 的渲染结果：内容必须作为**原始字符串**到达组件。
+//   反例是"字符串子节点"（`IsChildren for String` → `VNode::Text` → RN 的 `<Text>` 元素）：
+//   真机上 markdown-it 会当场抛 `Error: Input data should be a String`，而这里会看到 `array`。
+check(
+  "★ markdown 组件收到的是**原始字符串**（不是 `<Text>` 元素）",
+  mdChildTypes.length > 0 && mdChildTypes.every((t) => t === "string"),
+  `md:Markdown 元素的 props.children 类型：[${mdChildTypes.join(", ")}]（${mdChildTypes.length} 个元素）`,
+);
 check("收尾后状态行不再说「生成中」", !has("生成中"), TREE().slice(-120));
 
 console.log("\n── 请求发对了没（Authorization / body）" + "─".repeat(22));

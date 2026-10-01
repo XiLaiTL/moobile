@@ -146,6 +146,56 @@ registerLibrary({
 **顺带改掉的一个小病灶**：以前**无条件**写 `style: {}`。对 RN 无害，
 但对组件库是"凭空多一个 prop"（有的库拿 `style != null` 做判断）。现在空样式不写这个键。
 
+#### N3b **内容通道**：`children` 也可以是**原始字符串**（2026-10-02 补）
+
+`children` 在我们这边有**两种完全不同的形态**，而它们各自都是对的：
+
+| 形态 | 生成物里的参数 | 到宿主是 | 谁要它 |
+|---|---|---|---|
+| **子节点**（默认） | `children : C`（`C : @html.IsChildren`） | `createElement(comp, props, …子节点)`；字符串子节点会变成 RN 的 `<Text>` **元素** | 绝大多数组件（`@html.div("你好")`、`@antd.button("加一条")`） |
+| **原始字符串** | `children : String` | `props.children === "…"`（**裸 JS 字符串**，不经过 `<Text>`） | 把 children 当**数据**用的组件（markdown 渲染器把 children 交给 markdown-it） |
+
+第二形态**不需要任何宿主适配层** —— 这一点是实测出来的（不是设计出来的）：
+
+```
+render.mbt: props.props_map() 的键**原样**进 JS 对象（render_props 不筛键）
+         → js_create_element(comp, props, ...children)
+         → 没有位置参数 children 时，createElement 不会覆盖 props.children
+```
+
+⇒ `Attrs::prop_str("children", "# 标题")` 到宿主就是那个原始字符串。
+所以这条通道只是在**声明**"这个组件的内容走 prop"，而不是"再套一层"。
+
+**怎么判定走哪一档**（`libgen`，两档判据都写进 manifest、可复核）：
+
+1. 类型定义写着 `children: string` → 自动判成原始字符串（`deliver_from: 'type'`）；
+2. **类型定义撒谎**（写着 `ReactNode`，运行期却要字符串）→ 由人在 `libgen.config.json` 里声明：
+
+```jsonc
+"content": ["Markdown"]                 // 内容进 `children` prop
+"content": { "Fancy": "text" }          // 或者点名落点 prop
+```
+
+⚠️ 第 2 档**只能由人声明**：生成器没有线索识破谎言，猜错的下场是组件内部报一句与 prop
+无关的错（实测：`Error: Input data should be a String`，每个字符一次）。
+
+#### N3c **导出通道**：`defaultExports`（同一天的第二处"类型在撒谎"）
+
+类型定义**也会谎报导出**：`react-native-markdown-display` 的 `.d.ts` 写着
+`export const Markdown: MarkdownStatic;`，而 JS 里 `Markdown` **只在 `default` 上**。
+按类型定义生成的 `components: ['Markdown']` 于是与运行时命名空间对不上 ——
+而这条**只在真机露头**（web/node 的 ESM interop 恰好看得见具名导出）：
+
+```
+moobile-host: registerLibrary("md") 里列了 `Markdown`，但模块里没有这个导出。
+```
+
+修法与 `content` 同一条规矩（**类型说不准的事由人声明，声明错了就报错**）：
+`"defaultExports": ["Markdown"]` → manifest 的 `host.defaultExports` → 宿主从 `mod.default` 取。
+
+⚠️ 宿主**刻意不自动回落**：盲取 `default` 是猜，猜错是"注册了另一个组件"，
+比"启动即报错"坏得多。没声明时照旧点名报错，并在报错里**指路**这个配置项。
+
 ### N4 事件通道：落点由宿主决定（三级优先）
 
 **设计**：`map_event` 的解析顺序是
@@ -575,8 +625,15 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs     # 期望 
 # ② 生成器的产物跑在真应用里（71 个组件用生成的 DSL 渲染）
 cd <仓库根>/examples/apps/antd-demo/host && npm run check              # 期望 24/24
 
+# ②b 生成器**自己的规则**（假包 + 四条负例；不装任何包、离线，已进门禁）
+cd <仓库根> && node tools/libgen_probe.mjs                            # 期望 24 项
+
+# ②c 一个**真实 RN 组件库**接进来的端到端（内容走原始字符串 + defaultExport）
+cd <仓库根>/examples/apps/chat-app && npm install && node verify.mjs   # 期望 22 项
+# 真机那半（要模拟器 + Metro 服务本工程）：node device_check.mjs       # 期望 17 项
+
 # §N7：这一项已进唯一验证入口
-cd <仓库根> && bash tools/verify_all.sh                                # 期望全 PASS（含"组件库接入"）
+cd <仓库根> && bash tools/verify_all.sh                                # 期望全 PASS（含"组件库接入"与"libgen 探针"）
 
 # §3：vendor 改动（生成式 vendor，改了 fork 就必须回写）
 bash tools/vendor_sync.sh --check && bash tools/py.sh tools/gen_forwarders.py --check

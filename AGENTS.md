@@ -18,7 +18,7 @@
 ## 2. 验证入口（只记这一条）
 
 ```bash
-bash tools/verify_all.sh              # 离线 16 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物** / **能力包平台矩阵** / antd 试金石 / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度）
+bash tools/verify_all.sh              # 离线 20 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物** / **能力包平台矩阵** / antd 试金石 / **组件库生成器（libgen 假包探针，24 项）** / **SSE 试金石** / **chat-app：生成物一致 + 无头 22 项** / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
 python3 tools/verify_android.py       # 真机 27 项（当前 25/27，两条挂在既有问题上，见 docs/STATUS.md §2.2/§4-6；需要模拟器 + APK）
 ```

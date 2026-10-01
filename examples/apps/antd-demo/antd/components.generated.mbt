@@ -1,8 +1,8 @@
 // 由 `moobile-host libgen` 生成 —— **不要手改**。
 //
 // 组件库：antd@6.6.4（命名空间 `antd:`）
-// 生成器：moobile-host libgen 0.2.0｜manifest 版本 1
-// 组件 71 个｜生成的参数 4965 个｜未生成 4352 个
+// 生成器：moobile-host libgen 0.3.0｜manifest 版本 1
+// 组件 71 个｜生成的参数 4965 个｜未生成 4354 个
 //
 // ## 怎么用
 //
@@ -11,7 +11,7 @@
 // @antd.input(value=model.draft, on_change=e => emit(SetDraft(e.text())))
 // ```
 //
-// ## 四条边界（都是实测的，不是猜测）
+// ## 五条边界（都是实测的，不是猜测）
 //
 // 1. **写错 prop 名 = 编译错误**（这正是生成这套东西的主要收益）。
 // 2. 名字**必须小写**：`pub fn Button(...)` 是 parse error（大写开头是类型名）。
@@ -23,6 +23,10 @@
 //    · 没生成的 prop（React 公共属性的长尾、`aria-*`、`data-*`）→ `attrs=@html.Attrs::build().prop_str(...)`；
 //    · 信号事件想读载荷（例如 `onKeyDown` 的按键）→ `attrs=@html.Attrs::build().on_raw("onKeyDown", …)`；
 //    · 继承链解不开的基类 prop 也只能这么写。
+// 5. **`children` 有两种形态**：默认是子节点（`children : C`，`C : @html.IsChildren`），
+//    而"把 children 当数据用"的组件（markdown 渲染器这类）是**原始字符串** ——
+//    那些函数的参数写成 `children : String`，字符串原样落到组件的 prop 上。
+//    哪些组件属于后者写在 manifest 的 `content` 里（类型定义多半看不出这件事）。
 //
 // 底层仍然是"字符串标签 + 命名空间"（`@html.node("antd:X", …)`）：
 // 生成器只是把这层写法抹掉了。名字指向哪个真实实现，仍然由宿主注册表决定 ——
@@ -548,14 +552,15 @@ pub fn[C : @html.IsChildren] avatar_group(
 ///|
 /// 组件库 `antd:BackTop`（Props 接口 `BackTopProps`）。
 ///
-/// 参数 5 个（清单里另有 3 个没有生成：内部 prop / 回调 / React 公共属性的长尾 —— 逐条理由见 manifest 的 `exposed_reason`）。
-pub fn back_top(
+/// 参数 5 个（清单里另有 4 个没有生成：内部 prop / 回调 / React 公共属性的长尾 —— 逐条理由见 manifest 的 `exposed_reason`）。
+pub fn[C : @html.IsChildren] back_top(
   visibility_height? : Double,
   class_name? : String,
   style? : String,
   duration? : Double,
   on_click? : @cmd.Cmd,
   attrs? : @html.Attrs,
+  children : C,
 ) -> @html.Html {
   let mut a = match attrs {
     Some(x) => x.copy()
@@ -566,7 +571,7 @@ pub fn back_top(
   a = opt_json(a, "style", style)
   a = opt_num(a, "duration", duration)
   a = opt_cmd(a, "onClick", on_click)
-  @html.node("antd:BackTop", a, ([] : Array[@html.Html]))
+  @html.node("antd:BackTop", a, children)
 }
 
 ///|
@@ -8199,8 +8204,8 @@ pub fn[C : @html.IsChildren] select_opt_group(
 ///|
 /// 组件库 `antd:Skeleton`（Props 接口 `SkeletonProps`）。
 ///
-/// 参数 8 个（清单里另有 4 个没有生成：内部 prop / 回调 / React 公共属性的长尾 —— 逐条理由见 manifest 的 `exposed_reason`）。
-pub fn skeleton(
+/// 参数 8 个（清单里另有 5 个没有生成：内部 prop / 回调 / React 公共属性的长尾 —— 逐条理由见 manifest 的 `exposed_reason`）。
+pub fn[C : @html.IsChildren] skeleton(
   active? : Bool,
   loading? : Bool,
   class_name? : String,
@@ -8210,6 +8215,7 @@ pub fn skeleton(
   paragraph? : String,
   round? : Bool,
   attrs? : @html.Attrs,
+  children : C,
 ) -> @html.Html {
   let mut a = match attrs {
     Some(x) => x.copy()
@@ -8223,7 +8229,7 @@ pub fn skeleton(
   a = opt_json(a, "title", title)
   a = opt_json(a, "paragraph", paragraph)
   a = opt_bool(a, "round", round)
-  @html.node("antd:Skeleton", a, ([] : Array[@html.Html]))
+  @html.node("antd:Skeleton", a, children)
 }
 
 ///|

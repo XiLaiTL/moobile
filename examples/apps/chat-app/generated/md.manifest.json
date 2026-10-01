@@ -17,6 +17,9 @@
       "web"
     ],
     "provider": null,
+    "defaultExports": [
+      "Markdown"
+    ],
     "jsonProps": {
       "Markdown": [
         "rules"
@@ -28,12 +31,13 @@
   },
   "counts": {
     "components": 1,
-    "props": 7,
+    "props": 8,
     "kinds": {
       "json": 1,
       "unsupported": 3,
       "bool": 2,
-      "event": 1
+      "event": 1,
+      "children": 1
     },
     "excluded": 8,
     "unsupported": 3
@@ -97,6 +101,13 @@
           "required": false,
           "from": "MarkdownProps@src/index.d.ts",
           "exposed": true
+        },
+        "children": {
+          "kind": "children",
+          "deliver": "raw",
+          "prop": "children",
+          "deliver_from": "config:content",
+          "from": "config:content(覆盖 component-type)"
         }
       },
       "props_interface": "MarkdownProps",
@@ -104,6 +115,9 @@
       "unresolved_extends": [],
       "unsupported_count": 3
     }
+  },
+  "content": {
+    "Markdown": "children"
   },
   "report": {
     "notes": [
@@ -149,6 +163,12 @@
         "rules"
       ]
     },
+    "content": {
+      "Markdown": "children"
+    },
+    "default_exports": [
+      "Markdown"
+    ],
     "unsupported": [
       {
         "component": "Markdown",

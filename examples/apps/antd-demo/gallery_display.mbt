@@ -93,7 +93,13 @@ fn display_cells(model : Model, emit : @cmd.Emit[Msg]) -> Array[@html.Html] {
       @antd.empty(description="空空如也", ([] : Array[@html.Html])),
     ]),
     cell("Skeleton", [
-      @antd.skeleton(active=true, paragraph=json_skeleton),
+      // ⚠️ `([] : Array[@html.Html])` 这个空 children 是**必须**的：生成器从 2026-10-02 起
+      //    认得 `PropsWithChildren<…>` 这类泛型包裹（洞一），于是 `Skeleton`/`BackTop`
+      //    这两个以前"看起来没有 children"的组件现在**要求传 children** —— 它们本来就收
+      //    children（`Skeleton` 是加载中的占位包裹、`BackTop` 是回到顶部那颗按钮的内容）。
+      //    这条是**重生成本身暴露出来的**（改了生成器没重编 demo，`moon build` 当场红），
+      //    也正是 `antd-demo` 作为试金石的作用。
+      @antd.skeleton(active=true, paragraph=json_skeleton, ([] : Array[@html.Html])),
     ]),
     cell("Spin", [
       @antd.spin(spinning=true, size="small", ([] : Array[@html.Html])),

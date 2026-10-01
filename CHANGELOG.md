@@ -5,6 +5,48 @@
 
 ---
 
+## 未发布（0.3.0 之后，2026-10-02）
+
+> 这一批**还没有抬版本号**：内容都在 `npm/moobile-host/` 与 `examples/` 里，
+> 库本体（`XiLaiTL/moobile`）这一批**没有改动** —— 所以"要不要发、发哪一边"是发版时才决定的事。
+> 判据：离线全集 **20/20**、`libgen` 假包探针 **24/24**、chat-app 无头 **22/22** + 真机 **17/17**、
+> `antd-demo` **24/24**（见 [`docs/STATUS.md`](docs/STATUS.md) §2.1）。
+
+### 组件库接入：接一个真实 RN 组件库**不再需要写宿主代码**
+
+- ★ **`registerLibrary` 新增 `defaultExports`**（`core.js`）：**类型定义会谎报导出** ——
+  `react-native-markdown-display` 的 `.d.ts` 写着 `export const Markdown: MarkdownStatic;`，
+  而它的 JS 里 `Markdown` **只在 `default` 上**。声明之后宿主从 `mod.default` 取；
+  **不声明不会自动回落**（盲取 `default` 是猜，猜错是"注册了另一个组件"），而是启动即报错并**指路**这个配置项。
+  ⚠️ 这条错**只在真机（Hermes）露头**：web/node 的 ESM interop 恰好看得见具名导出。
+- `libgen` 新增两处**声明**（都在 `libgen.config.json`，都会进 manifest 且被 `--check` 守住）：
+  - `content` —— 这个组件的 `children` 是**原始字符串**而不是子树（走 `children : String` +
+    `prop_str("children", …)`）。**不需要宿主适配层**：attrs 的键原样进 props，
+    而字符串子节点会变成 RN 的 `<Text>` **元素**（markdown-it 拿到元素就抛
+    `Input data should be a String`）。类型写着 `children: string` 时自动判走这一档，无需声明。
+  - `defaultExports` —— 见上。两处的报错都**点名**并给改法（拼错的组件名 / prop 名 → 退出码 2）。
+- `libgen` 认得 `PropsWithChildren<…>` / `PropsWithoutRef<…>` 这类**泛型包裹**：
+  前者**加**一个 `children`（不是透明！），后者**透明**。影响面实测：`antd-demo` 的
+  `Skeleton` / `BackTop` 因此多出 `children : C`，两处调用要补 `([] : Array[@html.Html])`。
+- 一个**真实 RN 组件库**接进来了（`examples/apps/chat-app/`）：markdown 渲染。
+  `App.js` 里那段手写适配层**删掉了** —— 接库 = 写 `libgen.config.json` + 跑一条命令。
+
+### 新增两条离线门（都在 `tools/verify_all.sh` 里）
+
+- **`tools/libgen_probe.mjs`（24 项）**：临时目录手写假包（四个组件各代表一档规则）+
+  **四条负例**（拼错的组件名 / prop 名 / `defaultExports` 名 → 退出码 2 且点名；
+  没声明时**不能**自己变成原始字符串）。**离线、不装任何包**，所以它在 CI 上也真的会跑。
+  落地当天抓到两个真 bug（清单字段被静默丢掉、`defaultExports` 语义写错）。
+- **chat-app 的 `libgen --check`**：生成物被手改、或改了清单忘了重跑生成器 → 红。
+
+### 修
+
+- `render_props` 那条路径上**没有任何改动**：这一批只加"声明"，不改渲染规则。
+- 判据侧：chat-app 无头判据新增"md 组件收到的 `children` 必须是**字符串**"——
+  它读**元素 props**（那套判据从不渲染，往替身里塞断言是假的）。
+
+---
+
 ## 0.3.0 —— 2026-10（**已发布**；契约 `1 → 2`，**破坏性**）
 
 > **这一版是"攒了很久的一批"**：契约 `1 → 2`（第三方组件库接入）、`canvas/` 与 `gesture/`

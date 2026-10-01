@@ -134,6 +134,46 @@ function readPackageVersion(pkgDir) {
 // ── prop 分类 ────────────────────────────────────────────────────────────────
 
 /**
+ * 这个组件的 `children` 是不是**原始字符串**（而不是一棵子树）。
+ *
+ * ## 为什么必须分这两种（这不是洁癖，是两种完全不同的东西）
+ *
+ * MoonBit 侧的 `IsChildren for String` 把字符串变成 `VNode::Text`，
+ * 到宿主是 `React.createElement(Text, {}, "…")` —— 也就是 RN 的 `<Text>` **元素**。
+ * 对普通组件（`@html.div("你好")`）这正是要的；对"把 children 当数据用"的组件则是**毒药**：
+ *
+ *     react-native-markdown-display 的 `Markdown` 把 children 交给 markdown-it 解析，
+ *     拿到 `<Text>` 元素后抛 `Error: Input data should be a String` —— **每个字符一次**
+ *     （实测：真机 6 条错帧，栈里只有 markdown-it，看不出是谁递错了东西）。
+ *
+ * 于是"原始字符串"要有自己的投递方式。判据分两档：
+ *
+ *   ① **类型定义说它是字符串**（`children: string`）→ 无需声明的原始字符串；
+ *   ② **类型定义在撒谎** → 只能**显式声明**（`libgen.config.json` 的 `content`）。
+ *      典型：`ComponentType<PropsWithChildren<MarkdownProps>>` 明写 `children: ReactNode`，
+ *      运行期却要字符串 —— 生成器**猜不出来**，猜错的下场是"组件内部报一句与 prop 无关的错"。
+ *
+ * ⚠️ 别把 ① 读成"`string` 一定是原始字符串所以随便传"：`prop_str` 传出去的就是 JS 字符串，
+ *    与"节点"是两条路；这条判据只是说**类型定义已经写明了该走哪条**。
+ */
+function childrenDeliveryOf(node) {
+  const walk = (n, depth = 0) => {
+    if (!n || depth > 6) return false;
+    if (n.k === 'prim') return n.name === 'string';
+    if (n.k === 'lit') return true; // `'a' | 'b'` 这种字面量联合：它只收这几个字符串
+    if (n.k === 'union') {
+      // `children?: string` 在 TS 里常常是 `string | undefined` —— undefined 那一支不算反例
+      const parts = (n.parts || []).filter(
+        (p) => !(p.k === 'prim' && (p.name === 'undefined' || p.name === 'null')),
+      );
+      return parts.length > 0 && parts.every((p) => walk(p, depth + 1));
+    }
+    return false;
+  };
+  return walk(node);
+}
+
+/**
  * 把"解析出来的类型"映射到**我们通道里的类别**。
  *
  * 类别 → 通道的对应（生成器与宿主两侧都按这张表）：
@@ -142,9 +182,15 @@ function readPackageVersion(pkgDir) {
  *   reactnode         → `prop_str`（文本；要放整棵子树时走 `items` 之类的 JSON 字段）
  *   event             → `on_raw`，载荷按 `eventKind` 决定是信号还是带值
  *   internal/unsupported → **不生成参数**，但进报告
+ *
+ * `children` 有**两种投递形态**（见 `childrenDeliveryOf`）：节点（默认）与原始字符串。
  */
 function classify(propName, typeText, node, opts = {}) {
-  if (propName === 'children') return { kind: 'children' };
+  if (propName === 'children') {
+    return childrenDeliveryOf(node)
+      ? { kind: 'children', deliver: 'raw', deliver_from: 'type' }
+      : { kind: 'children' };
+  }
   if (REACT_RESERVED.has(propName)) {
     return { kind: 'unsupported', reason: 'react-reserved' };
   }
@@ -312,7 +358,142 @@ function unwrapUnionForClassification(node) {
   return walkNode(node);
 }
 
+/**
+ * 在清单里按**注册表用的那个键**找一个组件（顶层 `Markdown`，或复合子组件 `Form.Item`）。
+ *
+ * 键必须与宿主注册表、与 MoonBit 侧标签**逐字一致** —— 所以这里只认点号路径，
+ * 不做任何模糊匹配（模糊匹配的后果是"声明落到了另一个组件上"，而它是静默的）。
+ */
+function componentOf(components, name) {
+  if (components[name]) return components[name];
+  if (!name.includes('.')) return null;
+  const [head, ...rest] = name.split('.');
+  const subs = components[head] && components[head].subcomponents;
+  return subs ? subs[rest.join('.')] || null : null;
+}
+
+/** 配置写错时的统一报错：**带 code、带名字、带怎么办**（静默是这里唯一的禁忌）。 */
+function badConfig(head, key, name) {
+  const err = new Error(
+    `${head}\n` +
+      `  \`${key}\` 里拼错的名字必须报错，不能静默 —— 静默的下场是"我以为声明了，其实没有"，\n` +
+      `  而症状是组件里一句与 prop / 导出无关的报错（真事：markdown 组件报 "Input data should be a String"）。\n` +
+      `  现有的组件名见 generated/*.manifest.json 的 components 键。`,
+  );
+  err.code = 'BAD_CONTENT';
+  return err;
+}
+
+/**
+ * 应用**显式声明**的"这个组件从模块的 `default` 导出上取"（`libgen.config.json` 的
+ * `defaultExports`）。
+ *
+ * ## 为什么需要它：类型定义会**谎报导出**
+ *
+ * `react-native-markdown-display` 的类型定义里写着 `export const Markdown: MarkdownStatic;`，
+ * 而它的 JS 里 `Markdown` **只在 default 上**（`export default Markdown`），具名导出那一串
+ * 没有它。于是按类型定义生成的 `components: ['Markdown']` 与运行时命名空间对不上：
+ *
+ *     moobile-host: registerLibrary("md") 里列了 `Markdown`，但模块里没有这个导出。
+ *
+ * ⚠️ 这条是**真机上报出来的**（2026-10-02）：web/node 上 Metro 的 interop 恰好能看见它，
+ *    于是无头判据全绿、只有真机红 —— 又一次"只在真机露头"。
+ *
+ * ⚠️ 为什么不让宿主自动回落：盲取 `default` 是**猜**，猜错是"注册了另一个组件"，
+ *    比"启动即报错"坏得多。所以由人声明，而声明错了就报错（与 `content` 同一条规矩）。
+ *
+ * @returns {string[]} 声明过的组件名（写进 manifest 的 `host.defaultExports`，`--check` 守住）
+ */
+function applyDefaultExports(components, defaultExports) {
+  const out = [];
+  for (const name of defaultExports || []) {
+    if (!componentOf(components, name)) {
+      throw badConfig(
+        `libgen: libgen.config.json 的 \`defaultExports\` 里写了 \`${name}\`，但清单里没有这个组件。`,
+        'defaultExports',
+        name,
+      );
+    }
+    out.push(name);
+  }
+  return out;
+}
+
 // ── 主流程 ───────────────────────────────────────────────────────────────────
+
+/**
+ * 应用**显式声明**的"原始字符串 children"（`libgen.config.json` 的 `content`）。
+ *
+ * ## 为什么需要显式声明（而不是全靠类型推断）
+ *
+ * `childrenDeliveryOf` 能从 `children: string` 推断出"这是原始字符串"，但**类型定义会撒谎**：
+ * `react-native-markdown-display` 写的是 `ComponentType<PropsWithChildren<MarkdownProps>>`
+ * —— 明明白白说 `children` 是 `ReactNode`，而运行期它把 children 交给 markdown-it，要的是字符串。
+ * 生成器**没有线索**能识破这一点，所以只能由人来说；而"由人来说"就必须**说错就报错**，
+ * 不然就是又一个静默失败（表现为"组件内部报一句与 prop 无关的错"）。
+ *
+ * ## 两种写法
+ *
+ * ```json
+ * { "content": ["Markdown"] }                  // 内容进 `children` prop（默认，最常见）
+ * { "content": { "Markdown": "children" } }    // 同上，写全了
+ * { "content": { "Fancy": "text" } }           // 内容进具名 prop
+ * ```
+ *
+ * ## 落点是 prop，**不需要宿主适配层**
+ *
+ * 这一点是实测出来的（`render.mbt` 的 `render_props` 不筛键，`render_node` 传的是
+ * `createElement(tag, props, ...children)`，空 children 时 React 保留 `props.children`）：
+ * `Attrs::prop_str("children", "# 标题")` 到宿主就是 `props.children === "# 标题"` ——
+ * **原始字符串**，不经过 `<Text>`。于是"原始字符串"这条通道既不改宿主、也不改渲染规则，
+ * 只是"这个组件的 children 走 prop 而不是走子节点"。
+ *
+ * @returns {object} 组件键 → prop 名（写进 manifest 与报告，便于核对"哪些组件走了这条通道"）
+ */
+function applyContent(components, content) {
+  const out = {};
+  if (!content) return out;
+  const entries = Array.isArray(content)
+    ? content.map((name) => [name, 'children'])
+    : Object.entries(content);
+
+  for (const [name, value] of entries) {
+    const prop = value === true || value === undefined || value === null ? 'children' : String(value);
+    const comp = componentOf(components, name);
+    if (!comp) {
+      throw badConfig(
+        `libgen: libgen.config.json 的 \`content\` 里写了 \`${name}\`，但清单里没有这个组件。`,
+        'content',
+        name,
+      );
+    }
+    comp.props = comp.props || {};
+    // 具名 prop 必须真的在这个组件的清单里 —— 拼错一个字母的后果是"内容进了一个没人读的 prop"，
+    // 表现为**空白**（不是报错），正是本仓库最防的那类失败。
+    // ⚠️ 唯一的例外：这个组件的继承链有解不开的环（`unresolved_extends`）——
+    //    那种情况下"清单里没有"不等于"组件没有"，断言下去会误伤，所以放过。
+    if (prop !== 'children' && !comp.props[prop] && !(comp.unresolved_extends || []).length) {
+      const err = new Error(
+        `libgen: \`content\` 说组件 \`${name}\` 的内容进 \`${prop}\` prop，但清单里没有这个 prop。\n` +
+          `  拼错的 prop 名不能静默 —— 字符串会被塞进一个没人读的 prop，界面上就是**空白**。\n` +
+          `  要么改名字（现有 prop 见 generated/*.manifest.json 的 components.${name}.props），\n` +
+          `  要么把内容写进默认的 \`children\`（\`{"content": ["${name}"]}\`）。`,
+      );
+      err.code = 'BAD_CONTENT';
+      throw err;
+    }
+    comp.props.children = {
+      kind: 'children',
+      deliver: 'raw',
+      prop,
+      deliver_from: 'config:content',
+      // 之前那份（类型推断出来的 children 条目）留着来源，删掉它等于抹掉"类型说过什么"
+      from: comp.props.children ? `config:content(覆盖 ${comp.props.children.from || 'type'})` : 'config:content',
+    };
+    out[name] = prop;
+  }
+  return out;
+}
 
 /**
  * @param {object} opts
@@ -322,6 +503,8 @@ function unwrapUnionForClassification(node) {
  * @param {string[]} [opts.platforms]
  * @param {string} [opts.provider]  Provider 组件名（包在树外，如 'ConfigProvider'）
  * @param {string[]} [opts.exclude] 明确排除的导出名
+ * @param {string[]|object} [opts.content] 哪些组件的 children 是**原始字符串**（见 `applyContent`）
+ * @param {string[]} [opts.defaultExports] 哪些组件要从模块的 `default` 导出上取（类型定义会谎报导出）
  * @param {string} [opts.generatorVersion]
  */
 function buildManifest(opts) {
@@ -332,6 +515,8 @@ function buildManifest(opts) {
     platforms = ['web'],
     provider = null,
     exclude = [],
+    content = null,
+    defaultExports = [],
     generatorVersion = '0.1.0',
   } = opts;
 
@@ -407,6 +592,13 @@ function buildManifest(opts) {
     components[cand.name] = built;
   }
 
+  // 显式声明的"原始字符串 children"（`libgen.config.json` 的 `content`）——
+  // 它必须**在组件都建好之后**才应用：早于这一步的话，一个拼错的组件名会被
+  // "还没建到那个组件"当成不存在，而报错信息就成了错的。
+  const contentDecl = applyContent(components, content);
+  // 「从 `default` 导出上取」的显式声明 —— 与上一条同样在组件都建好之后校验
+  const defaultExportDecl = applyDefaultExports(components, defaultExports);
+
   // ── ② 产物 ────────────────────────────────────────────────────────────────
   const events = {};
   const jsonProps = {};
@@ -459,6 +651,10 @@ function buildManifest(opts) {
     host: {
       platforms,
       provider,
+      // 顶层 `registerLibrary({ defaultExports })` 的输入：**类型定义没说准导出的那几个名字**。
+      // 宿主侧据此从 `mod.default` 上取（见 `core.js` 的 `resolveExport`）——
+      // 不写这一条时宿主**不会**回落，而是启动即报错（那样才知道是哪里不对）。
+      defaultExports: defaultExportDecl,
       // 宿主侧 `registerLibrary({ jsonProps })` 的输入：**与生成物用到的 json 通道严格同源**。
       // 手写这两处的下场是"MoonBit 传了 JSON 文本、宿主没 parse"，组件收到一个字符串，
       // 表现为"数据没进去"（而不是报错）—— 正是本仓库反复记的那类静默失败。
@@ -475,12 +671,18 @@ function buildManifest(opts) {
       unsupported: unsupported.length,
     },
     components,
+    // 内容走**原始字符串**（而不是子节点）的组件 → 落点 prop。
+    // 两侧都不需要额外机制（宿主就是普通 prop），所以它只是**记录**：谁走了这条通道、
+    // 为什么走（`deliver_from` 分 `type` 与 `config:content` 两种）。`--check` 会守住它。
+    content: contentDecl,
     // ↓ 报告段：**不是失败，但绝不能静默**
     report: {
       notes,
       excluded,
       json_props: jsonProps,
       // ↑ 与 `host.jsonProps` 是同一份内容：报告里留一份，便于人核对"哪些 prop 走了 JSON 通道"
+      content: contentDecl,
+      default_exports: defaultExportDecl,
       unsupported,
       unresolved_extends: unresolvedExtends.slice(0, 60),
       resolver: resolver.report(),
@@ -728,11 +930,17 @@ function buildComponentProps(resolver, flat, propsInfo, cand) {
       depth: 0,
     });
     const cls = classify(name, f.type, node, {});
+    // ⚠️ 清单条目是**逐字段重建**的（不是把 `cls` 摊开），所以 `classify` 每多一个字段，
+    //    就必须在下面**再写一行** —— 漏掉不会报错，只会让那个字段**静默消失**。
+    //    实测代价（2026-10-02）：`children: string` 明明判成了 `deliver: 'raw'`，
+    //    到清单里却没有 `deliver`，于是生成物仍然按"子节点"发 —— 症状在真机上，
+    //    离这里隔着整个生成器（真因靠一个假包的探针才定住，见 `tools/libgen_probe.mjs`）。
     props[name] = {
       kind: cls.kind,
       ...(f.surface ? { surface: f.surface } : {}),
       ...(cls.eventKind ? { event_kind: cls.eventKind, event_reason: cls.reason } : {}),
       ...(cls.reason && cls.kind !== 'event' ? { reason: cls.reason } : {}),
+      ...(cls.deliver ? { deliver: cls.deliver, deliver_from: cls.deliver_from } : {}),
       type: f.type.length > 200 ? f.type.slice(0, 200) + '…' : f.type,
       required: f.optional === false,
       ...((f.tags || []).length ? { tags: f.tags } : {}),

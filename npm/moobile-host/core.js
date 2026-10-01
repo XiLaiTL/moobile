@@ -249,12 +249,53 @@ function jsonPropAdapter(namespace, name, Base, keys) {
  *
  * 取值顺序：
  *   1. 直接命中（`mod['Form.Item']` —— 万一某个库真有这么个导出名）；
- *   2. 按 `.` 逐段下钻（`mod.Form` → `.Item`）。
+ *   2. 按 `.` 逐段下钻（`mod.Form` → `.Item`）；
+ *   3. **`viaDefault` 时从 `default` 上取**（见下）。
  * 取不到就返回 `undefined`，由调用方**点名报错**（不回落、不猜）。
+ *
+ * ## 第 3 条为什么存在（**类型定义会谎报导出**）
+ *
+ * `react-native-markdown-display` 的类型定义里写着 `export const Markdown: MarkdownStatic;`
+ * 而它的 JS **只有** `export default Markdown;`（具名导出那一串里没有 `Markdown`）。
+ * 于是"按类型定义生成的清单"与"运行时的模块命名空间"对不上：
+ *
+ *     moobile-host: registerLibrary("md") 里列了 `Markdown`，但模块里没有这个导出。
+ *
+ * ——这条是**真机上报出来的**（web/node 上 Metro 的 interop 恰好能看见具名导出，
+ * 所以这条错只在 RN 上露头；类型定义骗的是所有人，不只是我们）。
+ *
+ * ⚠️ 为什么不自动回落：`default` 上盲取等于**猜**，而猜错是"注册了另一个组件"，
+ *    症状比"启动即报错"坏得多。所以这个回落必须由人声明（`libgen.config.json` 的
+ *    `defaultExports`）—— 与 `content`（children 是不是原始字符串）同一条规矩：
+ *    **类型定义说不准的事，由人声明，声明错了就报错。**
  */
-function resolveExport(mod, name) {
+function resolveExport(mod, name, viaDefault = false) {
   if (!mod) return undefined;
   if (name in mod) return mod[name];
+  if (viaDefault) {
+    const d = mod.default;
+    if (d === undefined || d === null) return undefined;
+    const parts = name.split('.');
+    // ① `default` 上真有这个名字 —— CJS 的 `module.exports = { Button, … }` 经 ESM interop 后
+    //    就是这个形状（具名导出全挂在 `default` 上）。
+    let cur = d;
+    let hit = true;
+    for (const part of parts) {
+      const isObj = cur !== null && cur !== undefined && (typeof cur === 'object' || typeof cur === 'function');
+      if (isObj && part in cur) cur = cur[part];
+      else {
+        hit = false;
+        break;
+      }
+    }
+    if (hit && cur !== undefined) return cur;
+    // ② 声明说的是"**这个名字就是 default 导出**"（`export default Markdown` —— 它的名字
+    //    不在自己身上，`Mod.Markdown` 永远是 undefined）。
+    //    ⚠️ 只有单段名字能这么落：`Form.Item` 这种点号路径落到 default 本身没有意义，
+    //    真出错时报错比乱绑一个组件好。
+    if (parts.length === 1) return d;
+    return undefined;
+  }
   if (!name.includes('.')) return undefined;
   let cur = mod;
   for (const part of name.split('.')) {
@@ -277,10 +318,17 @@ export function registerLibrary(spec) {
     components,
     jsonProps = {},
     events = {},
+    // 「这个组件要从模块的 `default` 导出上取」（数组或映射都收）—— 由人来声明，
+    // 因为**类型定义会谎报导出**（`Markdown` 就是：类型里写着具名导出，JS 只有 default）。
+    // 详见 `resolveExport` 的说明：不自动回落，是因为盲取 `default` 是"猜"。
+    defaultExports = [],
     platforms,
     wrap,
     quiet = false,
   } = spec;
+  const viaDefault = new Set(
+    Array.isArray(defaultExports) ? defaultExports : Object.keys(defaultExports || {}),
+  );
   if (!namespace || typeof namespace !== 'string') {
     throw new Error('moobile-host: registerLibrary 需要 namespace（例如 "antd"）。');
   }
@@ -325,13 +373,16 @@ export function registerLibrary(spec) {
     }
     picked = {};
     for (const name of components) {
-      const value = resolveExport(mod, name);
+      const value = resolveExport(mod, name, viaDefault.has(name));
       if (value === undefined) {
         throw new Error(
           `moobile-host: registerLibrary("${namespace}") 里列了 \`${name}\`，但模块里没有这个导出。` +
             (name.includes('.')
               ? `\n  它是一个**复合子组件**（点号路径）：确认 \`${name.split('.')[0]}\` 上真的有 \`${name.split('.').slice(1).join('.')}\`。`
-              : ''),
+              : '') +
+            `\n  另一种常见原因：**类型定义说有具名导出，而 JS 里只在 \`default\` 上** ——` +
+            `\n  （实测：react-native-markdown-display 的 \`Markdown\` 就是这样）。确认之后在` +
+            `\n  \`libgen.config.json\` 里写 \`"defaultExports": ["${name}"]\` 再重跑 libgen。`,
         );
       }
       picked[name] = value;

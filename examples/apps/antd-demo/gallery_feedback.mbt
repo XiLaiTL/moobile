@@ -95,7 +95,9 @@ fn feedback_cells(model : Model, emit : @cmd.Emit[Msg]) -> Array[@html.Html] {
       ]),
     ]),
     cell("BackTop", [
-      @antd.back_top(visibility_height=100.0),
+      // 空 children：antd 的 `BackTop` 不给 children 时自己画那颗默认按钮（箭头），
+      // 而生成器现在**要求**传（它的类型是 `PropsWithChildren<…>`，洞一）。
+      @antd.back_top(visibility_height=100.0, ([] : Array[@html.Html])),
     ]),
     cell("FloatButton", [
       @antd.float_button(icon="★", description="浮球", type_="primary"),

@@ -587,6 +587,41 @@ class Resolver {
           const base = inner[0] ? inner[0].desc : null;
           return base ? { ...base, text: text } : { k: 'unresolved', text, why: 'nonnullable' };
         }
+        // ★ `PropsWithChildren<P>` —— **不是透明包装**：它比 `P` **多**一个 `children`。
+        //
+        // 2026-10-02 实测（就是把 markdown 组件交给生成器那次）：`PropsWithChildren` 原来
+        // **没有 case**（虽然它早就在 `WRAPPERS` 里），于是掉进 `default: unresolved` ——
+        // 后果很具体：`react-native-markdown-display` 的组件类型写成
+        //     type MarkdownStatic = ComponentType<PropsWithChildren<MarkdownProps>>;
+        // `ComponentType` 透明 → `PropsWithChildren<…>` 解不开 → 组件类型那条路断了 →
+        // `componentDeclaredProps` 拿到 null → **manifest 里根本没有 children** →
+        // 生成的 DSL 也就**没有地方放内容**（只能走 `attrs` 逃逸口）。
+        //
+        // ⚠️ 为什么"透明化"是错的：透明化会把 children 丢掉 —— 而 antd 那种把
+        //    `children?: ReactNode` **直接写在交叉类型里**的能认出来（同一个文件里
+        //    `Splitter` 的注释），恰好掩盖了这个漏法。两种写法在 React 生态里一样常见。
+        case 'PropsWithChildren': {
+          const base = inner[0] ? inner[0].desc : null;
+          const kids = {
+            k: 'fields',
+            fields: [
+              {
+                name: 'children',
+                optional: true,
+                type: 'ReactNode',
+                tags: [],
+                from: 'PropsWithChildren',
+              },
+            ],
+            origins: ['PropsWithChildren'],
+            text,
+          };
+          return base ? { k: 'inter', parts: [base, kids], text } : kids;
+        }
+        case 'PropsWithoutRef': {
+          // 真透明：它只是把 `ref` 去掉，不新增成员（与 `PropsWithChildren` 正好相反）
+          return inner[0] ? inner[0].desc : { k: 'unresolved', text, why: 'wrapper:PropsWithoutRef' };
+        }
         case 'LiteralUnion': {
           // antd 自己的：`LiteralUnion<T, U>` = T | (U & {}) —— 取第一个实参的分类即可
           return inner[0] ? inner[0].desc : { k: 'unresolved', text, why: 'literal-union' };

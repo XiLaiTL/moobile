@@ -130,6 +130,24 @@ else
   skip "组件库接入（antd 试金石）" "examples/apps/antd-spike/host/node_modules 没装（cd 进去跑 npm install）"
 fi
 
+# `libgen`（组件库 → MoonBit DSL + 宿主注册）**自己的规则** —— 假包探针，17 项。
+#
+# 为什么必须有这一条：生成器的产物是**两侧共同的承诺面**（MoonBit 的 `@antd.button(...)`
+# 与宿主注册表同源于一份 manifest），而此前**没有任何一条离线门**看得见生成器自己的规则 ——
+# antd 那条要装 antd、chat-app 那条要装 markdown 渲染器，都验不了
+# "哪一档算 children / 哪一档算原始字符串 / 拼错名字会不会报错"。
+#
+# 它在一个临时目录里手写一个假包（四个组件各代表一档规则）+ 四条负例：
+#   · 负例 A/B/D：`content` 里拼错组件名 / prop 名、`defaultExports` 里拼错名字 → 退出码 2 并**点名**；
+#   · 负例 C：**没声明**时不能自己变成原始字符串（挡住"把规则放宽成全都当原始字符串"）。
+# 宿主编（`defaultExports` 能不能真的从 `default` 上取到组件）用 stub 的 react 真 import 真注册。
+#
+# 它落地当天就抓到两个真 bug：
+#   · 清单条目是**逐字段重建**的，`children: string` 判出来的 `deliver: 'raw'` 被静默丢掉；
+#   · `defaultExports` 的第一版语义写错（"从 default 里找同名属性"，而 `export default Markdown`
+#     的名字不在自己身上）—— 后者连真机都验过一轮才定住。
+run "组件库生成器（libgen 探针，24 项）" node "$ROOT/tools/libgen_probe.mjs"
+
 # SSE（流式）通道 —— 试金石在 `examples/apps/sse-spike/`。
 #
 # 为什么必须有这一条：它是库里**第一个"一个请求、很多条消息"**的通道（`@http` 是一问一答），
@@ -157,8 +175,14 @@ fi
 #   · 判据自己 `moon build`（否则它在 CI 里永远只是 SKIP）。
 #
 # ⚠️ 它验的是 **web/node 那条传输**；真机那条（RN 的 XHR）要看 `device_check.mjs`。
+#
+# 判据里还带一条**生成物一致性**（`libgen --check`）：chat-app 的 markdown 组件是
+# `libgen` 从 `react-native-markdown-display` 的类型定义现生成的（`md/` 那三份产物），
+# 而"手改生成物"与"忘了重跑生成器"这两件事**必须红**（与 `gen_forwarders --check` 同规矩）。
 if [ -d "$ROOT/examples/apps/chat-app/node_modules" ]; then
-  run "真实应用（chat-app，21 项）" node "$ROOT/examples/apps/chat-app/verify.mjs"
+  run "组件库生成物一致（chat-app，libgen --check）" \
+    bash -c "cd '$ROOT/examples/apps/chat-app' && node '$ROOT/npm/moobile-host/bin/cli.js' libgen --check"
+  run "真实应用（chat-app，22 项）" node "$ROOT/examples/apps/chat-app/verify.mjs"
 else
   skip "真实应用（chat-app）" "examples/apps/chat-app/node_modules 没装（cd 进去跑 npm install）"
 fi

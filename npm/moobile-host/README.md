@@ -108,9 +108,24 @@ cd host && npx moobile-host libgen --check  # 只校验（进 CI：生成物被�
 而 `--check` 就是这件事的判据（任一侧被手改都会红）。产物路径与其余选项写在应用根的
 `libgen.config.json` 里（路径**相对该文件**，不必管命令是在哪一层跑的）。
 
+**两处「类型定义说不准」的声明**（都在 `libgen.config.json`，都会写进 manifest 并被 `--check` 守住）：
+
+```jsonc
+"content": ["Markdown"],          // 这个组件的 children 是**原始字符串**而不是子树
+"defaultExports": ["Markdown"],   // 这个名字**只在模块的 default 导出上**（类型定义谎报了具名导出）
+```
+
+两条都**不猜**：类型定义说不准的事由人声明，声明错了就**点名报错**（拼错的组件名 / prop 名
+在 `libgen` 阶段就退出码 2）。`children` 的类型本身写着 `string` 时会自动走"原始字符串"那档，
+不需要声明。为什么要分两档：字符串子节点到 RN 会变成 `<Text>` **元素**，
+而把 children 当数据用的组件（markdown 渲染器）拿到元素就抛 `Input data should be a String`。
+
 **为什么这个工具住在 npm 包里**：它的输入是 `.d.ts` 与 `node_modules`，只有 Node 侧拿得到。
 **它刻意不起 TypeScript**：浅解析（花括号配对 + 小解析器）在 antd 6.6.4 上能覆盖
-71 个组件 / 9317 个 prop，~~0.6s~~ 半秒左右跑完；解不开的会在报告里**逐条点名**，不是静默丢。
+71 个组件 / 9319 个 prop，半秒左右跑完；解不开的会在报告里**逐条点名**，不是静默丢。
+
+**它自己的规则也有离线门**：`node tools/libgen_probe.mjs`（在仓库里跑的假包探针，24 项，
+含四条负例；不装任何包、不联网）—— 接一个组件库之前，那些规则不该靠"下一手踩到"才知道。
 
 示例（真跑起来的）：[`examples/apps/antd-demo/`](../../examples/apps/antd-demo/) ——
 用生成的 DSL 把 antd 的 71 个组件全渲染出来，24 条判据。
@@ -128,10 +143,21 @@ registerLibrary({
   platforms: ['web'],                               // 平台闸门：不匹配**在启动时**报错
   jsonProps: { Table: ['columns', 'dataSource'] },  // 结构化 prop：宿主 JSON.parse 后交给组件
   events: { click: 'onClick' },                     // 事件落点（写进 events['antd:*']）
+  defaultExports: ['Markdown'],                     // 见下：类型定义谎报导出时用
   wrap: (el) => React.createElement(antd.ConfigProvider, null, el),   // Provider 包裹
 });
 export default mountApp(app);
 ```
+
+`defaultExports` 是**给"类型定义与 JS 不一致"用的**：有的包 `.d.ts` 里写着
+`export const Markdown: MarkdownStatic;`，而 JS 里 `Markdown` **只在 `default` 上**
+（`export default Markdown`）。这种名字直接按具名导出取会报
+`registerLibrary("md") 里列了 Markdown，但模块里没有这个导出`，把名字写进 `defaultExports`
+之后宿主就从 `mod.default` 取。⚠️ **不声明时不会自动回落** —— 盲取 `default` 是猜，
+猜错是"注册了另一个组件"，比启动即报错坏得多。
+
+⚠️ 这条错**只在真机（Hermes）上露头**：web/node 上打包器的 ESM interop 恰好看得见具名导出，
+所以"无头判据全绿"推不出"真机也对"。
 
 MoonBit 侧就是普通标签，只是名字带命名空间：
 

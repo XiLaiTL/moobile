@@ -58,6 +58,12 @@ function loadConfig(appDir, argv) {
       platforms: lib.platforms || ['web'],
       provider: lib.provider === undefined ? null : lib.provider,
       exclude: lib.exclude || [],
+      // `content`：哪些组件的 children 是**原始字符串**（而不是子节点）。
+      // 数组写法 = 都进 `children` prop；对象写法可以点名落点。见 manifest.js 的 `applyContent`。
+      content: lib.content || null,
+      // `defaultExports`：这些组件在 JS 里**只在 `default` 上**（类型定义谎报了具名导出）。
+      // 真事：react-native-markdown-display 的 `Markdown`；只在真机上露头（web 的 interop 能看见）。
+      defaultExports: lib.defaultExports || [],
       out: {
         manifest: (lib.out && lib.out.manifest) || `generated/${lib.namespace || 'antd'}.manifest.json`,
         host: (lib.out && lib.out.host) || `host/libraries.generated.js`,
@@ -96,6 +102,8 @@ function plan(cwd, argv) {
     platforms: lib.platforms,
     provider: lib.provider,
     exclude: lib.exclude,
+    content: lib.content,
+    defaultExports: lib.defaultExports,
     generatorVersion: GENERATOR_VERSION,
   });
   const hostText = emitHost(manifest, {});
@@ -208,8 +216,9 @@ function main(argv) {
   try {
     code = run(argv);
   } catch (err) {
-    // 预期内的失败（库没装 / 没有类型定义）给**能照着做**的话，不是堆栈。
-    if (err && (err.code === 'NO_PACKAGE' || err.code === 'NO_TYPES')) {
+    // 预期内的失败（库没装 / 没有类型定义 / 配置写错了）给**能照着做**的话，不是堆栈。
+    // `BAD_CONTENT` 同时覆盖 `content` 与 `defaultExports` 两处声明（同一种错：配置里的名字不存在）。
+    if (err && (err.code === 'NO_PACKAGE' || err.code === 'NO_TYPES' || err.code === 'BAD_CONTENT')) {
       console.error(err.message);
       process.exit(2);
     }

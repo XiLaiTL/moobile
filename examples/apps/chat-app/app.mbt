@@ -425,21 +425,25 @@ fn bubble_row(b : Bubble, streaming_tail : Bool) -> @html.Html {
           [
             @html.div(
               attrs=attrs(@style.Style::new().flex(1.0)),
-              // ⚠️ 文本走 **prop**，不走 children：我们的组件通道会把字符串子节点包成
-              //    `<Text>`（RN 的规矩），而 markdown 组件要的是裸字符串 —— 宿主侧 `App.js`
-              //    有一层适配把它接回 `children`。这条是**真机上才暴露**的（web 上字符串直接
-              //    就是字符串，看不出差别）。
+              // ★ 这里**以前是手写的 `@html.node("md:Markdown", …)` + 传给 prop 的一行文本**，
+              //   现在直接写生成出来的函数（`md/components.generated.mbt`）。
+              //
+              //   内容（`children`）是**原始字符串**：这个组件把 children 交给 markdown-it 解析，
+              //   所以它要的不是"节点"而是"字符串"。生成器不会猜这件事（它的类型写的是
+              //   `ComponentType<PropsWithChildren<MarkdownProps>>`，即 `children: ReactNode`
+              //   —— **类型在撒谎**），于是由 `libgen.config.json` 的 `content` 显式声明。
+              //   通道本身不需要宿主适配层：`prop_str("children", …)` 到宿主就是
+              //   `props.children === "…"`（原始 JS 字符串，不经过 `<Text>`）。
+              //
+              //   ⚠️ 反面是**字符串当子节点**传（`IsChildren for String` 那条路）：宿主侧收到的
+              //      是 `<Text>` 元素，markdown-it 当场抛 `Error: Input data should be a String`
+              //      （每个字符一次，界面上只是"AI 那条空着"）—— 这条在真机上复现过。
+              //      现在这条错**写不出来**：`children` 的参数类型就是 `String`，
+              //      而 `String` 会走内容通道，不会走子节点通道。
               @md.markdown(
                 merge_style=true,
-                // ⚠️ 内容走 **attrs 逃逸口**：生成器**没有**为这个组件生成内容参数 ——
-                //    它的内容是 React 的隐式 children，而包的类型里写成
-                //    `ComponentType<PropsWithChildren<MarkdownProps>>` 这种**泛型包裹**，
-                //    生成器只认"直接写在 props 接口里的 children"（antd 那种）。
-                //    这是生成器可以补的一个洞，见 FINDINGS。
-                attrs=attrs(@style.Style::new().font_size(15.0).color(c_ink)).prop_str(
-                  "markdown",
-                  b.text,
-                ),
+                attrs=attrs(@style.Style::new().font_size(15.0).color(c_ink)),
+                b.text,
               ),
             ),
             if streaming_tail {

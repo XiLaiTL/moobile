@@ -40,7 +40,7 @@
 
 | 门 | 命令 | 日期 | 结果 |
 |---|---|---|---|
-| 离线全集 | `bash tools/verify_all.sh` | 10-01 | **16 / 16 通过、0 失败、0 跳过**（约 20 秒；`--with-e2e` 再追加 Web 端到端 3 项，本轮未跑） |
+| 离线全集 | `bash tools/verify_all.sh` | 10-02 | **20 / 20 通过、0 失败、0 跳过**（`--with-e2e` 再追加 Web 端到端 3 项，本轮未跑）。10-02 新增两条门：**组件库生成器（`libgen` 假包探针，24 项）** 与 **chat-app 的生成物一致性（`libgen --check`）** |
 | ↳ 同一条命令，换成 **CI 那一代的工具链**（`0.1.20260920 (914d7da)`） | 先 `moon build --target js`，再 `MOON_HOME=.scratch/moonlatest` + 该工具链的 `bin` 进 PATH，跑 `bash tools/verify_all.sh` | 10-01 | **16 / 16 通过、0 失败、0 跳过** —— 「本机绿 ≠ CI 会绿」里**工具链漂移**那一半，第一次在本机被验掉（做法见 §4-8 与 FINDINGS 的 CI 收口补记） |
 | ↳ 换回工作区钉的 `0.1.20260827 (d0aaa07)` | 同上 | 10-01 | **16 / 16 通过、0 失败、0 跳过** —— 新旧**两代都绿**，这是「改法是安全的」的判据 |
 | ↳ 其中「lockfile 的 resolved URL 与包名一致」（**新增**） | `node tools/check_lockfile_urls.mjs` | 10-01 | 通过（8 份 lockfile、2088 个 `resolved` URL）。**立它的原因**：镜像源把两条 URL 写成了 404 的畸形路径（`expo-server` / `@expo/router-server`），而**任何新鲜克隆的 `npm install` 都会挂在它们上面**（本机因 node_modules 已存在而看不出来）。**已用诱饵证伪**：塞回一条坏 URL → 点名 + exit 1 |
@@ -76,8 +76,9 @@
 | 发布包里有哪些包 | `moon package --list` | 10-01 | 303 个文件；**`canvas/` 与 `gesture/` 各 3 个文件都在**，9 个公开包齐全（所以抬版本之后一发布就补上了 0.2.2 缺的那两块） |
 | **已发布 · 月亮包 0.3.0** | `bash tools/check_published.sh`（默认就跟 `moon.mod` 的版本走） | 10-01 | **通过**：9 个公开包 `✓ canvas ✓ cmd ✓ gesture ✓ html ✓ http ✓ sqlite ✓ style ✓ sub ✓ vendor/rabbita`；README 的 5 条 import 路径对着**线上这一版**编过；外部模块装得下来也编得过 |
 | **已发布 · 宿主包 0.3.0** | `npm pack moobile-host@0.3.0 --registry=https://registry.npmjs.org/` + 解包查 | 10-01 | 线上 tarball **35 个文件**；`lib/init.js` `lib/build.js` `bin/libgen.js` `template/moon.mod` `template/.gitignore` 全在；`core.js` 里 **`export const CONTRACT = 2`**（与月亮包 `host_contract_version` 同代） |
-| **真实应用（chat-app，无头）**（新增） | `node examples/apps/chat-app/verify.mjs`（自带假 OpenAI 服务 + 假 `MOBILE_HOST.db`；已接成 `verify_all.sh` 第 18 条门） | 10-02 | **21 / 21**：没有 key→设置页 · 保存→回聊 · 发送→**逐字长**（此刻 6 字而非一次 8 字）· 请求对（`Authorization` / `stream:true` / **不发空的助手占位**）· **重启历史还在** · 停止后服务端还在推而界面不涨 · 401 显示在界面上 · **200 的流里的错误帧**也算错 · 非 SSE 的 200（负例）· 清空（界面+库） |
-| **真实应用（chat-app，真机）**（新增） | `node examples/apps/chat-app/device_check.mjs`（要模拟器 + Metro 服务本工程；借已装的 debug 壳） | 10-02 | **17 / 17** —— 验的是**无头验不到的两件事**：① **RN 那条传输**（XHR 渐进；与 web 的 fetch 流是**两份代码**）；② **markdown 真的渲染出来了**：界面上读到 `AI | 标题一 | 这是粗体和行内代码。 | const a = 1; | • | 列表甲 | • | 列表乙` —— `#` / `**` / 反引号 / 围栏**全被吃掉**；流到一半时读到的正是 `AI | 标题一 | 这是** | ▍ | 生成中…` |
+| **真实应用（chat-app，无头）**（新增） | `node examples/apps/chat-app/verify.mjs`（自带假 OpenAI 服务 + 假 `MOBILE_HOST.db`；已接成 `verify_all.sh` 的门） | 10-02 | **22 / 22**：没有 key→设置页 · 保存→回聊 · 发送→**逐字长**（此刻 4 字而非一次 8 字）· 请求对（`Authorization` / `stream:true` / **不发空的助手占位**）· **重启历史还在** · 停止后服务端还在推而界面不涨 · 401 显示在界面上 · **200 的流里的错误帧**也算错 · 非 SSE 的 200（负例）· 清空（界面+库）。10-02 新增第 22 条：**★ markdown 组件收到的是原始字符串**（读 `md:Markdown` 元素的 `props.children` **类型**；"渲染成什么样"只有真机/浏览器验得到） |
+| **组件库生成器（`libgen` 假包探针）**（新增） | `node tools/libgen_probe.mjs`（临时目录手写假包 + 四条负例；已接成 `verify_all.sh` 的门，**离线、不装任何包**） | 10-02 | **24 / 24** —— 生成器的规则第一次有离线门看得见：洞一（`PropsWithChildren` 认得出 / `PropsWithoutRef` 透明）· 洞二（`children: string` 自动 raw、`content` 声明 raw、没声明**不会**自己 raw）· `defaultExports` 两侧都通（宿主编用 stub react 真 import 真注册）· 负例 A/B/D（拼错的组件名 / prop 名 → 退出码 2 且点名）· 负例 C（挡住"规则放宽成全都当原始字符串"）。**落地当天抓到两个真 bug**（详见 FINDINGS） |
+| **真实应用（chat-app，真机）**（新增） | `node examples/apps/chat-app/device_check.mjs`（要模拟器 + Metro 服务本工程；借已装的 debug 壳） | 10-02 | **17 / 17** —— 验的是**无头验不到的两件事**：① **RN 那条传输**（XHR 渐进；与 web 的 fetch 流是**两份代码**）；② **markdown 真的渲染出来了**：界面上读到 `AI | 标题一 | 这是粗体和行内代码。 | const a = 1; | • | 列表甲 | • | 列表乙` —— `#` / `**` / 反引号 / 围栏**全被吃掉**；流到一半时读到的正是 `AI | 标题一 | 这是** | ▍ | 生成中…`。⚠️ 这一轮它**先红了一次**（`registerLibrary("md") 里列了 Markdown，但模块里没有这个导出`）—— 真因是**类型定义谎报了导出**，只有真机看得见，见 FINDINGS |
 | **干净机器（**registry 版**）** —— 本轮最重要的一条 | `npx moobile-host@0.3.0 init hello --name hello` → `npm install` → `npm run build` → `npx expo start --web` → 真 Chrome 断言（`s1-local-run/probe-web.mjs`） | 10-01 | **9 / 9**：生成 11 个文件（**含 `.gitignore`**）→ 装到 **488 个包**（`moobile-host@0.3.0` 就是本项目自己那份）→ `moon build --target js` 用的是**线上** `XiLaiTL/moobile@0.3.0` → `moobile-host build` 出 `moobile.js` **629 KB** → Metro 服务的就是这个工程（`<title>hello</title>`）→ 浏览器：标题「待办」/ 计数「还有 0 件」/ 输入回灌 / 点「添加」→「还有 1 件」/ 列表出现 / 输入框清空 / **全程无 console 错误** |
 | ↳ 同一轮里的**镜像延迟**（不是包的问题） | `npm install`（默认源 = npmmirror） | 10-01 | **失败**：`notarget No matching version found for moobile-host@^0.3.0` —— 官方源上已有、镜像未同步。已触发按需同步（`PUT https://registry.npmmirror.com/-/package/moobile-host/syncs` → `state: waiting`）；改走官方源后安装成功（488 包 / 4 分钟） |
 | **发布后核对（扩成两个包）** | `bash tools/check_published.sh`（第 6 段是 10-01 新加的） | 10-01 | **通过**：月亮包 9 个公开包齐 + README 路径成立；宿主包线上 `latest = 0.3.0` 与工作区一致、12 个用户路径文件全在（tarball 35 个）；**契约对账 `月亮包 2 = 宿主包 2`**。⚠️ 这一条补上的是 `docs/design/SCAFFOLD.md` §6.1 早就点名的缺口（"npm 那一半从来没有发布后验"） |
@@ -112,7 +113,7 @@
 | **C 回归** | 安卓断言脚本、离线入口（15 项）、CI、**C0 宿主可替换性验证（09-21 ✅ 实测）** | **C2 那条"干净机器"的完整判据要等发版**（见 §1/§4） | §3.4 |
 | **H 接入收敛** | 宿主收成 npm 包、单导出、注册表生成、fail-fast、契约校验 | H3（可选，已降级） | §3.7 |
 | **N 原生能力** | `Cmd`/`Sub` 接线、真能力样板（expo-sqlite）、`@sub.every` 两端验过、**N2 能力通道两层都验过（`MOBILE_HOST.native` + `visibility`）**、**N5a 平台矩阵（29 API × 平台 × 失效形态，已进门禁）**、**N5b 3/4 有结论，其中 `on_visibility_change` 与 `on_resize` 真机验过（后者断言精确数值）** | N4 后半（`custom_sub` + 退订）、N6 文档、`clipboard`/`nav`/`dialog` 的处置（卡决策点 17） | §3.6 |
-| **I 生态接入** | 机制 + I1 事件载荷 + I2/I3/I5 生成器（三份产物同源、`--check` 可 diff） | **I7 真浏览器样式**、I6 样式交集量化、I4 平台矩阵 | §3.8 |
+| **I 生态接入** | 机制 + I1 事件载荷 + I2/I3/I5 生成器（三份产物同源、`--check` 可 diff）、**生成器自己的规则有了离线门（假包探针 24 项）**、**两处「类型定义撒谎」由声明兜住**（`content`：children 是原始字符串；`defaultExports`：名字只在 default 上）、**一个真实 RN 组件库接进来了**（`react-native-markdown-display`，无头 22/22 + 真机 17/17，宿主侧零手写） | **I7 真浏览器样式**、I6 样式交集量化、I4 平台矩阵 | §3.8 |
 | **E 脚手架** | 模板唯一真源、`init`、`build`（发现产物）、**三条离线门（模板 / 承载真应用 / 同源 T1）**、**打包形态门**（`package_check`，发布前跑；09-21 抓起 npm 解包改名那个 bug） | **发一版带 `init` 的宿主包**、`doctor`、E5/E6/E7、E8 接线 | §3.9 |
 | **CAN 画布通道** | 设计定案（**不新开通道**：组件通道 + `prop_json`）、库包 `canvas/`（18 条指令 + `OpCtx` + `canvas()`）、宿主包两个入口（`canvas-ops` 纯翻译器 / `canvas-skia` React 桥）、本机真 Skia 验证 32 项、跨语言对账：载荷**逐字节相同** | **真机**（`<Canvas>` 挂载 + 文字字形，要 prebuild + 重建 APK）、**手势**（P3 T3.4）、**坐标换算/devicePixelRatio**（T3.5）、性能基线（D 轨道） | §3.6 补记 + [`design/DESIGN.md`](design/DESIGN.md) 阶段 4 |
 | **GES 手势通道** | 库包 `gesture/`（`Gesture` + `Phase` + `attrs`/`pan`/`tap`）、宿主包 `gesture-rn.js`（**默认装载**，PanResponder、零新依赖）、**契约的不变量 4 条**（`start` 恰一次且在最先 / 起点 `dx=0` / 全程同一参照系 / `cancel` = 这次不算）、web 试金石 **40/40**（含边界 20 项）、真机 `gesture-edges` **18/18** | **多指 / pinch / rotate**（`pointers` 已**诚实报数**、`dx` 锁第一指，但真机多指没验 —— `adb shell input` 只能发单指）、iOS、**元素自身在拖动中移动时 `x/y` 怎么解释**（契约未写）、"JS 线程忙时的手感" | §3.6 / §7-19 |
@@ -163,6 +164,24 @@
    画布是**可选特性**（要原生依赖），按"库优先"它该有自己的示例应用，不该进模板。
    见 [`FINDINGS.md`](FINDINGS.md) 的真机补记与 `examples/apps/canvas-spike/host/device_check.mjs`。
 
+> 2026-10-02 新增（M3 手机 LLM 聊天应用 + 组件库生成器补洞）：
+> · **一个真实的 RN 组件库接进来了，宿主侧零手写**：`react-native-markdown-display`
+>   （LLM 的回复基本都是 markdown）。以前 `App.js` 里有一段手写 `registerLibrary` +
+>   `({markdown, ...rest}) => createElement(Markdown, rest, …)` 适配层，现在**整段没有了** ——
+>   接一个组件库 = 写 `libgen.config.json` + 跑一条命令。判据：无头 **22/22**、真机 **17/17**。
+> · **两处「类型定义在撒谎」由声明兜住**（这是这一轮最有复用价值的东西）：
+>   `content`（children 是**原始字符串**而非子树）与 `defaultExports`（名字**只在 default 上**）。
+>   两处都**不猜**：类型说不准就由人声明，声明错了就报错并指出怎么改。机制与真因见
+>   [`FINDINGS.md`](FINDINGS.md) 的 10-02 补记。
+> · **生成器自己的规则第一次有离线门**：`tools/libgen_probe.mjs`（假包 + 四条负例，**不装任何包**）
+>   已进 `verify_all.sh`。它落地当天就抓到两个真 bug（一个"清单字段被静默丢掉"、
+>   一个 `defaultExports` 的语义写错）。⚠️ 它也是**唯一一条在 CI 上真的会跑**的组件库门
+>   （antd / chat-app / sse 那几条在 CI 上是 SKIP，理由与下面的空白一致）。
+> · ⚠️ **仍未验（别读大）**：markdown 只在 **Android 模拟器**上验过（**iOS 从未跑过**、
+>   web/RNW 上的渲染没验）；chat-app 用的是**借来的 debug 壳**（`com.anonymous.host`），
+>   **它自己的 APK 没编过**；`antd-demo` 的 `libgen:check` 与 24 项宿主判据**不在离线门里**
+>   （要装 antd，靠人手动跑 `cd examples/apps/antd-demo/host && npm run check`）。
+>
 > 2026-10-01 新增两条：
 > · **CI（C3）此前从未运行过，且按原写法永远不可能绿**：提交一直没推出去，GitHub 不会跑远端没有的工作流；
 >   一推上去两次都是 `failure`，而本机同一个命令全绿。真因是它**漏了"新克隆"的第一步** ——

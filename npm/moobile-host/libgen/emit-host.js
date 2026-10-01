@@ -37,6 +37,7 @@ function emitHost(manifest, opts = {}) {
   const platforms = manifest.host.platforms || [];
   const events = manifest.host.events || {};
   const jsonProps = manifest.host.jsonProps || {};
+  const defaultExports = manifest.host.defaultExports || [];
   const exportName = opts.exportName || `register${ns[0].toUpperCase()}${ns.slice(1)}`;
 
   const L = [];
@@ -67,6 +68,12 @@ function emitHost(manifest, opts = {}) {
   }
   L.push('    ],');
   L.push(`    platforms: [${platforms.map((p) => `'${p}'`).join(', ')}],`);
+  if (defaultExports.length) {
+    L.push('    // ⚠️ 这几个名字**只在模块的 `default` 导出上**（类型定义说有具名导出，JS 里没有）：');
+    L.push('    //    这是人声明的（libgen.config.json 的 defaultExports），因为类型定义看不出来。');
+    L.push('    //    不声明的话宿主**不会**回落，而是启动即报错（那样才知道是哪里不对）。');
+    L.push(`    defaultExports: [${defaultExports.map((n) => `'${n}'`).join(', ')}],`);
+  }
   L.push('    // 结构化 prop（MoonBit 侧用 `prop_json` 传 JSON 文本，宿主这里 JSON.parse 后交给组件）');
   L.push('    jsonProps: {');
   for (const name of Object.keys(jsonProps).sort()) {
@@ -78,7 +85,9 @@ function emitHost(manifest, opts = {}) {
     L.push('      ],');
   }
   L.push('    },');
-  L.push(IDENTITY_EVENTS_NOTE.replace(/^/gm, '    ').trimStart());
+  // ⚠️ 别在这里 `.trimStart()`：注释块**每一行**（含第一行）都要落在 `events:` 那一层的
+  //    缩进上，trim 掉首行会让它贴到第 0 列、读起来像被注释掉的代码而不是说明。
+  L.push(IDENTITY_EVENTS_NOTE.replace(/^/gm, '    '));
   L.push('    events: {');
   const evNames = Object.keys(events).sort();
   for (let i = 0; i < evNames.length; i += 5) {

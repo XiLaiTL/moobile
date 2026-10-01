@@ -135,10 +135,20 @@ function emitMoonbit(manifest, opts = {}) {
     paramTotal += params.length;
     // 子组件在"没解到 props 接口"时**默认接受 children**：复合子组件基本都是容器
     // （`Layout.Header` / `Card.Grid` / `Typography.Title`），不给 children 反而没法用。
-    const hasChildren =
-      unit.isSub && !comp.props_interface
+    const childInfo =
+      comp.props.children && comp.props.children.kind === 'children' ? comp.props.children : null;
+    // **原始字符串内容**（`deliver: 'raw'`）：内容进一个 prop，而不是当子节点渲染。
+    // 为什么必须分两种（真机实测，见 manifest.js 的 `childrenDeliveryOf`）：字符串子节点
+    // 会渲染成 RN 的 `<Text>` **元素**，而把 children 当数据用的组件（markdown-it）拿到元素就崩。
+    // ⚠️ 它**不需要宿主适配层**：`prop_str` 的值原样进 props，`children` 这个键落在
+    //    `createElement(tag, props)` 的 props.children 上 —— 就是那个原始 JS 字符串。
+    const rawContent = childInfo && childInfo.deliver === 'raw' ? childInfo : null;
+    const contentProp = rawContent ? rawContent.prop || 'children' : null;
+    const hasChildren = rawContent
+      ? true
+      : unit.isSub && !comp.props_interface
         ? true
-        : !!(comp.props.children && comp.props.children.kind === 'children');
+        : !!childInfo;
 
     const L = [];
     L.push('///|');
@@ -157,6 +167,14 @@ function emitMoonbit(manifest, opts = {}) {
       L.push('/// ⚠️ 这个子组件**没找到 props 接口**（生成器只在它自己的模块里找，不跨组件猜）——');
       L.push('/// 于是只有 `attrs?`：prop 得手写（`@html.Attrs::build().prop_str(…)`），没有编译期检查。');
     }
+    if (rawContent) {
+      L.push('///');
+      L.push('/// ⚠️ 这个组件的 `children` 是**原始字符串**（不是子树）：参数写成 `children : String`，');
+      L.push(`/// 落到宿主侧的 \`${contentProp}\` prop（判据：\`${rawContent.deliver_from}\`）。`);
+      L.push('/// 为什么不能给子节点：MoonBit 的字符串子节点会渲染成 `<Text>` **元素**，而把 children');
+      L.push('/// 当数据用的组件拿到元素就崩（实测：markdown-it 报 `Input data should be a String`，');
+      L.push('/// 且**每个字符一次**）。传进来的字符串原样就是组件拿到的那份内容。');
+    }
     const unc = comp.unresolved_extends || [];
     if (unc.length) {
       L.push('///');
@@ -165,20 +183,28 @@ function emitMoonbit(manifest, opts = {}) {
     }
     // ⚠️ `fn` 与函数名之间的空格不是排版问题：`pub fnalert(` 是 parse error 的来源。
     //    两种形态分别是 `pub fn[C : …] name(` 与 `pub fn name(` —— 别把空格也一起条件化。
-    const sigHead = hasChildren ? 'pub fn[C : @html.IsChildren] ' : 'pub fn ';
+    //    ★ 原始字符串内容**不带 `IsChildren` 约束**：那个参数是 `String`，不是子节点。
+    const sigHead = hasChildren && !rawContent ? 'pub fn[C : @html.IsChildren] ' : 'pub fn ';
     L.push(`${sigHead}${fnName}(`);
     for (const p of params) L.push(`  ${p.name}? : ${p.decl},`);
     L.push('  attrs? : @html.Attrs,');
-    if (hasChildren) L.push('  children : C,');
+    if (hasChildren) L.push(rawContent ? '  children : String,' : '  children : C,');
     L.push(') -> @html.Html {');
     // ⚠️ 没有参数时不能写 `mut`：本仓库把 `unused_mut` 当**错误**（不是警告），
     //    而"只有 attrs?"的组件（子组件里最常见）确实一次都不改 `a`。
-    L.push(params.length ? '  let mut a = match attrs {' : '  let a = match attrs {');
+    //    ★ 原始字符串内容会改 `a`（内容那一行），所以它也要求 `mut`。
+    L.push(params.length || rawContent ? '  let mut a = match attrs {' : '  let a = match attrs {');
     L.push('    Some(x) => x.copy()');
     L.push('    None => @html.Attrs::build()');
     L.push('  }');
     for (const p of params) L.push(`  a = ${p.setter}(a, ${p.arg}, ${p.name})`);
-    L.push(`  @html.node("${unit.tag}", a, ` + (hasChildren ? 'children)' : '([] : Array[@html.Html]))'));
+    // 内容那一行写在参数**之后**：它走的是同一个 `prop_str` 通道，但语义是"组件的内容"
+    // 而不是"组件的一个属性"，写在最后读起来才是"属性都填好了，再放内容"。
+    if (rawContent) L.push(`  a = a.prop_str("${contentProp}", children)`);
+    L.push(
+      `  @html.node("${unit.tag}", a, ` +
+        (hasChildren && !rawContent ? 'children)' : '([] : Array[@html.Html]))'),
+    );
     L.push('}');
     L.push('');
     blocks.push(L.join('\n'));
@@ -198,7 +224,7 @@ function emitMoonbit(manifest, opts = {}) {
   head.push(`// @${ns}.input(value=model.draft, on_change=e => emit(SetDraft(e.text())))`);
   head.push('// ```');
   head.push('//');
-  head.push('// ## 四条边界（都是实测的，不是猜测）');
+  head.push('// ## 五条边界（都是实测的，不是猜测）');
   head.push('//');
   head.push('// 1. **写错 prop 名 = 编译错误**（这正是生成这套东西的主要收益）。');
   head.push('// 2. 名字**必须小写**：`pub fn Button(...)` 是 parse error（大写开头是类型名）。');
@@ -210,6 +236,10 @@ function emitMoonbit(manifest, opts = {}) {
   head.push('//    · 没生成的 prop（React 公共属性的长尾、`aria-*`、`data-*`）→ `attrs=@html.Attrs::build().prop_str(...)`；');
   head.push('//    · 信号事件想读载荷（例如 `onKeyDown` 的按键）→ `attrs=@html.Attrs::build().on_raw("onKeyDown", …)`；');
   head.push('//    · 继承链解不开的基类 prop 也只能这么写。');
+  head.push('// 5. **`children` 有两种形态**：默认是子节点（`children : C`，`C : @html.IsChildren`），');
+  head.push('//    而"把 children 当数据用"的组件（markdown 渲染器这类）是**原始字符串** ——');
+  head.push('//    那些函数的参数写成 `children : String`，字符串原样落到组件的 prop 上。');
+  head.push('//    哪些组件属于后者写在 manifest 的 `content` 里（类型定义多半看不出这件事）。');
   head.push('//');
   head.push(`// 底层仍然是"字符串标签 + 命名空间"（\`@html.node("${ns}:X", …)\`）：`);
   head.push('// 生成器只是把这层写法抹掉了。名字指向哪个真实实现，仍然由宿主注册表决定 ——');

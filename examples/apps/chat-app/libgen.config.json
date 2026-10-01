@@ -8,13 +8,32 @@
     "out 里的路径**相对本文件**（应用根），不是相对 cwd。",
     "",
     "⚠️ 这是 2026-10-02 的**一次实测**：把 markdown 渲染器也交给生成器，",
-    "   看它能不能直接产出函数化支持（`@md.markdown(...)`），而不是我们手写 node(...)。"
+    "   看它能不能直接产出函数化支持（`@md.markdown(...)`），而不是我们手写 node(...)。",
+    "",
+    "`content`：这个组件的 children 是**原始字符串**（内容），不是子树。",
+    "  为什么必须由人说：它的类型写的是 `ComponentType<PropsWithChildren<MarkdownProps>>`",
+    "  （children: ReactNode），而运行期把 children 交给 markdown-it —— **类型在撒谎**，",
+    "  生成器没有线索识破。若不声明，字符串子节点会变成 `<Text>` 元素，",
+    "  真机上报 `Input data should be a String`（每个字符一次）。",
+    "  ⚠️ 这不是「多一个口子」：原始字符串这条通道**不需要宿主适配层**，",
+    "  它就是这个组件的 `children` prop（`prop_str` 的值原样进 props）。",
+    "",
+    "`defaultExports`：这个组件在 JS 里**只在 default 导出上**。",
+    "  又是类型定义在撒谎：`index.d.ts` 写着 `export const Markdown: MarkdownStatic;`，",
+    "  而 `src/index.js` 里具名导出那一串**没有** Markdown（只有 `export default Markdown`）。",
+    "  于是生成的 `components: ['Markdown']` 在真机上直接抛",
+    "    `moobile-host: registerLibrary(\"md\") 里列了 Markdown，但模块里没有这个导出`",
+    "  —— web/node 上 Metro 的 interop 恰好看得见它，所以这条**只在真机露头**。",
+    "  ⚠️ 宿主**不会**自动回落到 default（那是猜，猜错就是注册了另一个组件），",
+    "    必须由这里声明；声明错了同样报错。"
   ],
   "libraries": [
     {
       "namespace": "md",
       "package": "react-native-markdown-display",
       "platforms": ["android", "ios", "web"],
+      "content": ["Markdown"],
+      "defaultExports": ["Markdown"],
       "out": {
         "manifest": "generated/md.manifest.json",
         "host": "libraries.generated.js",

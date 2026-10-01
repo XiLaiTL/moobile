@@ -3667,8 +3667,9 @@ npm run libgen:check    # 校验没被手改（本应用已接）
 | `md/components.generated.mbt` | 类型化 DSL：`@md.markdown(rules?, merge_style?, debug_print_tree?, on_link_press?, attrs?)` |
 | `md/moon.pkg` | 生成的包声明（含"为什么必须 `+js`"的说明） |
 
-**已经用起来了**：`app.mbt` 现在写 `@md.markdown(merge_style=true, attrs=…prop_str("markdown", …))`
-—— 类型化的 prop + 逃逸口。**无头 21/21、真机 17/17**（换调用方式之后两套都重跑过）。
+**已经用起来了**（⚠️ 这是**当轮**的写法，下面那条补记把它换掉了）：`app.mbt` 当时写
+`@md.markdown(merge_style=true, attrs=…prop_str("markdown", …))` —— 类型化的 prop + 逃逸口。
+**无头 21/21、真机 17/17**（换调用方式之后两套都重跑过）。
 
 #### 洞：`children` 藏在**泛型包裹**里，生成器认不出来
 
@@ -3701,6 +3702,135 @@ export const Markdown: MarkdownStatic;
 需要的新概念是"**内容走某个具名 prop**"（在 `libgen.config.json` / manifest 里声明），
 而不是"认出 children"。
 
-⚠️ 现状记账：`libraries.generated.js` **目前没有被 `App.js` 使用** —— 因为生成的那份注册会
-把适配层丢掉（`App.js` 里手写的那层才是把内容接到 children 的地方）。生成物留着是为了
-`libgen:check` 能继续守着清单；**要让它变成真身，得先补上面那个概念。**
+⚠️ 现状记账（**2026-10-02 已解决，见下一条补记**）：当时 `libraries.generated.js` 没有被
+`App.js` 使用 —— 因为生成的那份注册会把适配层丢掉，而生成器还缺"内容走某个具名 prop"这个概念。
+下面那条补记把这个概念补上了（而且发现**根本不需要宿主适配层**）。
+
+---
+
+## 补记（把那个洞补上：**两处「类型定义在撒谎」**，2026-10-02）
+
+上一条补记停在"生成器缺一个新概念"。这一轮把它补齐了，过程里又撞上**第二处撒谎**
+（而且它只在真机上露头）。两份洞的落地方式刻意不同，理由在下面。
+
+### 洞一：`PropsWithChildren` **不是**透明的（`PropsWithoutRef` 才是）
+
+`resolve.js` 的 `WRAPPERS` 里早就列着 `PropsWithChildren` / `PropsWithoutRef`，
+但 `switch` 里**没有 case** → 掉进 `default: unresolved` → "组件类型那条路断了"。
+修法是在**一处**归一化（不是在调用点打补丁）：
+
+| 包装 | 语义 | 处理 |
+|---|---|---|
+| `PropsWithChildren<P>` | `P & { children?: ReactNode }` | **加**一个 `children` 字段（`from: 'PropsWithChildren'`） |
+| `PropsWithoutRef<P>` | 只是去掉 `ref` —— 对 props 面**无影响** | **透明**（返回 `P`） |
+
+⚠️ 别把两者一起"透明化"：那样 `children` 会**静默消失**，而症状是"生成的函数没有内容参数"。
+
+**波及面是实测出来的，不是推出来的**：重跑 `antd-demo` 之后，`Skeleton` / `BackTop`
+这两个"以前看起来没有 children"的组件真的多出了 `children : C`，于是 demo 里两处调用**编不过**：
+
+```
+Error: [4080] @antd.skeleton(active=true, paragraph=json_skeleton),
+  which requires 1 positional arguments, but is given 0 positional arguments.
+```
+
+补上既有的空 children 写法 `([] : Array[@html.Html])` 即可。
+⇒ **这就是 `antd-demo` 作为试金石的价值**：它 71 个组件、几百处调用，改一处解析规则就会红，
+而红的地方是**编译期**（不是"某天渲染时发现少了东西"）。
+
+### 洞二：`content` 声明 —— 而且**不需要宿主适配层**
+
+上一条补记的结论是"宿主侧套一层适配不是绕路，而是对的层"。**实测下来它是多余的一层。**
+
+原因在渲染路径上（`render.mbt`）：
+
+```
+props.props_map() 的键**原样**进 JS 对象（render_props 不筛键）
+  → js_create_element(comp, props, ...children)
+```
+
+于是 `Attrs::prop_str("children", "# 标题")` 到宿主就是 `props.children === "# 标题"`
+（**原始 JS 字符串**），而 `createElement` 在**没有位置参数 children** 时不会覆盖它
+—— 也就是"内容走 prop"，与"内容走子节点"（`VNode::Text` → RN 的 `<Text>` 元素）是**两条路**。
+
+所以补的东西只有"**声明**"：
+
+```jsonc
+// libgen.config.json
+"content": ["Markdown"]                  // 内容进 `children` prop（默认落点）
+"content": { "Fancy": "text" }           // 也可以点名落点 prop
+```
+
+⇒ manifest 的 `components.Markdown.props.children = {kind:'children', deliver:'raw', prop:'children',
+deliver_from:'config:content'}`，生成物写成 `children : String` + `a.prop_str("children", children)`。
+
+**为什么不猜**：判据有两档 —— ① 类型说 `children: string` → 自动 `deliver:'raw'`（无需声明）；
+② **类型在撒谎**（这个包写的是 `ComponentType<PropsWithChildren<MarkdownProps>>`，即
+`children: ReactNode`，运行期却把它交给 markdown-it）→ 只能由人声明。
+猜错的下场就是上一条补记里那个：组件内部报一句与 prop 无关的错。
+
+### 第二处撒谎：`Markdown` **只在 `default` 上**（只在真机露头）
+
+洞二修好之后，**无头 22/22 全绿**，而真机直接红：
+
+```
+[runtime not ready]: Error: moobile-host: registerLibrary("md") 里列了 `Markdown`，但模块里没有这个导出。
+```
+
+真因是第三个"类型定义与 JS 不一致"：`index.d.ts` 写着 `export const Markdown: MarkdownStatic;`，
+而 `src/index.js` 里具名导出那一串**没有** `Markdown`（只有 `export default Markdown`）。
+
+⇒ 为什么无头判据看不见：**web/node 上 Metro/Babel 的 interop 恰好能看见具名导出**，
+Hermes 上看不见。这与手势那条通道是同一类分工（"web 上验过 ≠ 真机也能跑"）。
+
+修法沿用同一条规矩（**类型说不准的事由人声明，声明错了就报错**）：
+
+```jsonc
+"defaultExports": ["Markdown"]           // 这个名字**就是**模块的 default 导出
+```
+
+⚠️ 宿主**刻意不自动回落**到 `default`：那是猜，猜错是"注册了另一个组件"（比启动即报错坏得多），
+所以没声明时照旧点名报错，并且报错里**指路**这个配置项。
+
+⚠️ 第一版语义还写错了（值得记）：我实现成"从 `default` 里找**同名属性**"，
+而 `export default Markdown` 的组件**名字不在自己身上** —— 声明写了、错照旧。
+**真机跑了第二轮才定住**。最终语义是两条：① `default` 上真有这个名字 → 取它（CJS
+`module.exports = {…}` 的 interop 形状，含 `Form.Item` 这种点号路径）；
+② 单段名字且取不到 → **这个名字就是 default 本身**。
+
+### 为什么必须有一条**假包探针**（`tools/libgen_probe.mjs`，24 项）
+
+生成器自己的规则（哪一档算 children / 哪一档算原始字符串 / 拼错名字会不会报错）
+此前**没有任何一条离线门看得见**：antd 那条要装 antd、chat-app 那条要装 markdown 渲染器。
+于是它在临时目录里手写一个假包（四个组件各代表一档规则）+ **四条负例**，全程离线。
+
+**它当天就抓到两个真 bug**，而且两个都是"静的"：
+
+1. **清单条目是逐字段重建的**（`buildComponentProps` 里 `props[name] = {kind: cls.kind, …}`），
+   `classify` 新加的 `deliver` / `deliver_from` **被静默丢掉** —— 于是 `children: string`
+   明明判成了 raw，产物却仍按子节点发。症状在真机上，离生成器隔着整个流水线。
+2. 上面那条 `defaultExports` 的语义错误（`default[name]` vs `default` 本身）。
+
+⇒ 探针里那条**负例 C**（没声明时 `children` 必须仍走子节点）是主判据：
+没有它，"把规则放宽成全都当原始字符串"也能全绿，而真实后果是**普通组件的子树全被塞进一个 prop**。
+
+### 判据侧的两个自省（都不是应用的问题）
+
+1. **无头判据"只读元素树、从不渲染"** —— 所以往替身组件（`md:Markdown` 的 stub）里塞断言是
+   **假的**：那个函数根本不会被调用（第一版就是这么写的，得到"0 次渲染"）。
+   要看"内容以什么形态到达"，只能读**元素的 props**，而"哪个元素是 markdown 组件"的判据是
+   **注册进 `MOBILE_HOST.components` 的那个对象本身**（别按名字猜：jsonProps 会给它套一层适配器）。
+2. **`fnBody` 的正则要认 `pub fn[C : @html.IsChildren] name(`** —— 名字前面挂着 trait 约束。
+   第一版按 `pub fn <名字>(` 找，"带 children 的函数找不到"被当成了"生成器没生成它"，
+   差点去改生成器。**判据自己的盲点与生成器的 bug 长得一模一样**，所以这类"取函数体"的助手
+   要能同时认两种签名。
+
+### 判据
+
+| 门 | 分数 | 说明 |
+|---|---|---|
+| `tools/libgen_probe.mjs` | **24/24** | 假包 + 四条负例 + 宿主编（stub react 真注册）；离线、进 `verify_all.sh` |
+| chat-app 无头 | **22/22** | 新增一条：`md:Markdown` 元素的 `props.children` 类型必须是 `string` |
+| chat-app 真机 | **17/17** | markdown 真渲染（`**` / 围栏 / 列表都被吃掉 = 真解析了字符串） |
+| `antd-demo` | **24/24** + `libgen --check` | 洞一的重生成本身把它撞红过，修好后两套都对 |
+

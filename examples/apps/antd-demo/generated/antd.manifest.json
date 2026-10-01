@@ -1,7 +1,7 @@
 {
   "$generator": {
     "tool": "moobile-host libgen",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "manifest_version": 1
   },
   "library": {
@@ -15,6 +15,7 @@
       "web"
     ],
     "provider": "ConfigProvider",
+    "defaultExports": [],
     "jsonProps": {
       "Affix": [
         "style"
@@ -1109,14 +1110,14 @@
   },
   "counts": {
     "components": 71,
-    "props": 9317,
+    "props": 9319,
     "kinds": {
       "num": 791,
       "json": 727,
       "event": 2455,
       "str": 3730,
       "internal": 459,
-      "children": 97,
+      "children": 99,
       "reactnode": 204,
       "unsupported": 195,
       "bool": 659
@@ -3167,6 +3168,10 @@
           "required": false,
           "from": "BackTopProps@es/back-top/index.d.ts",
           "exposed": true
+        },
+        "children": {
+          "kind": "children",
+          "from": "component-type"
         }
       },
       "props_interface": "BackTopProps",
@@ -56449,6 +56454,10 @@
         "styles": {
           "kind": "internal",
           "reason": "internal-name"
+        },
+        "children": {
+          "kind": "children",
+          "from": "component-type"
         }
       },
       "props_interface": "SkeletonProps",
@@ -81975,6 +81984,7 @@
       "unsupported_count": 0
     }
   },
+  "content": {},
   "report": {
     "notes": [
       "类型入口：es/index.d.ts（956 个 .d.ts 文件）",
@@ -82969,6 +82979,8 @@
         "style"
       ]
     },
+    "content": {},
+    "default_exports": [],
     "unsupported": [
       {
         "component": "Alert",

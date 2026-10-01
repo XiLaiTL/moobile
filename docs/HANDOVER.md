@@ -30,7 +30,7 @@ moobile 是给 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit
 
 ```bash
 bash tools/refresh_host_copies.sh     # ★ 先跑这个，见 §4-2（不跑的话下面那条门可能红）
-bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒）
+bash tools/verify_all.sh              # 离线全集 20 项（本地约 1 分钟；清单见 AGENTS.md §2）
 ```
 
 两者都绿再往下走。**门红了先怀疑探针**，不要先改代码 —— 这个仓库里有好几条"红的是探针、
@@ -58,6 +58,24 @@ bash tools/verify_all.sh              # 离线全集 16 项（本地约 20 秒�
 | Metro | **已停**（交接时清掉了：占着 8081 会让接手的人拿到**别的应用**的 bundle，我这一轮就被坑过）。10-01 那轮为验 S1 又起过一次，**验完已按 PID 关掉**（注意：**不能** `Stop-Process node` 一把梭 —— 宿主 DSH 也是 node） |
 | Android 模拟器 | `emulator-5554` **还在跑**（无害，真机门要用） |
 | ~~**CI 先搁置**（老板拍板"本地跑通就好"）~~ **→ 已经不用搁置了** | 它以前会**每次推送都挂个红叉**，所以当时考虑过把 `on: push` 去掉。**现在它绿了** —— 留着 `on: push` 就是白拿的回归门（每次推送自动跑一遍离线全集）。真要是哪天它又红，**先看 annotation 里的"错误行"**（那是 10-01 加上的出口，两次红的第二次就是靠它一步定位的）。 |
+
+---
+
+## 2b. 接手时**挂着**的东西（2026-10-02 那一轮：M3 手机 LLM 聊天应用）
+
+| 项 | 状态 |
+|---|---|
+| **M3 的样本应用** | `examples/apps/chat-app/` —— 流式回复 + 本地历史（sqlite）+ 设置页；端点/Key 由用户在**应用里**填（任何 OpenAI 兼容端点，**没有本地代理**）。无头 **22/22**、真机 **17/17** |
+| **一个真实 RN 组件库接进来了** | `react-native-markdown-display`。★ **宿主侧零手写**：接库 = 写 `libgen.config.json` + 跑 `npx moobile-host libgen`（`App.js` 里那段手写适配层已删） |
+| **生成器补了两个洞** | ① `PropsWithChildren<…>` 这类**泛型包裹**里的 `children` 认得出来（`PropsWithoutRef` 是透明的）；② `children` 可以是**原始字符串**（`libgen.config.json` 的 `content`），另加 `defaultExports`（类型定义谎报导出时用）。机制与真因见 [`FINDINGS.md`](FINDINGS.md) 的 10-02 补记 |
+| **新的离线门** | `tools/libgen_probe.mjs`（假包探针 **24/24**，不装任何包、CI 上也跑）；chat-app 的 `libgen --check` 也进了 `verify_all.sh`。离线全集 **20 / 20** |
+| ⚠️ **没验的（别读大）** | markdown 只在 **Android 模拟器**上验过（**iOS 从未跑过**，web/RNW 的渲染没验）；chat-app 的 APK 是**借 todo-app 的 debug 壳**（`com.anonymous.host`），**它自己的 APK 没编过**；`antd-demo` 那 24 项宿主判据**不在离线门里**（要装 antd，手动跑 `cd examples/apps/antd-demo/host && npm run check`）；CI 上 antd/chat-app/sse 三条门是 **SKIP**（CI 只装 `todo-app/host` 的依赖） |
+| 环境 | 这一轮的 Metro / 模拟器**用完已关**（见 §4 的注意事项）。重跑真机判据的配方：起模拟器 → `cd examples/apps/chat-app && npx expo start --port 8081` → `node device_check.mjs`（它自己会 `adb reverse` 8081/8899） |
+
+⚠️ 这一轮踩过的两个**只有跑过才知道**的坑（都在 FINDINGS 里有完整记录）：
+`Content-Type`/`registerLibrary` 之类的显性错误好查，**难查的是"类型定义撒谎"** ——
+`children: ReactNode` 实则要字符串、`export const Markdown` 实则只在 `default` 上。
+两个都是**真机才露头**（web 的 interop 恰好看得见具名导出）。
 
 ---
 

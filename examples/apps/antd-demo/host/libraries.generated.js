@@ -1,7 +1,7 @@
 // 由 `moobile-host libgen` 生成 —— **不要手改**。
 //
 // 组件库：antd@6.6.4（命名空间 `antd:`）
-// 生成器：moobile-host libgen 0.2.0｜manifest 版本 1
+// 生成器：moobile-host libgen 0.3.0｜manifest 版本 1
 // 清单：改动请改 manifest 后重跑 `libgen`，或改这里的 `libgen.config.json`。
 //
 // 组件 71 个（含复合子组件共 136 个键）｜平台 [web]｜JSON 通道的组件 117 个
@@ -481,7 +481,7 @@ export function registerAntd(registerLibrary) {
         'content', 'font', 'gap', 'offset', 'style',
       ],
     },
-// 事件键 → 组件库的 prop 名。**这里刻意是身份映射**：生成的 MoonBit 侧写的是
+    // 事件键 → 组件库的 prop 名。**这里刻意是身份映射**：生成的 MoonBit 侧写的是
     // `.on_raw("onClick", …)`（键就是 prop 名），于是不需要"猜落点"这一层 ——
     // 而 `MOBILE_HOST.events["<ns>:*"]` 是库级通配，任何组件共用同一张表。
     events: {
