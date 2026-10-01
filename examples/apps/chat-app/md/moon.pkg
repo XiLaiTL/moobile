@@ -1,0 +1,12 @@
+// 由 `moobile-host libgen` 生成 —— **不要手改**。
+//
+// ⚠️ `supported_targets = "+js"` 是**必须**的，不是保守：
+//    事件走 `Attrs::on_raw`（`vendor/rabbita/html/payload.mbt`），而那个文件在
+//    `moon.pkg` 里被限定为 js 目标 —— 它的前提是"载荷是宿主递过来的 JS 值"。
+//    所有用得上组件库的目标（Web / RN）本来就都是 js。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile/html" @html,
+  "XiLaiTL/moobile/cmd" @cmd,
+}

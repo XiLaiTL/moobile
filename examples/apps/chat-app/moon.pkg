@@ -22,6 +22,8 @@ import {
   "XiLaiTL/moobile/sqlite" @sqlite,
   // 解析 SSE 帧里的 JSON（`choices[0].delta.content`）
   "moonbitlang/core/json" @json,
+  // libgen 生成的组件库 DSL（`@md.markdown(...)`）
+  "chat-app/md" @md,
 }
 
 options(

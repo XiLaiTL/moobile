@@ -1,0 +1,187 @@
+{
+  "$generator": {
+    "tool": "moobile-host libgen",
+    "version": "0.3.0",
+    "manifest_version": 1
+  },
+  "library": {
+    "package": "react-native-markdown-display",
+    "version": "7.0.2",
+    "namespace": "md",
+    "title": "node_modules/react-native-markdown-display"
+  },
+  "host": {
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
+    "provider": null,
+    "jsonProps": {
+      "Markdown": [
+        "rules"
+      ]
+    },
+    "events": {
+      "onLinkPress": "onLinkPress"
+    }
+  },
+  "counts": {
+    "components": 1,
+    "props": 7,
+    "kinds": {
+      "json": 1,
+      "unsupported": 3,
+      "bool": 2,
+      "event": 1
+    },
+    "excluded": 8,
+    "unsupported": 3
+  },
+  "components": {
+    "Markdown": {
+      "props": {
+        "rules": {
+          "kind": "json",
+          "type": "RenderRules",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": true
+        },
+        "style": {
+          "kind": "unsupported",
+          "reason": "namespace:StyleSheet",
+          "type": "StyleSheet.NamedStyles<any>",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": false,
+          "exposed_reason": "unsupported"
+        },
+        "renderer": {
+          "kind": "unsupported",
+          "reason": "missing:AstRenderer",
+          "type": "AstRenderer",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": false,
+          "exposed_reason": "unsupported"
+        },
+        "markdownit": {
+          "kind": "unsupported",
+          "reason": "missing:MarkdownIt",
+          "type": "MarkdownIt",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": false,
+          "exposed_reason": "unsupported"
+        },
+        "mergeStyle": {
+          "kind": "bool",
+          "type": "boolean",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": true
+        },
+        "debugPrintTree": {
+          "kind": "bool",
+          "type": "boolean",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": true
+        },
+        "onLinkPress": {
+          "kind": "event",
+          "event_kind": "value",
+          "event_reason": "value-callback",
+          "type": "(url: string) => boolean",
+          "required": false,
+          "from": "MarkdownProps@src/index.d.ts",
+          "exposed": true
+        }
+      },
+      "props_interface": "MarkdownProps",
+      "props_interface_via": "global",
+      "unresolved_extends": [],
+      "unsupported_count": 3
+    }
+  },
+  "report": {
+    "notes": [
+      "类型入口：src/index.d.ts（1 个 .d.ts 文件）",
+      "入口值导出：9 个"
+    ],
+    "excluded": [
+      {
+        "name": "getUniqueID",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "openUrl",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "hasParents",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "renderRules",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "AstRenderer",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "parser",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "stringToTokens",
+        "reason": "no-props-interface"
+      },
+      {
+        "name": "tokensToAST",
+        "reason": "no-props-interface"
+      }
+    ],
+    "json_props": {
+      "Markdown": [
+        "rules"
+      ]
+    },
+    "unsupported": [
+      {
+        "component": "Markdown",
+        "prop": "style",
+        "reason": "namespace:StyleSheet",
+        "type": "StyleSheet.NamedStyles<any>"
+      },
+      {
+        "component": "Markdown",
+        "prop": "renderer",
+        "reason": "missing:AstRenderer",
+        "type": "AstRenderer"
+      },
+      {
+        "component": "Markdown",
+        "prop": "markdownit",
+        "reason": "missing:MarkdownIt",
+        "type": "MarkdownIt"
+      }
+    ],
+    "unresolved_extends": [],
+    "resolver": {
+      "spec_failed": [],
+      "unresolved_types": [
+        {
+          "why": "missing:AstRenderer",
+          "n": 1
+        },
+        {
+          "why": "missing:MarkdownIt",
+          "n": 1
+        }
+      ]
+    }
+  }
+}

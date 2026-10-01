@@ -3645,3 +3645,62 @@ components: {
   —— `#` / `**` / 反引号 / 围栏**全被吃掉**，标题、粗体、行内代码、代码块、列表都渲染出来了；
   而**流到一半**时读到的是 `AI | 标题一 | 这是** | ▍ | 生成中…`（未闭合的 `**` 当普通文本，
   这正是"边收边渲染"该有的样子）。
+
+### 补记：把 markdown 那个组件也交给**生成器**（`libgen`），看能不能直接出函数化支持
+
+**结论：能跑，产物质量不错，但这个组件有一个洞 —— 内容是 React 的隐式 `children`，生成器看不见它。**
+
+跑法（照 antd-demo 的惯例，配置 + 两个 npm 脚本）：
+
+```bash
+cd examples/apps/chat-app
+npm run libgen          # 生成 4 份产物
+npm run libgen:check    # 校验没被手改（本应用已接）
+```
+
+**它产出了什么**（`react-native-markdown-display@7.0.2` → 1 个组件）：
+
+| 产物 | 内容 |
+|---|---|
+| `generated/md.manifest.json` | 组件 → prop 的清单（`rules` json / `mergeStyle`、`debugPrintTree` bool / `onLinkPress` event，另 3 个 `unsupported` 带原因） |
+| `libraries.generated.js` | 宿主注册调用（`components` / `jsonProps: { Markdown: ['rules'] }` / `events: { onLinkPress }` / `platforms`） |
+| `md/components.generated.mbt` | 类型化 DSL：`@md.markdown(rules?, merge_style?, debug_print_tree?, on_link_press?, attrs?)` |
+| `md/moon.pkg` | 生成的包声明（含"为什么必须 `+js`"的说明） |
+
+**已经用起来了**：`app.mbt` 现在写 `@md.markdown(merge_style=true, attrs=…prop_str("markdown", …))`
+—— 类型化的 prop + 逃逸口。**无头 21/21、真机 17/17**（换调用方式之后两套都重跑过）。
+
+#### 洞：`children` 藏在**泛型包裹**里，生成器认不出来
+
+那个包的声明是：
+
+```ts
+type MarkdownStatic = ComponentType<PropsWithChildren<MarkdownProps>>;
+export const Markdown: MarkdownStatic;
+```
+
+`PropsWithChildren<P>` 是**类型级糖**，`children` 并不在 `MarkdownProps` 接口里。
+生成器里确实有 `children` 这个概念（`manifest.js`：`kind === 'children'` → "不生成，另走 trait 参数"，
+并且有一个"组件类型里声明了 children 就补上"的兜底分支），但**兜底没认出这种包裹形态** ——
+于是 manifest 里**根本没有 `children`**，生成的函数也就**没有地方放 markdown 文本**。
+
+对比 antd：`Button` 的 `children?: ReactNode` 直接写在公开 props 接口里 → 生成器能认 ✅，
+生成的 DSL 就是 `@antd.button(…, "加一条")`。
+
+⇒ **影响面不止这一个包**：`ComponentType<PropsWithChildren<P>>` / `P & { children }`
+是 RN 生态里非常常见的写法。撞上的症状是"生成的函数**没有内容参数**，只能走 `attrs` 逃逸口"。
+
+#### 而且：就算把 `children` 认出来，这个组件**还是**不能直接用
+
+因为 `children` 在生成物里走 `IsChildren` trait，而**字符串会被包成 `<Text>`**
+（`render.mbt` 的 `render_node`，RN 的规矩）—— 而 markdown-it 要的是**裸字符串**，
+于是又回到那条 `Input data should be a String`（本文件上一条补记的坑三）。
+
+⇒ 所以对这个组件，"宿主侧套一层适配（把具名 prop 接成 children）"**不是绕路，而是对的层**：
+它与 `jsonProps`（结构化 prop 套解析器）是同一个手法。生成器将来若要覆盖它，
+需要的新概念是"**内容走某个具名 prop**"（在 `libgen.config.json` / manifest 里声明），
+而不是"认出 children"。
+
+⚠️ 现状记账：`libraries.generated.js` **目前没有被 `App.js` 使用** —— 因为生成的那份注册会
+把适配层丢掉（`App.js` 里手写的那层才是把内容接到 children 的地方）。生成物留着是为了
+`libgen:check` 能继续守着清单；**要让它变成真身，得先补上面那个概念。**

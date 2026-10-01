@@ -1,0 +1,29 @@
+{
+  "_note": [
+    "libgen 的应用侧配置（PLAN.md §3.8 的 I2/I3/I5）。",
+    "",
+    "跑法：npx moobile-host libgen         （配置从 cwd 往上找，node_modules 也一样）",
+    "校验：npx moobile-host libgen --check （任一侧被手改都会红）",
+    "",
+    "out 里的路径**相对本文件**（应用根），不是相对 cwd。",
+    "",
+    "⚠️ 这是 2026-10-02 的**一次实测**：把 markdown 渲染器也交给生成器，",
+    "   看它能不能直接产出函数化支持（`@md.markdown(...)`），而不是我们手写 node(...)。"
+  ],
+  "libraries": [
+    {
+      "namespace": "md",
+      "package": "react-native-markdown-display",
+      "platforms": ["android", "ios", "web"],
+      "out": {
+        "manifest": "generated/md.manifest.json",
+        "host": "libraries.generated.js",
+        "moonbit": "md"
+      },
+      "moonbit": {
+        "htmlPackage": "XiLaiTL/moobile/html",
+        "cmdPackage": "XiLaiTL/moobile/cmd"
+      }
+    }
+  ]
+}

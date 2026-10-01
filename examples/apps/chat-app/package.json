@@ -9,7 +9,9 @@
     "android": "npm run build && expo run:android",
     "ios": "npm run build && expo run:ios",
     "web": "npm run build && expo start --web",
-    "regen": "moobile-host regen"
+    "regen": "moobile-host regen",
+    "libgen": "node ../../../npm/moobile-host/bin/cli.js libgen",
+    "libgen:check": "node ../../../npm/moobile-host/bin/cli.js libgen --check"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",

@@ -429,14 +429,17 @@ fn bubble_row(b : Bubble, streaming_tail : Bool) -> @html.Html {
               //    `<Text>`（RN 的规矩），而 markdown 组件要的是裸字符串 —— 宿主侧 `App.js`
               //    有一层适配把它接回 `children`。这条是**真机上才暴露**的（web 上字符串直接
               //    就是字符串，看不出差别）。
-              @html.node(
-                "md:Markdown",
-                attrs(@style.Style::new().font_size(15.0).color(c_ink)).prop_str(
+              @md.markdown(
+                merge_style=true,
+                // ⚠️ 内容走 **attrs 逃逸口**：生成器**没有**为这个组件生成内容参数 ——
+                //    它的内容是 React 的隐式 children，而包的类型里写成
+                //    `ComponentType<PropsWithChildren<MarkdownProps>>` 这种**泛型包裹**，
+                //    生成器只认"直接写在 props 接口里的 children"（antd 那种）。
+                //    这是生成器可以补的一个洞，见 FINDINGS。
+                attrs=attrs(@style.Style::new().font_size(15.0).color(c_ink)).prop_str(
                   "markdown",
                   b.text,
                 ),
-                // 空子节点（**显式标类型**：`[]` 会被推成 `Array[Unit]`）
-                ([] : Array[@html.Html]),
               ),
             ),
             if streaming_tail {
