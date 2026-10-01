@@ -79,6 +79,7 @@
 | **发布后核对（扩成两个包）** | `bash tools/check_published.sh`（第 6 段是 10-01 新加的） | 10-01 | **通过**：月亮包 9 个公开包齐 + README 路径成立；宿主包线上 `latest = 0.3.0` 与工作区一致、12 个用户路径文件全在（tarball 35 个）；**契约对账 `月亮包 2 = 宿主包 2`**。⚠️ 这一条补上的是 `docs/design/SCAFFOLD.md` §6.1 早就点名的缺口（"npm 那一半从来没有发布后验"） |
 | ↳ 同一段门的**证伪**（用真实的错配组合） | `bash tools/check_published.sh XiLaiTL/moobile@0.2.2` | 10-01 | **`exit 1`** 且点名：`线上两个包的契约版本不一致（月亮包 1 / 宿主包 2）` —— 即"只发了一边"的场景，门能抓住 |
 | ↳ 同一段门的**宽松分支** | `bash tools/check_published.sh XiLaiTL/moobile@0.2.2`（历史核对） | 10-01 | 缺包/版本不一致只**提示**，不判红（`PUBLISHED_REQUIRE_ALL=0/1` 可强制） |
+| **CI（C3）· GitHub Actions**（**第一次绿**） | push 后自动跑 `.github/workflows/ci.yml`（读结果：`python3 tools/ci_status.py <sha>`） | 10-01 | run **`36888896799`** @ `3e4a3fc` → **`conclusion = success`**，8 个步骤全 success，annotation 只剩两条与本仓库无关的弃用提示。**它落地以来第一次通过**（此前两次都是 failure，见 §4-8） |
 
 ⚠️ **口径**：09-20 那三行是**那天**跑的，这一轮没重跑（数字本身没错，但别当成今天的）。
 `tools/verify_headless.mjs` 裸跑是 **10 通过 + 1 SKIP**，SKIP 数**取决于调用方式**
@@ -178,28 +179,33 @@
 
 ---
 
-8. **CI（C3）：真因已找到并在本地修好；修复本身「待推」（2026-10-01 收口）**：它从落地起
-   **从未运行过**（提交一直没推），第一次跑就红。分两步走的经过：
-   - 已修好并**推上去**的两处：① workflow 补上"新克隆"的第一步 `vendor_sync.sh --apply`
-     （`vendor/` 是 gitignore 的生成物，而 **CI 每次都是新鲜克隆**）；
-     ② 去掉 npm 安装那步的 `continue-on-error`（装失败被吞掉了）。这两步之后仍红 4 条。
-   - **剩下那 4 条的真因：一条语法错误，不是警告。** `examples/apps/antd-demo/gallery.mbt:10`
-     用了旧式泛型写法 `fn cell[C : …](…)`，CI 那代 moon 判 **E3002 解析错误**
-     （新写法 `fn[T] f`）；另外三条红门（`gen_forwarders` / 脚手架两条）只是**需要能编译**。
+8. **CI（C3）：✅ 2026-10-01 第一次绿了**（run `36888896799`，提交 `3e4a3fc`，全部步骤 success）。
+   它此前**从未运行过**（提交一直没推），第一次跑就红，一共红了两次、两个真因：
+
+   - **第一次跑的 4 条红门 → 真因是一条语法错误，不是警告。**
+     `examples/apps/antd-demo/gallery.mbt:10` 用了旧式泛型写法 `fn cell[C : …](…)`，
+     CI 那代 moon 判 **E3002 解析错误**（新写法 `fn[T] f`）；另外三条红门
+     （`gen_forwarders` / 脚手架两条）只是**需要能编译**。
      上一轮把 `[0079]` 当嫌疑犯是**猜错了方向** —— 那次是"322 warnings, **1 errors**"。
-   - **怎么拿到的**：不在求 CI 日志（job log 走 API 403），而是**在本地把 CI 那代工具链装出来**
+   - **怎么拿到的**：不再求 CI 日志（job log 走 API 403），而是**在本地把 CI 那代工具链装出来**
      （Windows 也有 `latest` 的 zip）：`0.1.20260920 (914d7da)`，用它**一行不差**复现了 CI 的报错形状。
      复现配方写在 [`FINDINGS.md`](FINDINGS.md) 的 CI 收口补记里。
    - **修法**：改那一行语法（**不钉工具链** —— 实测带日期的路径全 403，bucket 只有 `latest`/`nightly`；
      何况用户拿到的就是 `latest`，库必须在新工具链上能编）。**新旧两代各跑一遍离线全集，都是 16 / 16**（§2.1）。
-   - ⚠️ **这条修复还没提交、也没推**：本轮按用户指示"先别推，只在本地验完"（改动都在工作区里）。
-     **所以 CI 现在仍是红的**（它跑的还是 `52784e5` 那次）。要收口，提交 + 推一次即可 ——
-     推之前建议先看一眼 §4-8 的复现配方，别再让"本机绿"冒充"CI 绿"。
+   - **第二次跑的 2 条脚手架门 → 真因在"依赖的形态"，不在代码。**
+     `file:` 依赖在 **Linux 上是软链**（真身 = 仓库源码）→ `core.js` 里的 `import 'react'` 从仓库那层
+     往上找、必然找不到；在 **Windows 上是拷贝** → 就在装着 react 的 `node_modules` 里。
+     ⇒ 同一份代码本机 16/16、CI 红。修法是 `tools/verify_headless.mjs` re-exec 加 `--preserve-symlinks`。
+   - **两处出口也修了**（真因都不难，难的是"出口给的信息不指向它"）：`verify_all.sh` 失败时
+     **先打错误行**（带 3 行上下文）再打尾巴；CI 的 annotation 顺序改成 **门名 → 错误行 → 尾巴 → 工具链版本**。
+     **第二次红就是靠它一步定位的** —— 第一次红只能看到一串警告尾巴。
    - ⚠️ 顺带修掉一个**对使用者成立**的坑：`todo-app/host/package-lock.json` 里两条 404 的
      `resolved` URL 会让**任何新鲜克隆的 `npm install` 挂掉**（修法验过 integrity 一致）。
-   - ⚠️ **未解决（记在这里，别当已做）**：新工具链下 `moon check` 有 **322 warnings**，
+   - ⚠️ **仍未解决（记在这里，别当已做）**：① 新工具链下 `moon check` 有 **322 warnings**，
      其中 **238 条是 `implicit_impl_as_method`**（官方说将来会从警告**变成错误**），
-     243 条落在 `vendor/rabbita/**`（我们的 fork，得走 patch 流程）。分布见 FINDINGS 的 CI 收口补记。
+     243 条落在 `vendor/rabbita/**`（我们的 fork，得走 patch 流程）；
+     ② **`check_npm_fresh` 在 CI 上是空的** —— 副本是软链时它比的是"源码 vs 源码"，恒等，
+     只有本机（真目录）才有意义（见 FINDINGS 的 CI 第二次红补记）。
 
 ## 5. 维护这份文件的三条纪律
 
