@@ -6,14 +6,35 @@
 #   · 发布后验证（tools/check_published.sh）：要"已经发出去的那一版"，属于发版流程。
 # 这几类在本地一条命令跑：`bash tools/verify_all.sh --with-e2e`、`python3 tools/verify_android.py`。
 #
-# 这里跑的 `tools/verify_all.sh` 恰好是本地同一个入口（13 项）：
-#   moon check / 行尾规范 / 文档链接 / 公开内容泄漏 / vendor 一致性 / 外部模块可用性 /
-#   转发包一致性 / antd 试金石 / 脚手架模板 / 脚手架承载真应用 / 模板同源 T1 /
-#   能力注册表一致性 / 宿主包副本新鲜度
-#
+# 这里跑的就是本地那个入口 `tools/verify_all.sh`。
 # ⚠️ **项数会漂，别抄这个数** —— 现状一律看 `docs/STATUS.md`（唯一来源）。
 #
 # ⚠️ vendor 一致性与外部模块那两项需要网络（拉 pristine 制品、`moon add`）。
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# 2026-10-01：这个 workflow **第一次真正运行**，而它当时**永远不可能绿**。
+#
+# 它从 13:52 就躺在仓库里、计划上标着"✅ 已落地"，但那些提交一直没推出去 ——
+# GitHub 只有在工作流文件进了远端才会跑它。一推上去，两次运行都 `failure`；
+# 本机同一个命令却 15/15 全绿。真因是**它漏了"新克隆"配方里的第一步**：
+#
+#   ① `vendor/` 是 **gitignore 的生成物**（rabbita fork：`tools/vendor.lock` 的版本
+#      + `tools/patches/*.patch` → `tools/vendor_sync.sh` 生成，见 `FORK.md` §0）。
+#      新鲜克隆里**没有它** → `moon check` 报
+#      `Cannot find import 'XiLaiTL/moobile/vendor/rabbita/vdom'` → 后面 8 条门连锁全红。
+#      `CONTRIBUTING.md` §1 写着这一条（"重建第三方（新克隆 / 换版本）"），
+#      **而 CI 每一次运行都是一个新克隆**。本机之所以看不出来，是因为 vendor 早就铺好了。
+#   ② 模板三条门要**已安装**的 `node_modules` 里取 `react` 与 `moobile-host`
+#      （`tools/verify_headless.mjs` 的 `pickNodeModules`），而这一步写着
+#      `continue-on-error: true` —— 装失败也报 success。
+#
+# 复现与验证（本机）：新鲜克隆 → 4 通过 / 8 失败；补 `vendor_sync --apply` 后
+# `moon check` 转绿、10 / 2 / 2，剩下 2 条正是 node_modules 缺失所致。
+#
+# 所以下面两处是**修的必要条件**，别退回去：
+#   · 先 `vendor_sync.sh --apply` 再 `verify_all.sh`；
+#   · npm 安装失败就是失败（`continue-on-error` 会把"装挂了"和"门红"之间的线索抹掉）。
+# ══════════════════════════════════════════════════════════════════════════════
 
 name: offline-checks
 
@@ -34,14 +55,6 @@ jobs:
         with:
           node-version: "20"
 
-      # 宿主 npm 包存在时，verify_all 会额外检查"能力注册表与依赖是否仍一致"
-      - name: Install host deps (optional)
-        continue-on-error: true
-        run: |
-          if [ -f examples/apps/todo-app/host/package.json ]; then
-            (cd examples/apps/todo-app/host && npm install --no-audit --no-fund)
-          fi
-
       - name: Install MoonBit
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
@@ -49,6 +62,17 @@ jobs:
 
       - name: moon version
         run: moon version
+
+      # ★ 新克隆的第一步：把 gitignore 的 `vendor/`（rabbita fork）生成出来。
+      #   不跑这一步，`moon check` 连包都解不出来 —— 见文件头那段。
+      - name: 重建 vendor（gitignore 的第三方 fork）
+        run: bash tools/vendor_sync.sh --apply
+
+      # 宿主 npm 包：`verify_all.sh` 里那两条门（能力注册表一致性 / 副本新鲜度）
+      # 与模板那三条门都要它。**故意不写 `continue-on-error`** ——
+      # 装了失败就要红：否则"门红"与"装挂了"分不开（2026-10-01 实测踩过）。
+      - name: Install host deps
+        run: cd examples/apps/todo-app/host && npm install --no-audit --no-fund
 
       - name: 一条命令跑完离线检查
         run: bash tools/verify_all.sh
