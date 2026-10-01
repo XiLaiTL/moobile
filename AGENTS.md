@@ -10,6 +10,7 @@
 | [`docs/README.md`](docs/README.md) | 三类读者三条路线 —— 先弄清你这次是"用库 / 改库 / 查历史" |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 改完必须跑什么、写文档的规矩（负面清单） |
 | [`docs/FINDINGS.md`](docs/FINDINGS.md) | 已经踩过的坑与真因 —— **动手前先看，别重复踩** |
+| [`docs/HANDOVER.md`](docs/HANDOVER.md) | **接手须知**：第一条该跑什么、挂着什么、环境上的坑、以及"还没验证"的诚实清单 |
 
 **现状与分数只在一处**：[`docs/STATUS.md`](docs/STATUS.md)（已发布版本、各门的最近分数、每条轨道还剩什么）。
 下面的项数**会变**，要数字就去那里看，别抄。

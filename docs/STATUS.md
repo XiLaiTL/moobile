@@ -119,14 +119,28 @@
    再跑基线对照 —— 前两次对照因为 Metro 的缓存行为跑的都是新代码，白跑）。
    另：真机断言**本身**的证伪（把可见性映射写反）试了两次都**没有得到有效结果**，
    原因记在同一处 —— 所以「它能抓映射写反」这句**没有被证明**，别当已验。
-7. **canvas 通道：真机"画得出"已验（10-01），仍差手势与文字字形**：`<Canvas>` 的**组件挂载 + 真绘制**
-   已在 Android 模拟器上验过（`device_check.mjs` 7/7：token + 截图取色 + 证伪），Skia 原生库也确实链上了
-   （`RNSkia: JniSkiaManager` 出现在 logcat）。**未验**：**文字字形**（`makeFont` 那条路没上过真机）、
-   手势（T3.4）与 `devicePixelRatio` 换算（T3.5）—— 所以罗盘现在"**画得出**"，还"**拖不动**"。
+7. **canvas 通道：真机"画得出 + 拖得动"都已验（10-01），仍差文字字形与坐标换算**：`<Canvas>` 的
+   **组件挂载 + 真绘制**已在 Android 模拟器上验过（`canvas-spike/device_check.mjs` 7/7：token + 截图取色 + 证伪），
+   **整条链（手势 → Msg → Model → 绘制指令 → Skia）**在 `canvas-demo` 里验过（真机 12/12），
+   Skia 原生库也确实链上了（`RNSkia: JniSkiaManager` 出现在 logcat）。
+   ✅ **10-01 划掉一条**：原写的"手势（T3.4）未验"**已经收口** —— 手势通道独立成包（`gesture/`）、
+   宿主默认实现（`gesture-rn.js`，零新依赖），web 试金石 **40/40**（含边界 20 项）、
+   真机 `gesture-edges` **18/18**，过程中逼出三处**只在真机露头**的实现错误（见 FINDINGS 的手势边界补记）。
+   **未验**：**文字字形**（`makeFont` 那条路没上过真机）与 `devicePixelRatio` 换算（T3.5）。
    ⚠️ 另：这次验证用的是**临时接线**（把画布塞进 todo-app 做实验，验完回滚）——
    画布是**可选特性**（要原生依赖），按"库优先"它该有自己的示例应用，不该进模板。
    见 [`FINDINGS.md`](FINDINGS.md) 的真机补记与 `examples/apps/canvas-spike/host/device_check.mjs`。
 
+> 2026-10-01 新增两条：
+> · **CI（C3）此前从未运行过，且按原写法永远不可能绿**：提交一直没推出去，GitHub 不会跑远端没有的工作流；
+>   一推上去两次都是 `failure`，而本机同一个命令全绿。真因是它**漏了"新克隆"的第一步** ——
+>   `vendor/` 是 gitignore 的生成物（`tools/vendor_sync.sh` 生成），而 **CI 每次运行都是一个新克隆**；
+>   外加 npm 安装那步 `continue-on-error: true` 把失败线索抹掉。实测：新鲜克隆 4 通过 / 8 失败，
+>   补上 `vendor_sync --apply` 后 **14 / 0 / 1、exit 0**。修法在 `.github/workflows/ci.yml`（**待推**，见 §4-8）。
+> · **宿主包副本新鲜度门原来只守 1 份，而仓库里有 7 份**：另有两份早就漂了。已经吃到代价 ——
+>   陈旧副本让一轮边界探测**测的是老实现**，还掩盖过一条门的假通过（antd 负例 (b)）。
+>   门已改成发现式，配 `tools/refresh_host_copies.sh` 一键全刷。
+>
 > 2026-09-21 划掉两条：
 > · **T1 比对器已装**（原第 2 条）—— 门 + 证伪都做了，见 §2.1 与 [`SCAFFOLD.md`](design/SCAFFOLD.md) §6；
 >   清单本身也被机器核过一遍（手量首版**漏登 3 处、多登 1 处**，见 [`FINDINGS.md`](FINDINGS.md) 的 T1 补记）。
@@ -135,6 +149,14 @@
 >   这两条边界写进了新的第 5 条。
 
 ---
+
+8. **有一个提交没推出去（2026-10-01）**：`237f792`（CI 修复 + lockfile 里两条 404 的镜像 URL）。
+   推送当时被网络挡住（`github.com` 的 HTTPS 有些边缘 IP 从这个网络不通），**CI 也就还没在远端验证过**。
+   接手时先推它、再看 GitHub 上 `offline-checks` 这次运行。
+   ⚠️ 那条 lockfile 修复是**对使用者成立**的坑：`expo-server` 与 `@expo/router-server` 的 `resolved`
+   被镜像源写成了 404 的路径，**任何新鲜克隆的 `npm install` 都会挂在它们上面**（本机看不出来，
+   因为 `node_modules` 早装好了）。修法经过验证：下真 tarball 算 sha512 与 lockfile 的 `integrity`
+   **逐字一致** → 只是 URL 错、制品没变，所以只改 URL、不动 `integrity`。
 
 ## 5. 维护这份文件的三条纪律
 

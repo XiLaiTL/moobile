@@ -9,6 +9,7 @@
 | 文档 | 讲什么 |
 |---|---|
 | [`STATUS.md`](STATUS.md) | **现状与分数（唯一来源）**：已发布 vs 工作区的差距、每道门的命令与结果（并区分"本轮实测"与"文档记载"）、各轨道已落地与剩余、当前最大的空白 |
+| [`HANDOVER.md`](HANDOVER.md) | **接手须知**：接手后第一条命令、立刻要做的三件事、环境上的坑（代理 / 7 份副本 / vendor / 磁盘 / Metro）、以及**哪些还没验证**的诚实清单 |
 
 > 一句话背景：moobile 是给 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit 的 TEA UI 框架）
 > **换渲染后端**的库 —— 保留 `Model` / `Msg` / `update` / `view` 与 `@html` DSL，
