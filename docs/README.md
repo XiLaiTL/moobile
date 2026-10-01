@@ -35,6 +35,7 @@
 |---|---|
 | [`FINDINGS.md`](FINDINGS.md) | **实测记录**（R1 排版 / R2 把真应用跑起来 / R3 仓库治理）：每条带命令与输出，含踩过的坑与真因 |
 | [`design/DESIGN.md`](design/DESIGN.md) | 设计文档（**草案 / 待验证**状态，保留原始判断） |
+| [`design/SCAFFOLD.md`](design/SCAFFOLD.md) | **脚手架设计**：生成什么、工具用什么语言写（对外的 `.mjs` / 对内的 MoonBit）、验收判据"零 Python" |
 | [`design/DESIGN-FEASIBILITY.md`](design/DESIGN-FEASIBILITY.md) | 设计期的可行性实测（写代码之前做的那些验证） |
 | [`design/DESIGN-README.md`](design/DESIGN-README.md) | 设计阶段的草案 README —— **已过时**，现行版本是 [`../README.md`](../README.md) |
 | [`../PLAN.md`](../PLAN.md) | 当前生效的计划：轨道 A–N、决策点、里程碑 |
