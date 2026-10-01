@@ -330,6 +330,14 @@ pub using @moobile_lib {mount, type Mount}
 
 ## 6. 使用者视角：最小接入（20 + 30 行）
 
+> ⚠️ **这一节是 0.1.0 时代的写法**：应用侧要自己导出 `start` / `snapshot` / `subscribe` / `element`
+> 四个名字。0.2 起应用侧只有**一个**导出 —— `pub fn app() -> @moobile.JsValue { @moobile.handlers(...) }`，
+> 见 [`../README.md`](../README.md) §1.1。原文保留是为了对照"当时为什么那么写"。
+>
+> 还有一条容易误解的：**import 路径短，不代表包就铺在模块根** —— fork 住在 `vendor/rabbita/`，
+> 根上的 `html/` `cmd/` `sub/` `http/` 是生成的**转发包**（`tools/gen_forwarders.py`）。
+> 所以 `XiLaiTL/moobile/html` 这类短路径对使用者是有效的；动过 `vendor/**` 必须重跑生成器。
+
 **MoonBit 侧**（自己的模块）：
 
 ```

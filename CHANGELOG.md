@@ -5,7 +5,41 @@
 
 ---
 
-## 0.2.1 —— 2026-09（未发布，待 `moon publish`）
+## 0.2.2 —— 2026-09（待 `moon publish`）
+
+**修：0.2.1 的包与它自己的 README 不符 —— 照 README 写的第一行就编不过**
+
+- 0.2.1 里只有 `XiLaiTL/moobile/vendor/rabbita/html`，而 README（**随包发布**、也是 mooncakes
+  落地页）让使用者 import `XiLaiTL/moobile/html` → 实测报
+  `Cannot find import 'XiLaiTL/moobile/html'`。**已发布版本的 README 是坏的**，这是本次修复的主因。
+- 修法**不是**改文档去迁就产物（那会把 `vendor/rabbita/` 漏进使用者的每一行 import），
+  而是在模块根补一层**纯转发包**：`html/`、`cmd/`、`sub/`、`http/`。
+  由此：README 不用改、**0.2.0 用户的 import 继续有效**（0.2.0 的包本来就是扁平布局）、
+  0.2.1 能用的一切照旧 —— 所以这是个**新增**（非破坏）版本。
+- 转发包的名字清单**生成**而非手写：`tools/gen_forwarders.py` 从
+  `vendor/rabbita/<pkg>/pkg.generated.mbti` 抽（`html` 有 400+ 个名字，而 `pub using`
+  **没有通配写法**）。生成物入库，`--check` 可 diff 漂移。
+- 顺带更正一条**被写错很久**的结论：R3 说"加一层公开再导出包 → ❌ 类型只能被命名、不能被使用"，
+  实测**消费者**通过转发包可以命名 / 调函数 / 字段访问 / **变体匹配**（全 ✅）；
+  只有**转发包自己**构造转发来的 struct 会报 `Cannot create values of the read-only type`。
+  详见 [`docs/FINDINGS.md`](docs/FINDINGS.md) R7。
+
+**修：registry 上那行 description（对搜"mobile"的人不可见）**
+
+- 原来：`moobile：MoonBit 写 UI，交给 React Native 渲染 —— 跨端 UI 层（内含 rabbita vendor fork）` ——
+  重复包名、纯中文（mooncakes 是国际站）、把内部实现摆最前。
+- 现在：`MoonBit UI for mobile: Android, iOS and Web from one rabbita (TEA) app, rendered by React Native`，
+  keywords 改为 `moonbit, mobile, android, ios, web, cross-platform, react-native, rabbita, UI, TEA`。
+
+**新增两条敢失败的闸门（`verify_all.sh` 现在是离线 8 项）**
+
+- `tools/readme_probe.py`：**README 是契约** —— 解析 README 里的 import 路径，并按 README 的
+  `view` / `app` 示例编一遍（workspace 与 registry 两种目标）。之前没有任何检查把"文档"与"产物"对起来。
+- `tools/gen_forwarders.py --check`：转发包与 `.mbti` 是否一致（改了 `vendor/**` 忘了重跑就红）。
+- `tools/check_published.sh` 默认目标改为**跟随 `moon.mod` 的版本**（原来写死 `@0.2.0`，
+  于是发了 0.2.1 之后它还在验 0.2.0 —— 本次缺陷就是这么溜过去的）。
+
+## 0.2.1 —— 2026-09（已发布）
 
 **修：发布产物里的本机路径**
 

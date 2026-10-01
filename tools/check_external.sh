@@ -52,6 +52,19 @@ if [ $RC -ne 0 ]; then
 fi
 
 case "$OUT" in
-  *"0 errors"*) echo ""; echo "外部模块 check 通过：probe/app 能依赖 XiLaiTL/moobile + style 并编译"; exit 0 ;;
+  *"0 errors"*)
+    echo ""
+    echo "外部模块 check 通过：probe/app 能依赖 XiLaiTL/moobile + style 并编译"
+    echo ""
+    # 光"能编"不够：README 才是使用者照抄的东西。它写的 import 路径必须真实存在
+    # （2026-09 的事故：搬家后 README 还写着 `XiLaiTL/moobile/html`，照抄就编不过）。
+    echo "== README 快速上手是否真能编过（README 的 import 路径就是契约）"
+    if python3 "$ROOT/tools/readme_probe.py" --workspace; then
+      exit 0
+    fi
+    echo ""
+    echo "README 与库的公开路径不一致 —— 使用者照 README 写的第一行就编不过。"
+    exit 1
+    ;;
   *) echo ""; echo "外部模块 check 未报错但也没有 '0 errors'，请人工确认上面的输出"; exit 1 ;;
 esac

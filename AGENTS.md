@@ -14,7 +14,7 @@
 ## 2. 验证入口（只记这一条）
 
 ```bash
-bash tools/verify_all.sh              # 离线 6 项（编译 / 行尾 / 链接 / vendor 一致 / 外部模块 / 注册表一致）
+bash tools/verify_all.sh              # 离线 8 项（编译 / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / 注册表一致）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
 python3 tools/verify_android.py       # 真机 21 项（需要模拟器 + APK）
 ```
@@ -22,13 +22,15 @@ python3 tools/verify_android.py       # 真机 21 项（需要模拟器 + APK）
 **改了什么就至少跑对应的那几项**（对照表在 `CONTRIBUTING.md` §1）。
 动了 `vendor/rabbita/**` **必须**先 `tools/vendor_sync.sh --capture` 再 `--check` ——
 第三方目录是 gitignore 的，`git status` 不会提醒你漏了回写。
+动了 `vendor/rabbita/**` 之后还要 `python3 tools/gen_forwarders.py`（根上的转发包是从
+vendor 的 `.mbti` 生成的名字清单；忘了重跑，消费者 import 的 `XiLaiTL/moobile/html` 会缺名字）。
 
 ## 3. 本仓库的硬性事实（代理最容易想当然的地方）
 
 | 别想当然 | 事实 |
 |---|---|
 | "MoonBit 的 `internal` 按前缀判，所以 fork 必须铺在模块根" | ❌ **旧结论已推翻**：只认**路径段恰好等于 `internal`**；现在 fork 摊平在 `vendor/rabbita/`（见 `docs/FINDINGS.md` R3） |
-| "加一层公开再导出包就能绕过 internal" | ❌ 类型只能被**命名**、不能被**使用**（变体匹配 / 构造 / 字段 / 方法全报错） |
+| "加一层公开再导出包就能绕过 internal" | ⚠️ **分两半，别一句话概括**（旧说法"类型只能被命名、不能被使用"**过宽**，2026-09 实测更正见 `docs/FINDINGS.md` R7）：<br>· **消费者**（import 那个转发包）→ 命名 ✅ 调函数 ✅ 字段访问 ✅ 变体匹配 ✅<br>· **转发包自己**构造转发来的 struct → ❌ `Cannot create values of the read-only type`<br>· `pub using` **没有通配写法**（`{*}`/`{...}`/裸包名都不支持）→ 名字得逐个列，所以 `html/` 这种 400+ 名字的包靠**生成**（`tools/gen_forwarders.py`）；语法是 `pub using @pkg {type T, f, g}`（**不带 `fn` 关键字**，且要写在 `.mbt` 里、不是 `moon.pkg`） |
 | "`demo/` 会在发布包里" | ❌ 不在。但**依赖声明是模块级且随包发布**：`moon.mod` 里写了什么，使用者就要下载什么（实测：声明了没人 import 的依赖照样被拉） |
 | "`moon add` 会把包下载下来" | ⚠️ 依赖**已写在 `moon.mod`** 时它只说 "already exists, will not update it"，**下载发生在 `moon check`** |
 | "本机 git 代理是通的" | ⚠️ `http.proxy=127.0.0.1:7890` 而代理常常没开 → `moon update` 失败，报的却是 `no version satisfies requirement …`（看着像"包没发出去"）。绕过办法见 `tools/check_published.sh` |

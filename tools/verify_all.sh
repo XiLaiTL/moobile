@@ -61,6 +61,10 @@ run "公开内容无本机路径与凭据（check_public_leaks）" python3 tools
 run "vendor 一致性（vendor_sync --check）" bash tools/vendor_sync.sh --check
 run "外部模块可用性（check_external）" bash tools/check_external.sh
 
+# 转发包（根上的 html/ cmd/ sub/ http/）是从 vendor 的 .mbti **生成**的，生成物入库 → 能 diff。
+# 改了 vendor/rabbita/** 或升级 fork 之后忘了重跑生成器，就会在这里红。
+run "转发包与 mbti 一致（gen_forwarders --check）" python3 tools/gen_forwarders.py --check
+
 # 能力注册表与依赖是否仍一致（生成物是入库的，所以能 diff）
 if [ -d "$ROOT/examples/apps/todo-app/host/node_modules/moobile-host" ]; then
   # ⚠️ 不要用 `( cd … && run … )`：run 里改的 PASS/FAIL 落在**子 shell**，

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check_published.sh —— 用**外部使用者**的视角验证 **registry 上已发布**的那一版。
 #
-#   bash tools/check_published.sh                      # 默认验 0.2.0
+#   bash tools/check_published.sh                      # 默认验 moon.mod 里的那一版
 #   bash tools/check_published.sh XiLaiTL/moobile@0.1.0
 #
 # 与 `check_external.sh` 的分工（两件事，都要有）：
@@ -23,7 +23,12 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TARGET="${1:-XiLaiTL/moobile@0.2.0}"
+# ⚠️ 默认目标**跟着 moon.mod 的版本走**，不能写死。
+#    曾经写死 `@0.2.0`：于是发了 0.2.1 之后，这个"发版后验一遍"的闸门验的仍然是 0.2.0 ——
+#    真正的缺陷（0.2.1 的 README 写了产物里不存在的 import 路径）就这样溜过去了。
+#    `moon.mod` 的版本就是"我正要发/刚发的这一版"，这是唯一不会漂的锚点。
+LATEST="XiLaiTL/moobile@$(sed -n 's/^version = "\(.*\)"/\1/p' "$ROOT/moon.mod" | tr -d '\r')"
+TARGET="${1:-$LATEST}"
 MODNAME="${TARGET%@*}"
 TPL="$ROOT/tools/pub_probe"
 
@@ -78,5 +83,14 @@ else
   echo "WARN: 发布产物里没有 sqlite/"
 fi
 
+# 5) README 是**随包发出去**的落地页：它写的 import 路径必须在产物里真的存在。
+#    这一条是补出来的 —— 0.2.1 发出去之后才发现照 README 写的第一行编不过。
 echo
-echo "通过：$MODNAME@$VER 能被外部模块装下来、按公开 API 编译过"
+echo "== 5) README 快速上手能否编过（对着 registry 上这一版）"
+if ! python3 "$ROOT/tools/readme_probe.py" --target "$TARGET"; then
+  echo "ERROR: README 与发布产物不一致 —— 使用者照 README 写的代码编不过。"
+  exit 1
+fi
+
+echo
+echo "通过：$MODNAME@$VER 能被外部模块装下来、按公开 API 编译过，且 README 的路径与产物一致"

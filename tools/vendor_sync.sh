@@ -112,6 +112,9 @@ case "$MODE" in
     mkdir -p "$ROOT/vendor"
     cp -r "$W/relocated" "$ROOT/vendor/rabbita"
     echo "已按 $UP_NAME@$VERSION + $(ls "$PATCHDIR" | wc -l) 个 patch 重建第三方代码 → vendor/rabbita/"
+    # 根上的转发包（html/ cmd/ sub/ http/）的名字清单是从 vendor 的 .mbti 生成的 ——
+    # 换了 vendor 就必须重跑，否则消费者 import 的 `XiLaiTL/moobile/html` 会缺名字。
+    echo "接着跑：python3 tools/gen_forwarders.py    # 重生成根上的转发包"
     # 顺手把整棵树的行尾规范成 LF（含我们自己的文件）
     bash "$ROOT/tools/lf_normalize.sh" | tail -2
     echo "接着跑：moon check --target js && bash tools/check_external.sh && node tools/verify_web.js"

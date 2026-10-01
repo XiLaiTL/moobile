@@ -11,7 +11,7 @@ moobile 是 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit �
 
 | | |
 |---|---|
-| **MoonBit 包** | `moon add XiLaiTL/moobile@0.2.0` |
+| **MoonBit 包** | `moon add XiLaiTL/moobile@0.2.2` |
 | **宿主（JS）** | `npm install moobile-host`（React Native / Expo） |
 | 已实测 | Web ✅ ｜ Android 真机 ✅（Android 14 / x86_64） |
 | 未实测 | iOS（宿主工程可生成，本机无法构建验证）｜ 桌面（未提供宿主） |
@@ -35,7 +35,7 @@ version = "0.1.0"
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.2.0",
+  "XiLaiTL/moobile@0.2.2",
 }
 ```
 
@@ -46,6 +46,7 @@ import {
   "XiLaiTL/moobile/style",        // 类型化样式（写视图的入口）
   "XiLaiTL/moobile/html",         // @html DSL
   "XiLaiTL/moobile/cmd",          // Cmd / Emit
+  "XiLaiTL/moobile/sub",          // Sub（订阅：定时器、传感器…）
 }
 
 options(
@@ -54,6 +55,10 @@ options(
   },
 )
 ```
+
+> 要用到的包就这五条。fork 住在 `vendor/rabbita/`，但**使用者看不到那一层**：
+> 根上的 `html/` `cmd/` `sub/` `http/` 是**转发包**（由 `tools/gen_forwarders.py` 生成），
+> 所以 `XiLaiTL/moobile/html` 这种短路径照旧可用。
 
 ```moonbit
 fn view(m : Model, emit : @cmd.Emit[Msg]) -> @html.Html {

@@ -1403,3 +1403,123 @@ printf '%s\0' "${cands[@]}" | xargs -0 -r grep -lIUZ -- $'\r'
 > **验证工具本身会骗你**（第三次了）。区别是这次骗的方向是"快"：
 > 一个 0.19 秒的检查让人想立刻收工，而它其实什么都没查。
 
+
+---
+
+# R7 —— 0.2.1 发布之后：README 与产物不符，以及「转发包到底行不行」（2026-09）
+
+## 事故：照 README 写的第一行就编不过
+
+0.2.1 发出去之后，跑「发版后验一遍」的闸门，顺手拿 README 的快速上手编了一次 0.2.1：
+
+```
+Cannot find import 'XiLaiTL/moobile/html' in probe/readmepaths@0.1.0
+```
+
+README（**随包发布**，也是 mooncakes 的落地页）写着：
+
+```moonbit
+import {
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/html",      // ← 0.2.1 的包里根本没有这个包
+  "XiLaiTL/moobile/cmd",       // ← 也没有
+}
+```
+
+而 0.2.1 包里只有 `vendor/rabbita/html`、`vendor/rabbita/cmd`。
+
+## 真因：搬家的**后半段**没通知使用者
+
+R3 把整个 fork 从模块根搬进 `vendor/rabbita/`。当时 CHANGELOG 0.2.0 记的是
+「仓库结构（**对使用者无影响，导入路径不变**）」—— 这句话对**已经发出去的 0.2.0** 是成立的
+（实测：装下来的 0.2.0 包里就是扁平的 `html/`、`cmd/`，它的 README 也那么写）。
+但**搬家之后的工作区/0.2.1** 把它变成了假话：
+
+| 版本 | 包里有什么 | 消费者该写什么 | 编得过吗 |
+|---|---|---|---|
+| 0.2.0（已发布） | `html/ cmd/ dom/ …`（扁平） | `XiLaiTL/moobile/html` | ✅ |
+| 0.2.1（本文这次） | `vendor/rabbita/html` | `XiLaiTL/moobile/html`（照 README） | ❌ |
+| 0.2.2（本次修复） | 两者都有（扁平那层是**转发包**） | `XiLaiTL/moobile/html` | ✅ |
+
+## 为什么闸门没拦住
+
+`tools/check_published.sh`（"发版后从用户视角验一遍"）里那行是**写死的**：
+
+```bash
+TARGET="${1:-XiLaiTL/moobile@0.2.0}"      # ← 发了 0.2.1 之后它还在验 0.2.0
+```
+
+于是它一直验的是**上一个版本**，而"正发的这一版"从来没被这样验过。
+另外那时**没有任何检查把「文档」和「产物」对起来** —— `check_external.sh` 用的是
+`tools/ext_probe` 里手写的 import（早就改成 vendor 路径了），所以它一直是绿的。
+
+> 这是本项目第 N 次同一个形状：**检查的目标写死了 → 检查退化成仪式**。修法两条，
+> 都已落地：默认目标改成跟随 `moon.mod` 的版本；新增"README 快速上手"检查（见下）。
+
+## ★ 更正 R3 的一条结论（它误导了人）
+
+R3 实验 4 的结论被写成了「加一层公开再导出包就能绕过 internal → ❌ **类型只能被命名、不能被使用**」，
+`AGENTS.md` / `FORK.md` 也照抄了。这个说法**过宽**：它把"某一方不能使用"讲成了"谁都不能使用"。
+2026-09 用两个最小模块重测（`pub using @real {type Color, type Box, red, make_box, describe}`）：
+
+| 谁用转发来的类型 | 命名 | 调函数 | 字段访问 | 变体匹配 | 构造 struct |
+|---|---|---|---|---|---|
+| **消费者**（import 转发包） | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **转发包自己** | ✅ | ✅ | ✅ | ✅ | ❌ `Cannot create values of the read-only type` |
+
+源包放在 `internal/` 路径段下，结论**一样**（消费者那 5 列全 ✅）。
+
+**关键是语法和位置**，这两条当时都没摸对：
+
+- `pub using` 要写在 **`.mbt`** 里，写进 `moon.pkg` 直接 `UnexpectedToken("pub")`；
+- 名字**不带 `fn` 关键字**：`pub using @cmd {none, batch, type Cmd}`（上游 rabbita 的 `top.mbt` 就这么写），
+  加上 `fn` 会报 `Missing type annotation for the return value` / `you may expect {`。
+
+**所以"加转发就行"是对的** —— 当时被证伪的是另一个更窄的情形。真正的不便是这两条：
+
+1. `pub using` **没有通配写法**（`{*}` / `{...}` / 裸包名 `/ 全试过，全不支持）；
+2. 于是 `html` 要逐个列 **400+ 个名字**（125 个值 + 10 类型 + `Attrs::*` 方法/1 trait）。
+
+## 解法：根上放**生成**的转发包
+
+`tools/gen_forwarders.py` 在模块根生成 `html/`、`cmd/`、`sub/`、`http/` 四个纯转发包，
+名字清单从 `vendor/rabbita/<pkg>/pkg.generated.mbti`（`moon info` 的产物 = 公开 API 的权威清单）抽出来。
+于是：
+
+- 消费者继续写 `XiLaiTL/moobile/html`（README 不用改，0.2.0 用户的代码也不用改）；
+- 模块根只多 4 项（不是把 14 个 fork 目录搬回去），R3 的"根目录变干净"保住了；
+- 生成物入库 → `--check` 能 diff 出漂移，接进 `verify_all.sh`（第 7 项）。
+
+`moon.mod` 里那个 description 也一起改了 —— 原来那句「moobile：MoonBit 写 UI，交给 React Native
+渲染 —— 跨端 UI 层（内含 rabbita vendor fork）」给 registry 看是**三处不合规**：重复包名、
+纯中文、把内部实现（vendor fork）摆在最前。对照上游 rabbita 的 `functional Web UI framework for
+MoonBit` 改成：
+
+```
+MoonBit UI for mobile: Android, iOS and Web from one rabbita (TEA) app, rendered by React Native
+keywords = [ moonbit, mobile, android, ios, web, cross-platform, react-native, rabbita, UI, TEA ]
+```
+
+## 这一趟踩的坑（都报过错）
+
+| 现象 | 真因 | 解法 |
+|---|---|---|
+| 转发包只转出 23 个名字（`html` 有 362 个公开函数） | 泛型子句在 **`fn` 和名字之间**：`pub fn[C : IsChildren] div(...)`，我的正则把它当成 `fn div` 了 | 正则改为先吃掉 `\[[^\]]*\]` 再取名字；拿 `pub fn 总数 − 方法数` 对账（362−240=122，加 3 个 `pub let` = 125 ✓） |
+| `Emit` / `Request` / `RequestWithBody` 编译报 `Alias for the type … should be created via using {type X}` / `declared twice` | **方法声明也可能带泛型**（`pub fn[A, B] Emit::map(…)`），没被"方法"分支吃掉 → 名字落进了"值"列表 | 方法正则加泛型子句；并加护栏：同名既在类型又在值里时以类型为准 |
+| `@html.Attrs` / `@cmd.Cmd` / `@sub.Sub` 都找不到 | **不透明类型**在 `.mbti` 里是**不带 `pub` 的裸 `type Attrs`**（写在 "Types and methods" 段），而我只认 `pub(struct\|enum)` | 增加裸 `type NAME` 规则。**这条是"README 探针"抓出来的** —— 光验路径存在是抓不到的 |
+| `moon info` 之后 `vendor_sync --check` 报"工作区多出 22 个" | `.mbti` 是构建产物，而 vendor 的不变量是"**197 个源文件** == pristine + patch" | 生成器自己管这个依赖：缺就 `moon info`，用完**只删自己新建的**那些 `.mbti`（实测 30 个，跑完归零，不变量回到 197/197） |
+| 探针报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0xad`，随后 `proc.stdout is None` | `subprocess` 的 `text=True` 用**本机 locale**（GBK）解码 moon 的 UTF-8 输出，异常在读取线程里抛出 | 显式 `encoding="utf-8", errors="replace"`。**这是本仓记过的同一个坑的解码侧**（编码侧早就在三个 Python 工具里加了兜底） |
+| `moon.work` 报 `Lexing error at 14..46`，看不出跟路径有关 | 生成的 `moon.work` 用了 Windows 反斜杠路径，被词法器当成转义 | 一律写**正斜杠** |
+
+## 新闸门（两个，都做了证伪测试）
+
+| 工具 | 判据 | 证伪怎么做的 |
+|---|---|---|
+| `tools/readme_probe.py` | 从 README 里**解析** import 路径，并按 README 的 `view` / `app` 示例编一遍（workspace 与 registry 两种目标） | 改前：`Cannot find import 'XiLaiTL/moobile/html'` → ❌；把路径改成 vendor → ✅；修完（转发包）→ ✅ |
+| `tools/gen_forwarders.py --check` | 生成的转发包与 `.mbti` 是否一致 | 塞一行 `pub using @vendor {totally_bogus_name}` → `[异] html\forward.generated.mbt` 且 rc=1；还原 → 一致 ✓ |
+
+两条都接进了 `verify_all.sh`（现在是**离线 8 项**）。
+
+> 结论：**README 是契约**。它是随包发出去的东西，也是使用者的第一屏 ——
+> 所以"文档说的"和"包里有的"必须由一条**能失败**的检查拴在一起，
+> 而不是靠维护者记得同步。
