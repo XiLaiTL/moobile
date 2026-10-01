@@ -146,6 +146,23 @@ else
   skip "SSE 流式通道（试金石）" "examples/apps/sse-spike/node_modules 没装（cd 进去跑 npm install）"
 fi
 
+# **真实应用**（chat-app）—— 这条门是这一整条轨道的收束点，所以它验的**不是某个能力**，
+# 而是"几件事同时用起来还对不对"：设置 → 发送 → **逐字长出来** → 停止 → 错误不白屏 →
+# 历史落库**重启还在** → 清空。
+#
+# 它自带三样东西，于是**离线、不需要 key、不需要模拟器**：
+#   · 假的 OpenAI 兼容 SSE 服务（判据自己起在随机端口上）；
+#   · 假的 `MOBILE_HOST.db`（内存版**宿主实现** —— 见 `sqlite/sqlite.mbt` 的边界说明；
+#     真机上那份是 expo-sqlite。它顺带让"重启还在"这条变得可测：内存活过应用重建）；
+#   · 判据自己 `moon build`（否则它在 CI 里永远只是 SKIP）。
+#
+# ⚠️ 它验的是 **web/node 那条传输**；真机那条（RN 的 XHR）要看 `device_check.mjs`。
+if [ -d "$ROOT/examples/apps/chat-app/node_modules" ]; then
+  run "真实应用（chat-app，21 项）" node "$ROOT/examples/apps/chat-app/verify.mjs"
+else
+  skip "真实应用（chat-app）" "examples/apps/chat-app/node_modules 没装（cd 进去跑 npm install）"
+fi
+
 # ── 脚手架（E 轨道）────────────────────────────────────────────────────────────
 # 模板是**唯一真源**（docs/design/SCAFFOLD.md §3.4）：生成出来的项目才是用户拿到的东西，
 # 而"模板自己坏了"以前没有任何一条门看得见 —— 因为模板当时还不存在。

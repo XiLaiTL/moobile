@@ -1,0 +1,27 @@
+# 依赖
+node_modules/
+
+# MoonBit 构建产物（`npm run build` 生成）
+_build/
+moobile.js
+*.mbti
+
+# Expo / Metro
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# 原生工程（由 `expo prebuild` / `expo run:*` 生成，不入库）
+/android
+/ios
+.kotlin/
+
+# 杂项
+.DS_Store
+*.orig.*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.env*.local

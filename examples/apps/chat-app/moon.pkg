@@ -1,0 +1,36 @@
+// 一个**真应用**要的东西也就这几样：
+//   · 视图与 TEA      → moobile / style / html / cmd / sub
+//   · **流式回复**    → `@http`（它的流式那一半：`http/stream.mbt` 的 `stream` / `abort`）
+//   · 本地历史与设置  → `@sqlite`（能力包，宿主侧 `expo-sqlite`）
+//
+// ⚠️ 加能力 = 加一条 import + 对应 npm 包（+ 重跑 `npx moobile-host regen`）。
+//
+// ⚠️ `vendor/rabbita/*` 这几条看着别扭（为什么要写 vendor？）—— 它们是库**转发出来的**包：
+//    moobile 是 rabbita 的换后端 fork，`html` / `cmd` / `sub` 由库转发，所以 import 路径
+//    必须长这样。写 `XiLaiTL/moobile/html` 是**错的**（历史上发过一版这样的 README，踩过）。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/sub" @sub,
+  // ★ 流式回复：`@http.stream(...)`
+  "XiLaiTL/moobile/http" @http,
+  // ★ 本地库：消息历史 + 设置
+  "XiLaiTL/moobile/sqlite" @sqlite,
+  // 解析 SSE 帧里的 JSON（`choices[0].delta.content`）
+  "moonbitlang/core/json" @json,
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)
