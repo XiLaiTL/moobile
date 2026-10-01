@@ -3045,3 +3045,26 @@ RNW 派发给 `currentResponder`），并用 grant 那一刻的**数值快照**�
 两个诉求方向相反，用一个开关分开才是诚实的。修完 (b) 名副其实（26/26），
 而且控制台终于出现了 React 那句 `Unknown event handler property 'onPress'. It will be ignored.`
 —— 那正是默认表按 RN 语义产出 `onPress` 的直接证据，之前那条警告被掩盖时也一起没了。
+
+### 七（工具/环境）：全局 `http.proxy` 指向一个**没在跑**的本地代理 → `git push` 看着像断网
+
+**症状**：`git push` 失败，报的是连不上远端 —— 而 `curl https://github.com` **直连 200**。
+
+**真因**：`~/.gitconfig` 里写着 `http.proxy = https.proxy = 127.0.0.1:7890`，
+而那个本地代理**当时没开**（`curl -x http://127.0.0.1:7890` 返回 `000`）。
+git 于是把**所有**远程操作都往一个死端口上送 —— 与 `AGENTS.md` 记的那条
+"`moon update` 报 `no version satisfies requirement`"是同一个根：
+**代理没开，而错误信息指向别处**。
+
+**当时可用的绕法**（本机直连 GitHub 是通的）：
+
+```bash
+git -c http.proxy= -c https.proxy= push origin main
+```
+
+先干跑一次更稳（不改远端，但会把认证与快进关系都验掉）：
+`git -c http.proxy= -c https.proxy= push --dry-run origin main`
+
+⚠️ 这是**绕**不是**治**：配置在全局，换一个仓库、换一天还会再撞。
+根治要么删掉那两行全局配置（本机能直连时它们本来就没用），
+要么把代理真正跑起来 —— 别让"死代理 + 看起来像断网的报错"再骗一次。
