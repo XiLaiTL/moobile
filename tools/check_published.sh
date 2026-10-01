@@ -87,7 +87,7 @@ fi
 #    这一条是补出来的 —— 0.2.1 发出去之后才发现照 README 写的第一行编不过。
 echo
 echo "== 5) README 快速上手能否编过（对着 registry 上这一版）"
-if ! python3 "$ROOT/tools/readme_probe.py" --target "$TARGET"; then
+if ! bash "$ROOT/tools/py.sh" "$ROOT/tools/readme_probe.py" --target "$TARGET"; then
   echo "ERROR: README 与发布产物不一致 —— 使用者照 README 写的代码编不过。"
   exit 1
 fi

@@ -41,7 +41,7 @@ case "$MODE" in
 esac
 
 if [ "$SCANMODE" = "check" ]; then
-  if python3 "$ROOT/tools/cr_scan.py" --root "$ROOT" --mode check; then
+  if bash "$ROOT/tools/py.sh" "$ROOT/tools/cr_scan.py" --root "$ROOT" --mode check; then
     echo "行尾检查通过：没有带 CR 的文本文件。"
     exit 0
   fi
@@ -50,6 +50,6 @@ if [ "$SCANMODE" = "check" ]; then
   exit 1
 fi
 
-python3 "$ROOT/tools/cr_scan.py" --root "$ROOT" --mode fix || exit 1
+bash "$ROOT/tools/py.sh" "$ROOT/tools/cr_scan.py" --root "$ROOT" --mode fix || exit 1
 echo "（若上面没有列出文件，说明所有文本文件已是 LF。）"
 echo "建议接着跑：bash tools/vendor_sync.sh --check"

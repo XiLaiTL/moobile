@@ -59,7 +59,7 @@ case "$OUT" in
     # 光"能编"不够：README 才是使用者照抄的东西。它写的 import 路径必须真实存在
     # （2026-09 的事故：搬家后 README 还写着 `XiLaiTL/moobile/html`，照抄就编不过）。
     echo "== README 快速上手是否真能编过（README 的 import 路径就是契约）"
-    if python3 "$ROOT/tools/readme_probe.py" --workspace; then
+    if bash "$ROOT/tools/py.sh" "$ROOT/tools/readme_probe.py" --workspace; then
       exit 0
     fi
     echo ""

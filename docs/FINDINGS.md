@@ -1339,7 +1339,8 @@ LEAK（必须改）2 处：
 has_cr() { [ "$(tr -cd '\r' < "$1" 2>/dev/null | wc -c)" -gt 0 ]; }
 ```
 
-它对**每个**候选文件起两个进程（`tr` + `wc`）。本仓有 **2539** 个候选文本文件
+它对**每个**候选文件起两个进程（`tr` + `wc`）。本仓有 **2500 上下**个候选文本文件
+（这个数会浮动：`.scratch/` 里是探路用的第三方缓存。复现用 `bash tools/py.sh tools/cr_scan.py --root . --mode check`）
 （这个数是用 `find` + 同一份白名单独立数出来的）≈ **5000 次进程启动**，
 而 Windows 上每次 spawn 是几十毫秒 → 单这一项 260 秒。翻倍是因为
 `vendor_sync.sh --check` 为了"先查行尾"**又调了一次同一个脚本**。
@@ -1375,8 +1376,8 @@ printf '%s\0' "${cands[@]}" | xargs -0 -r grep -lIUZ -- $'\r'
 新增 `tools/cr_scan.py`（白名单与排除目录都搬进去，单一实现），`lf_normalize.sh` 只做 CLI 包装：
 
 - 判据是 `b"\r" in data` —— 不经过文本模式、不经过 argv 编码，因此不受 MSYS 影响；
-- 一次进程扫完 2539 个文件：**1 秒**（比原来快 ~260 倍）；
-- 输出里**带上候选文件数**（`候选 2539 个文本文件，带 CR 的 0 个`）：
+- 一次进程扫完全部候选：**1 秒**（比原来快 ~260 倍）；
+- 输出里**带上候选文件数**（`候选 2338 个文本文件，带 CR 的 0 个`）：
   一个"什么都没查"的检查同样会报通过，所以这个数字本身就是"检查有效"的证据。
 
 ## 改完必须做的一件事：证伪
@@ -1385,7 +1386,7 @@ printf '%s\0' "${cands[@]}" | xargs -0 -r grep -lIUZ -- $'\r'
 
 | 场景 | 期望 | 实测 |
 |---|---|---|
-| 正常仓库 | rc=0 | `候选 2539 … 带 CR 的 0 个` → rc=0 ✅ |
+| 正常仓库 | rc=0 | `候选 2338 … 带 CR 的 0 个` → rc=0 ✅ |
 | 塞诱饵 `printf 'x\r\ny\r\n' > tools/_crlf_bait.md` | rc≠0 且**点名**该文件 | `[CR] tools/_crlf_bait.md` → rc=1 ✅ |
 | `bash tools/lf_normalize.sh`（apply） | 真修掉 | `已转 LF: tools/_crlf_bait.md`，`od -c` 得 `x \n y \n` ✅ |
 | 删掉诱饵 | 回到 rc=0 | ✅ |
@@ -1523,3 +1524,56 @@ keywords = [ moonbit, mobile, android, ios, web, cross-platform, react-native, r
 > 结论：**README 是契约**。它是随包发出去的东西，也是使用者的第一屏 ——
 > 所以"文档说的"和"包里有的"必须由一条**能失败**的检查拴在一起，
 > 而不是靠维护者记得同步。
+
+## 补记：`--zip` 模式与一次**假证伪**
+
+发现这个缺陷之后，第一反应是"拿 0.2.1 的 zip 跑一遍新探针，看它是不是真的会红"。跑出来是 **✅ 通过** ——
+差点得出"探针没用"的结论。真因是：`_build/publish/` 里的 `XiLaiTL-moobile-0.2.1.zip`
+**被后面的 `moon package` 重新打过**（当时工作区已经有转发包了，而文件名里的版本号还取自改名前的
+`moon.mod`），所以那是一份"名字叫 0.2.1、内容是新版"的混合体。
+
+拿**真发出去的那份**（registry 缓存 `~/.moon/registry/cache/XiLaiTL/moobile/0.2.1.zip`）再跑，才是红的：
+
+```
+Cannot find import 'XiLaiTL/moobile/html' in probe/readmepaths@0.1.0     # exit 1
+```
+
+于是 `--zip` 模式加了一句自我提醒，并且把发版顺序钉死：**`moon package --list`（重打）→ 立刻 `--zip` 那一份**。
+
+> 又是同一个形状（R2 的 `uiautomator` 陈旧 xml、R5 的噪声、R6 的假通过）：**先问"我手上这份是不是这次的"**。
+> 这次差点把"检查有效"验成"检查无效"。
+
+## 补记：Python 工具"慢"的真因是 **pyenv shim**，不是 Python
+
+有人反馈"跑 Python 脚本都要好久"。实测下来这话对了一半 —— **慢的是调用方式，不是脚本**：
+
+| 命令 | 耗时 |
+|---|---|
+| `python3 -c pass`（PATH 上那个 = **pyenv-win 的 shim**） | **~630ms** |
+| 真解释器 `~/.pyenv/pyenv-win/versions/3.11.9/python3.exe -c pass` | **~60ms** |
+| `python3 tools/cr_scan.py`（真活 ~350ms） | ~980ms |
+| 同一个脚本，直接叫真解释器 | ~420ms |
+
+`shims/python3` 每次调用都要重新解析版本、再转发一次进程 —— 本仓有 6 处 `python3` 调用，
+`verify_all.sh` 因此白花 **3~4 秒**，而且**每个工具单跑都"卡一下"**，让人误以为是脚本慢。
+
+修法：`tools/py.sh` —— 解析出一个不经 shim 的解释器并 `exec` 它（`$PYTHON` 优先；
+PATH 上是 shim 就问一次 `pyenv which python3`，结果缓存到 `_build/.python-path`，
+因为 `pyenv which` 自己也要 ~440ms）。所有 shell 工具改走它：
+
+| 步骤 | 改前 | 改后 |
+|---|---|---|
+| `check_links` | 728ms | **205ms** |
+| `check_public_leaks` | 939ms | **434ms** |
+| `lf_normalize --check` | 1016ms | **560ms** |
+| `verify_all.sh` 全程 | ~25s | **~21s** |
+
+### 顺带回答了"要不要用 MoonBit 重写这些工具"
+
+量了 `moon run --target js`（已构建、缓存命中）：**~80ms** —— 与真 Python 解释器（~60ms）
+**同一量级**，而且还要多一层"编译产物是否最新"的检查；走 native 则要 MSVC 工具链 + 构建步骤。
+而 `verify_all.sh` 里剩下的两个大头是 **`vendor_sync --check` ~10s** 与
+**`check_external` ~6s**（各自内部的 `moon add` / 两次 `moon check`）—— **与脚本语言无关**。
+
+> 结论：**换语言在速度上基本是白换**。要再快，该动的是"重复劳动"（基准包重放、重复的 moon check），
+> 不是换语言。若出于"一个仓库一种语言"（dogfooding）而想改，那是另一个理由，与性能无关。

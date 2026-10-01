@@ -18,6 +18,12 @@
 # 用法：
 #   python3 tools/readme_probe.py --target XiLaiTL/moobile@0.2.1   # 验 registry 上那一版
 #   python3 tools/readme_probe.py --workspace                      # 验本地工作区
+#   python3 tools/readme_probe.py --zip _build/publish/X.zip       # 验**打包好的 zip**（发版前用）
+#
+# ⚠️ `--zip` 那份必须是**刚打出来的**：`_build/publish/` 会被下一次 `moon package` 覆盖，
+#    而文件名里的版本号取自那时的 `moon.mod` —— 于是可能出现"名字叫 0.2.1、内容已经是新版"
+#    的混合体。实测踩到过：拿它当"旧版"做证伪，得到的是**假通过**。
+#    发版前的顺序固定为：`moon package --list`（重打）→ 立刻 `--zip` 那一份。
 #
 # 退出码：0 = README 的快速上手能编过；1 = 编不过（附 moon 的真实报错）。
 
@@ -28,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -126,10 +133,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", help=f"registry 上的目标，例如 {MODNAME}@0.2.1")
     ap.add_argument("--workspace", action="store_true", help="改为验证本地工作区")
+    ap.add_argument("--zip", help="改为验证**打包好的 zip**（发版前用：验的就是将要发出去的那份）")
     ap.add_argument("--readme", default=README)
     args = ap.parse_args()
-    if not args.workspace and not args.target:
-        print("ERROR: 要么给 --target，要么给 --workspace")
+    if not (args.workspace or args.target or args.zip):
+        print("ERROR: 三选一：--workspace / --target / --zip")
         return 2
 
     paths = readme_import_paths(args.readme)
@@ -142,18 +150,26 @@ def main():
     for p in paths:
         print(f"   {p}")
 
-        w = tempfile.mkdtemp(prefix="readme_probe_")
+    w = tempfile.mkdtemp(prefix="readme_probe_")
     try:
         app = os.path.join(w, "app")
         os.makedirs(app)
-        # 目标：registry 版本，或本地工作区（moon.work 的成员路径）
-        if args.workspace:
+        # 目标三种：registry 上的版本 / 本地工作区 / **打包好的 zip**（发版前用）
+        member = None
+        if args.zip:
+            member = os.path.join(w, "pkg")
+            os.makedirs(member)
+            with zipfile.ZipFile(args.zip) as zf:
+                zf.extractall(member)
+            print(f"== 目标：打包产物 {args.zip}")
+        elif args.workspace:
+            member = ROOT
             print(f"== 目标：本地工作区 {ROOT}")
         else:
             print(f"== 目标：{args.target}")
         with open(os.path.join(app, "moon.mod"), "w", encoding="utf-8", newline="") as fh:
             fh.write('name = "probe/readmepaths"\n\nversion = "0.1.0"\n\npreferred_target = "js"\n\n')
-            # ⚠️ 工作区模式下**也必须写版本号**：moon.mod 的 import 只认带版本的 registry 依赖
+            # ⚠️ 工作区/zip 模式下**也必须写版本号**：moon.mod 的 import 只认带版本的 registry 依赖
             #    （写裸模块名会报 `moon.mod only supports versioned registry dependencies`）；
             #    版本号在 moon.work 解析时被忽略，实际吃的是本地源码。
             dep = args.target if args.target else f"{MODNAME}@{local_version()}"
@@ -172,13 +188,13 @@ def main():
         with open(os.path.join(app, "main.mbt"), "w", encoding="utf-8", newline="") as fh:
             fh.write(README_SAMPLE)
 
-        if args.workspace:
-            # 工作区模式下，用 moon.work 把本地路径挂进来。
+        if member:
+            # 工作区 / zip 模式：用 moon.work 把本地那份挂进来（zip 先解到临时目录）。
             # ⚠️ 路径必须用**正斜杠**：反斜杠会被 moon.work 的词法器当成转义字符
-            #    （实测报 `Lexing error at 14..46`，而报错信息完全看不出是路径分隔符的问题）。
+            #    （实测报 `Lexing error at 14..46`，而报错完全看不出是路径分隔符的问题）。
             with open(os.path.join(w, "moon.work"), "w", encoding="utf-8", newline="") as fh:
                 fh.write("members = [\n")
-                for m in (ROOT, app):
+                for m in (member, app):
                     fh.write(f'  "{m.replace(os.sep, "/")}",\n')
                 fh.write("]\n")
 

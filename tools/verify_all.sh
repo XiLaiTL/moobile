@@ -55,15 +55,15 @@ echo "== 离线检查 =="
 run "moon check --target js" moon check --target js
 run "行尾规范（lf_normalize --check）" bash tools/lf_normalize.sh --check
 # 文档搬家最容易留下的坑：相对链接静默失效（GitHub 上 404，本地看不出来）
-run "文档相对链接（check_links）" python3 tools/check_links.py --quiet
+run "文档相对链接（check_links）" bash tools/py.sh tools/check_links.py --quiet
 # 公开泄漏：本机绝对路径 / 凭据（README 曾把本机路径带进发布包，所以这条必须有）
-run "公开内容无本机路径与凭据（check_public_leaks）" python3 tools/check_public_leaks.py --quiet
+run "公开内容无本机路径与凭据（check_public_leaks）" bash tools/py.sh tools/check_public_leaks.py --quiet
 run "vendor 一致性（vendor_sync --check）" bash tools/vendor_sync.sh --check
 run "外部模块可用性（check_external）" bash tools/check_external.sh
 
 # 转发包（根上的 html/ cmd/ sub/ http/）是从 vendor 的 .mbti **生成**的，生成物入库 → 能 diff。
 # 改了 vendor/rabbita/** 或升级 fork 之后忘了重跑生成器，就会在这里红。
-run "转发包与 mbti 一致（gen_forwarders --check）" python3 tools/gen_forwarders.py --check
+run "转发包与 mbti 一致（gen_forwarders --check）" bash tools/py.sh tools/gen_forwarders.py --check
 
 # 能力注册表与依赖是否仍一致（生成物是入库的，所以能 diff）
 if [ -d "$ROOT/examples/apps/todo-app/host/node_modules/moobile-host" ]; then

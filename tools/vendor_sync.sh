@@ -102,7 +102,7 @@ fi
 # 把 expected（旧布局：模块根下铺着 internal/、html/…）搬到最终布局 `vendor/rabbita/`。
 # 必须在 patch **之后**做：patch 的 `+++ b/路径` 是按旧布局写的。
 # 具体逻辑（摊平 internal/* + 改写 import + 自检）见 tools/vendor_relocate.py。
-python3 "$ROOT/tools/vendor_relocate.py" to-vendor   "$W/expected" "$W/relocated" "$OUR_NAME" $FORK_DIRS --internal $INTERNAL_SUBS || exit 1
+bash "$ROOT/tools/py.sh" "$ROOT/tools/vendor_relocate.py" to-vendor   "$W/expected" "$W/relocated" "$OUR_NAME" $FORK_DIRS --internal $INTERNAL_SUBS || exit 1
 [ -d "$W/relocated" ] || { echo "ERROR: 布局搬家失败"; exit 1; }
 
 # ---------------------------------------------------------------- 4) 执行模式
@@ -127,7 +127,7 @@ case "$MODE" in
       exit 1
     fi
     # 逐文件比：expected vs 工作区（忽略行尾差异，单独标注）
-    PYTHONIOENCODING=utf-8 python3 - "$W/relocated" "$ROOT/vendor/rabbita" ALL "$FORK_ROOT_FILES" <<'PY'
+    PYTHONIOENCODING=utf-8 bash "$ROOT/tools/py.sh" - "$W/relocated" "$ROOT/vendor/rabbita" ALL "$FORK_ROOT_FILES" <<'PY'
 import os,sys
 exp,root,dirarg,rootfiles=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4].split()
 # 搬家之后整棵 relocated 树就是 vendor/rabbita/ 的内容 —— 不过滤顶层目录
@@ -172,8 +172,8 @@ PY
     # 把工作区相对 BASE 的差异回写成 patch（已有 patch 按原文件名更新，新文件另起编号）
     # ⚠️ patch 是按**旧布局**（`internal/…`、`html/…` 铺在树根）写的，所以先把
     #    工作区的 vendor/rabbita/ 反向搬回去，再照旧 diff —— 否则生成的 patch 打不上 pristine。
-    python3 "$ROOT/tools/vendor_relocate.py" to-legacy       "$ROOT/vendor/rabbita" "$W/ws_pre" "$OUR_NAME" $FORK_DIRS --internal $INTERNAL_SUBS || exit 1
-    PYTHONIOENCODING=utf-8 python3 - "$W/base" "$W/ws_pre" "$PATCHDIR" "$FORK_DIRS" "$OUR_NAME" <<'PY'
+    bash "$ROOT/tools/py.sh" "$ROOT/tools/vendor_relocate.py" to-legacy       "$ROOT/vendor/rabbita" "$W/ws_pre" "$OUR_NAME" $FORK_DIRS --internal $INTERNAL_SUBS || exit 1
+    PYTHONIOENCODING=utf-8 bash "$ROOT/tools/py.sh" - "$W/base" "$W/ws_pre" "$PATCHDIR" "$FORK_DIRS" "$OUR_NAME" <<'PY'
 import os,sys,subprocess,difflib,re
 base,root,pdir,dirs,ourname=sys.argv[1],sys.argv[2],sys.argv[3],set(sys.argv[4].split()),sys.argv[5]
 def walk(r):

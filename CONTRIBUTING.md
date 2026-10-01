@@ -63,8 +63,15 @@ python3 tools/verify_android.py       # 真机 21 项（需要模拟器 + APK，
 
 ```bash
 # 0) 先过泄漏闸门：本机绝对路径 / 凭据绝不能进包（README 曾把维护者路径带进已发布的包里）
-python3 tools/check_public_leaks.py
+bash tools/py.sh tools/check_public_leaks.py
 #    npm 包那边 publish.sh 会自动跑这一步
+
+# 0.5) 打包，并**拿打出来的那份**验 README 的快速上手（这一步必须重打，不要用旧 zip）
+moon package --list                                  # 出 zip：_build/publish/<模块>-<版本>.zip
+bash tools/py.sh tools/readme_probe.py --zip _build/publish/XiLaiTL-moobile-<版本>.zip
+#    为什么要有这一步：0.2.1 发出去之后才发现，随包发布的 README 让使用者 import
+#    `XiLaiTL/moobile/html`，而那份包里根本没有这个包 —— 照 README 写的第一行就编不过。
+#    发出去不可撤回，所以**打包后、发布前**必须先自己当一次使用者。
 
 # 1) 月亮包（mooncakes）
 moon publish
@@ -72,7 +79,7 @@ moon publish
 # 2) npm 宿主包（注意：本机默认 registry 是只读镜像，必须显式指向官方；账号开了 2FA 还要 OTP）
 bash npm/moobile-host/publish.sh <6位码>
 
-# 3) 发完从"用户视角"验一遍
+# 3) 发完从"用户视角"验一遍（默认验 moon.mod 里那一版）
 bash tools/check_published.sh
 ```
 
