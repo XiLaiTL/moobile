@@ -197,14 +197,39 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 | `@common.Viewport` | `width` / `height` 由 **`Int` 变 `Double`**（`Window::inner_width/inner_height` 同改） | 库侧"宿主载荷"那条显式 `.to_double()`；`todo-app` 与 `zhouyi-reader` 的载荷显式 `.to_int()`（**在边界转，不改两端的松紧**） |
 | `internal/runtime/moon.pkg` 的依赖 | `moonbitlang/async/js_async` → `rabbita/js` | ⚠️ **我们 fork 的 `react_host.mbt` 仍需要 `@js_async`**（上游的 runtime 里**没有**这个文件）⇒ patch 12 把它**显式加回来**（原文见 §2.1 / patch 12） |
 
-### 4.3 ⚠️ "上最新"（0.16.3）的**前置条件是升工具链**
+### 4.3 上最新（0.16.3）：**工具链已升级**（2026-10-03），拦路虎已消失
 
-- 注册表最新是 **0.16.3**（`0.15.4 → 0.16.3` 动 **126 个文件**；我们这边**只额外多 3 个冲突路径**）。
-- **但它用本机工具链编译不过**：0.16.3 把 `cmd/operation.mbt` 的 `pub(all) extenum Extension {}`
-  改成**不写体的** `pub extenum Extension`，而 `moon 0.1.20260827` / `moonc v0.10.11` **解析不了**
-  （最小探针实测：`Error [3002] missing '{'`）。
-- ⇒ 想上 0.16.3，**先 `moon upgrade`**。那是一次**全仓范围**的变更（24 条门 + 所有应用 + CI +
-  文档里记的环境版本），应当**单独做**：一次只动一个变量，并且要**站在 0.16.0 这个已知可用的状态之上**做。
+**为什么必须升工具链**：0.16.3 把 `cmd/operation.mbt` 的 `pub(all) extenum Extension {}` 改成
+**不写体的** `pub extenum Extension`，而当时本机的 `moon 0.1.20260827` / `moonc v0.10.11`
+**解析不了**（最小探针实测 `Error [3002] missing '{'`；0.16.0 用带 `{}` 的旧写法，所以不受影响）。
+
+**已经升完**（本机）：
+
+| 组件 | 原来 | 现在 |
+|---|---|---|
+| `moon` | `0.1.20260827 (d0aaa07)` | **`0.1.20260920 (914d7da)`** |
+| `moonc` | `v0.10.11+8f8e8db1e` | **`v0.10.14+7d59c7ec9`** |
+| `core` | `0.10.11+6ff76a5f9` | **`0.10.14+7d59c7ec9`** |
+
+**验过的判据**：`moon check` 0 错误 · `verify_all.sh` **24 / 24**（在 0.16.0 那棵树上；
+⚠️ 警告数 **89 → 391**，新 lint 更严，但没有把任何一条门弄红）·
+**不写体的 `extenum` 现在编得过**（带对照探针实测）⇒ **0.16.3 已可达**。
+
+**怎么升的（照这个来，坑都在里面）**：
+1. `moon upgrade` **要 TTY**（非交互 shell 下连 `-f` 都报 `IO error: not a terminal`）⇒ 别走它。
+2. 走官方归档：`https://cli.moonbitlang.cn/binaries/latest/moonbit-windows-x86_64.zip`（**带 `.sha256`，先校验**）。
+   ⚠️ 版本化 URL（`binaries/0.1.20260920/…`）**不存在** —— 服务器只发 `latest` ⇒ 想钉版本只能自己存归档。
+3. **归档不含 `lib/core`**：另下 `https://cli.moonbitlang.cn/cores/core-latest.tar.gz` 解到 `~/.moon/lib/`。
+   ⚠️ **core 必须与工具链配套** —— 只换 `bin/` 会得到 `BytesView has no method unsafe_read_uint32_le`
+   这类**看起来像代码问题**的报错（旧 core + 新 moonc）。
+4. **还要跑官方脚本里那一步**：`moon -C ~/.moon/lib/core bundle --warn-list -a --all`
+   （外加 `--target wasm-gc`）。漏了就是 `_build/…/bundle/*.mi: No such file or directory`。
+5. ⚠️ Windows 上 `moon.exe` 可能**被占用**（本轮是我自己那次卡住的 `moon upgrade` 占着）⇒ `cp` 报
+   `Device or resource busy`；**改名绕开**即可（Windows 允许重命名运行中的 exe），别硬删。
+6. 先备份 `cp -r ~/.moon/{bin,lib}`（约 350 MB）—— 那是**唯一**的回退路径（工具链不在 git 里）。
+
+**0.16.3 还差什么**：把 4 个冲突 patch 按 0.16.3 重做一遍（`0.16.0 → 0.16.3` 只再动 4 个我们覆盖的路径，
+且以**尾逗号格式**为主）。做法见 4.1 下面那段"三方合并"。
 
 <details>
 <summary>2026-09 的演练预案（当时的预测，保留以便对照）</summary>

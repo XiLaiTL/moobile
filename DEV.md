@@ -16,7 +16,7 @@
 
 | 组件 | 版本 / 位置 | 备注 |
 |---|---|---|
-| MoonBit | `0.1.20260827 (d0aaa07)`，`~/.moon/bin/moon` | ⚠️ **工作区钉的是这一版，而 CI 装的是 `latest`** —— 两代都该绿，见下 |
+| MoonBit | **`0.1.20260920 (914d7da)`** + `moonc v0.10.14+7d59c7ec9`，`~/.moon/bin/moon` | **2026-10-03 升到 `latest`**（原来钉 `0.1.20260827`）⇒ 本机因此与 **CI 装的 `latest` 一致**了。⚠️ 官方服务器**只发 `latest`**（`binaries/<具体版本>/…` 一律 403，见 `FINDINGS.md`）⇒ "把 CI 钉到本机那一版"这条路本来就堵死。⚠️ 升级要**连 core 一起**（工具链归档**不含** `lib/core`），并跑官方脚本里那一步 `moon -C ~/.moon/lib/core bundle --warn-list -a --all` —— 漏了会得到 `_build/…/bundle/*.mi: No such file or directory`。回退：`~/.moon/{bin,lib}` 的字节级备份 |
 | Node / npm | `v24.14.1` / `9.2.0` | registry 已指向 `https://registry.npmmirror.com/` |
 | **JDK** | `D:/Program Files/Java/jdk-17.0.5` | ⚠️ **不要用 GraalVM**（Kotlin daemon 会卡死在 `compileKotlin`） |
 | **Gradle** | **8.14.3**（wrapper，走腾讯镜像） | ⚠️ **不要升到 9.x**，见 §7 |

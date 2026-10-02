@@ -84,7 +84,7 @@ node tools/perf_bench.mjs --n 1000 --mode dom --frames 100 --warmup 30 --trials 
 |---|---|
 | CPU / 内存 | AMD Ryzen 7 5800U（16 线程）· 15.36 GB |
 | 平台 | win32-x64 · node **v24.14.1**（V8） |
-| 工具链 | moon `0.1.20260827 (d0aaa07)` |
+| 工具链 | moon `0.1.20260920 (914d7da)` + `moonc v0.10.14+7d59c7ec9`（**2026-10-03 从 `0.1.20260827` 升级**）⚠️ **本文件里所有基线数字都是旧工具链上量的** ⇒ 跨这一刀的读数**不可直接比**，要重测 |
 | 产物 | `_build/js/debug/build/XiLaiTL/moobile-perf-bench/moobile-perf-bench.js`（319 KB，**debug 档**） |
 | 依赖 | translate 档**只用记账桩**（不装 React）；dom 档 react/react-dom `19.3.0` + jsdom `26.1.0` |
 
