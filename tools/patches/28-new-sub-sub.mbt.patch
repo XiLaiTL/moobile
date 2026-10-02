@@ -26,7 +26,7 @@
  enum Sub {
    Custom(String, Scope, Error, SubLoader)
    Batch(Array[Sub])
-@@ -54,6 +71,43 @@
+@@ -54,6 +71,50 @@
  }
  
  ///|
@@ -50,7 +50,14 @@
 +  try @json.from_json(@json.parse(payload)) catch {
 +    _ => None
 +  } noraise {
-+    (v : HostViewport) => Some({ width: v.width, height: v.height })
++    (v : HostViewport) => Some({
++      // ⚠️ 0.16 的 API 变化：`@common.Viewport` 的 `width/height` 从 `Int` 改成了 `Double`
++      // （`Window::inner_width/inner_height` 也跟着改了）。宿主推来的载荷仍是**整数像素**
++      // （`HostViewport` 保持 `Int` 是刻意的：形状不对就要报错，而不是静默取整），
++      // 所以在这里显式转一次 —— 两端的"类型"与"契约"各自都没被改松。
++      width: v.width.to_double(),
++      height: v.height.to_double(),
++    })
 +  }
 +}
 +
@@ -70,7 +77,7 @@
  #cfg(target="js")
  fn builtin_sub_loader(payload : Error, scheduler : &Scheduler) -> RunningSub? {
    match payload {
-@@ -155,28 +209,72 @@
+@@ -155,28 +216,72 @@
      }
      Resize(cmd) => {
        let mut tagger = cmd
@@ -93,7 +100,7 @@
          tagger = new_cmd
        }
 -      @dom.window().as_event_target().add_event_listener("resize", listener)
--      Some({ unload, update_tagger })
+-      Some({ unload, update_tagger, })
 +      // 宿主能力优先（RN：`Dimensions`）；问不到 / 形状不对 → 回退 DOM（Web）。
 +      //
 +      // ⚠️ 这一条是**先修的那一个**：它原来在 RN 上是**静默失效**（`window` 存在，
@@ -115,7 +122,7 @@
 +      match host_sub {
 +        Some(sub) => {
 +          let unload = _ => sub.cancel()
-+          Some({ unload, update_tagger })
++          Some({ unload, update_tagger, })
 +        }
 +        None => {
 +          let listener : @dom.Listener = event => {
@@ -133,7 +140,7 @@
 +            .remove_event_listener("resize", listener)
 +          }
 +          @dom.window().as_event_target().add_event_listener("resize", listener)
-+          Some({ unload, update_tagger })
++          Some({ unload, update_tagger, })
 +        }
 +      }
      }
@@ -159,7 +166,7 @@
        let mut tagger = cmd
        let listener : @dom.Listener = event => {
          ignore(event)
-@@ -207,27 +305,50 @@
+@@ -207,27 +312,50 @@
          }
        })
  
@@ -178,7 +185,7 @@
          tagger = new_cmd
        }
 -      @dom.window().to_event_target().add_event_listener("popstate", listener)
--      Some({ unload, update_tagger })
+-      Some({ unload, update_tagger, })
 +      // 两条驱动方式，按**运行时有没有 DOM** 分（不是按宿主有没有登记能力）：
 +      //   · 有 DOM（Web）→ 自己挂 `popstate`，变化时读地址栏并注入（老行为，一字不变）；
 +      //   · 没有 DOM（RN / Node）→ **一个 DOM API 都不碰**，只把注入器留在宿主手里，
@@ -200,11 +207,11 @@
 +          .remove_event_listener("popstate", listener)
 +        }
 +        @dom.window().to_event_target().add_event_listener("popstate", listener)
-+        Some({ unload, update_tagger })
++        Some({ unload, update_tagger, })
 +      } else {
 +        // 宿主接管：它调 `inject_url_changed` 时注入器就会跑。
 +        let unload = _ => scheduler.set_url_changed_injector(_ => @cmd.none)
-+        Some({ unload, update_tagger })
++        Some({ unload, update_tagger, })
 +      }
      }
      UrlRequest(cmd) => {
@@ -223,7 +230,7 @@
          let next = try! @url.parse(href)
          let request = if curr.protocol == next.protocol &&
            curr.host == next.host &&
-@@ -250,22 +371,40 @@
+@@ -250,22 +378,40 @@
      }
      VisibilityChange(cmd) => {
        let mut tagger = cmd
@@ -242,7 +249,7 @@
 -      @dom.document()
 -      .as_event_target()
 -      .add_event_listener("visibilitychange", listener)
--      Some({ unload, update_tagger })
+-      Some({ unload, update_tagger, })
 +      // 宿主能力优先：RN 上用 AppState，Web 上宿主不登记 → 落到下面的 DOM 回退。
 +      // 为什么要两条路：`#cfg(target="js")` 区分不了 Web 与 RN（同一个 target），
 +      // 而 `document` 在 RN 上**不存在** —— 老实现在原生端是直接抛，不是静默失效。
@@ -256,7 +263,7 @@
 +      match host_sub {
 +        Some(sub) => {
 +          let unload = _ => sub.cancel()
-+          Some({ unload, update_tagger })
++          Some({ unload, update_tagger, })
 +        }
 +        None => {
 +          let listener : @dom.Listener = _ => {
@@ -270,13 +277,13 @@
 +          @dom.document()
 +          .as_event_target()
 +          .add_event_listener("visibilitychange", listener)
-+          Some({ unload, update_tagger })
++          Some({ unload, update_tagger, })
 +        }
 +      }
      }
      _ => None
    }
-@@ -362,6 +501,10 @@
+@@ -362,6 +508,10 @@
  
  ///|
  /// Repeatedly enqueue `cmd` every `ms` milliseconds.
@@ -287,7 +294,7 @@
  pub fn every(ms : Int, cmd : @cmd.Cmd) -> Sub {
    custom_sub("every(\{ms})", Local, Every(ms, cmd), builtin_sub_loader)
  }
-@@ -370,6 +513,16 @@
+@@ -370,15 +520,80 @@
  /// Subscribe to window resize events.
  ///
  /// The handler receives the latest viewport width and height.
@@ -304,7 +311,60 @@
  pub fn on_resize(msg : @cmd.Emit[Viewport]) -> Sub {
    custom_sub("on_resize", Local, Resize(msg), builtin_sub_loader)
  }
-@@ -379,6 +532,10 @@
+ 
+ ///|
++/// **读一次当前视口**（同步）。与 `on_resize` 互补：它给的是"**现在多大**"，
++/// 而订阅给的是"**变了多少**" —— 而**两端都不会在挂载时补发一次**。
++///
++/// ## 为什么这条 API 是必需的（第十一轮，从真实应用的痛处来的）
++///
++/// `on_resize` 只在**真的发生 resize** 时推值：浏览器不拖窗口、手机不转屏，
++/// 它就一次都不推。于是"应用想按窗口宽度排版 / 算尺寸"这件事**做不到** ——
++/// 真实后果：zhouyi-reader 的罗盘边长按"窗口宽度的 94%（上限 720）"算，
++/// 而窗口宽度**从来没读到过** ⇒ 一直画在回落值 360 上 —— 在 1400px 的浏览器里
++/// 罗盘小得离谱，**而且没有任何报错**。当时的绕法是"往小里取"的常数（保证不溢出）——
++/// 那不是响应式，是猜。
++///
++/// ## 取值顺序（与 `on_resize` 同一套）
++///
++/// 1. **宿主能力优先**：`native.geometry.read()`（RN → `Dimensions.get('window')`）；
++/// 2. 问不到（没登记 `read` 的宿主 / SSR）→ **回退 DOM**：`window.innerWidth/innerHeight`；
++/// 3. 运行时连 DOM 都没有（RN 且宿主没实现）→ `None`（**不猜**）。
++///
++/// 拿到 `None` 时应用该怎么做：**用一个明确写下理由的回落值**，
++/// 而不是把 `None` 当 0 混进计算（`0` 会算出 0 宽的画布，那种 bug 更难查）。
++///
++/// **平台**：Web ✅（DOM）· RN ✅（宿主能力 `native.geometry.read()`）。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
++pub fn current_viewport() -> Viewport? {
++  // ① 宿主能力优先（RN）。形状不对 ⇒ **当场报错**，不取默认值（同 on_resize 那条取舍）。
++  match @cmd.host_capability("geometry") {
++    Some(cap) =>
++      match cap.read_json() {
++        Some(payload) =>
++          match viewport_of_payload(payload) {
++            Some(v) => return Some(v)
++            None => abort_bad_viewport(payload)
++          }
++        None => ()
++      }
++    None => ()
++  }
++  // ② DOM 回退（Web）。⚠️ 先问 `host_has_dom()`：RN 上 `window` 存在但 `innerWidth`
++  //    是 `undefined`，直接读会**静默给 0**（这正是这条通道要消灭的那一类）。
++  if @cmd.host_has_dom() {
++    let w = @dom.window().inner_width()
++    let h = @dom.window().inner_height()
++    if w > 0 && h > 0 {
++      return Some({ width: w, height: h })
++    }
++  }
++  None
++}
++
++///|
+ /// Subscribe to `requestAnimationFrame` ticks.
  ///
  /// The handler receives the browser timestamp for each frame while the
  /// subscription is active.
@@ -315,7 +375,7 @@
  pub fn on_animation_frame(msg : @cmd.Emit[Double]) -> Sub {
    custom_sub(
      "on_animation_frame",
-@@ -392,6 +549,12 @@
+@@ -392,6 +607,12 @@
  /// Subscribe to document `keydown` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -328,7 +388,7 @@
  pub fn on_key_down(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_down", Local, Keydown(msg), builtin_sub_loader)
  }
-@@ -400,6 +563,10 @@
+@@ -400,6 +621,10 @@
  /// Subscribe to document `keyup` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -339,7 +399,7 @@
  pub fn on_key_up(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_up", Local, Keyup(msg), builtin_sub_loader)
  }
-@@ -409,6 +576,13 @@
+@@ -409,6 +634,13 @@
  ///
  /// The handler receives `true` when the document is hidden, and `false`
  /// when it becomes visible again.
@@ -353,7 +413,7 @@
  pub fn on_visibility_change(msg : @cmd.Emit[Bool]) -> Sub {
    custom_sub(
      "on_visibility_change",
-@@ -422,6 +596,12 @@
+@@ -422,6 +654,12 @@
  /// Subscribe to document `mousemove` events.
  ///
  /// The handler receives a normalized `Mouse` value from `@common`.
@@ -366,7 +426,7 @@
  pub fn on_mouse_move(msg : @cmd.Emit[Mouse]) -> Sub {
    custom_sub("on_mouse_move", Local, MouseMove(msg), builtin_sub_loader)
  }
-@@ -432,6 +612,19 @@
+@@ -432,6 +670,19 @@
  /// This reports page-level scrolling on `window`, not scrolling of an inner
  /// element. The handler receives the current scroll offset and document scroll
  /// size as a `Scroll` value.
@@ -386,7 +446,7 @@
  pub fn on_scroll(msg : @cmd.Emit[Scroll]) -> Sub {
    custom_sub("on_scroll", Local, Scroll(msg), builtin_sub_loader)
  }
-@@ -442,6 +635,20 @@
+@@ -442,6 +693,20 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.
@@ -407,7 +467,7 @@
  pub fn on_url_changed(msg : @cmd.Emit[@url.Url]) -> Sub {
    custom_sub("on_url_changed", Global, UrlChanged(msg), builtin_sub_loader)
  }
-@@ -452,6 +659,15 @@
+@@ -452,6 +717,15 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.

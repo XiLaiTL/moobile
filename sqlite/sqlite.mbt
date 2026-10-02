@@ -37,17 +37,17 @@ extern "js" fn db_present() -> Bool =
 
 ///|
 #cfg(target="js")
-extern "js" fn db_exec_ffi(sql : String) -> @js.Promise =
+extern "js" fn db_exec_ffi(sql : String) -> @js.Promise[Unit] =
   #| (sql) => globalThis.MOBILE_HOST.db.exec(sql)
 
 ///|
 #cfg(target="js")
-extern "js" fn db_run_ffi(sql : String, params_json : String) -> @js.Promise =
+extern "js" fn db_run_ffi(sql : String, params_json : String) -> @js.Promise[String] =
   #| (sql, p) => globalThis.MOBILE_HOST.db.run(sql, p)
 
 ///|
 #cfg(target="js")
-extern "js" fn db_all_ffi(sql : String, params_json : String) -> @js.Promise =
+extern "js" fn db_all_ffi(sql : String, params_json : String) -> @js.Promise[String] =
   #| (sql, p) => globalThis.MOBILE_HOST.db.all(sql, p)
 
 ///|
@@ -126,7 +126,7 @@ pub async fn exec(sql : String) -> Unit {
 /// 执行**带参数**语句，返回影响行数与新插入行的 id。
 pub async fn run(sql : String, params? : String = "[]") -> RunResult {
   ensure()
-  let raw : String = db_run_ffi(sql, params).wait().cast()
+  let raw : String = db_run_ffi(sql, params).wait()
   @json.from_json(@json.parse(raw))
 }
 
@@ -141,6 +141,6 @@ pub async fn[T : FromJson] all(
   params? : String = "[]",
 ) -> Array[T] {
   ensure()
-  let raw : String = db_all_ffi(sql, params).wait().cast()
+  let raw : String = db_all_ffi(sql, params).wait()
   @json.from_json(@json.parse(raw))
 }

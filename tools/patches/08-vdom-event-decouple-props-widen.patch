@@ -1,6 +1,6 @@
 --- a/internal/vdom/vdom.mbt
 +++ b/internal/vdom/vdom.mbt
-@@ -103,46 +103,209 @@
+@@ -108,46 +108,209 @@
  }
  
  ///|
@@ -18,17 +18,13 @@
 +
 +///|
 +/// `@dom.Event` → `Event`。DOM 后端在监听器边界处使用。
- #cfg(target="js")
--type Event = @dom.Event
--
--///|
--#cfg(not(target="js"))
--type Event = Unit
++#cfg(target="js")
 +fn dom_event(value : @dom.Event) -> Event = "%identity"
 +
 +///|
 +/// `Event` → `@dom.Event`。DOM 侧的辅助函数（从事件里取值）使用。
-+#cfg(target="js")
+ #cfg(target="js")
+-type Event = @dom.Event
 +pub fn as_dom_event(value : Event) -> @dom.Event = "%identity"
 +
 +///|
@@ -51,8 +47,10 @@
 +pub struct PropsTable[V] {
 +  mut entries : @hashmap.HashMap[String, V]
 +}
-+
-+///|
+ 
+ ///|
+-#cfg(not(target="js"))
+-type Event = Unit
 +/// 空表。
 +pub fn[V] PropsTable::new() -> PropsTable[V] {
 +  { entries: @hashmap.HashMap::new() }
@@ -120,7 +118,7 @@
 +  styles : PropsTable[@style.StyleValue],
 +  handlers : PropsTable[(Event, &Scheduler) -> Unit],
  ) -> Props {
-   { handlers, attrs, styles, props }
+   { handlers, attrs, styles, props, }
  }
  
  ///|
@@ -128,30 +126,20 @@
 -  let dst : Map[K, V] = Map([])
 -  for k, v in src {
 -    dst[k] = v
--  }
--  dst
--}
--
--///|
 +/// **独立副本** —— 语义与上游逐条重插**完全等价**，但这里是 **O(1) 指针拷贝、零分配**：
 +/// 四张表都是不可变的，共享它们不会让"副本"与"原件"互相看见对方的改动。
 +///
 +/// 上游这一处曾用 `copy_map` 逐条重插（四张表 × 每元素每帧）—— 那是被替换掉的那笔开销。
- pub fn Props::copy(self : Props) -> Props {
-   {
--    handlers: copy_map(self.handlers),
--    attrs: copy_map(self.attrs),
--    props: copy_map(self.props),
--    styles: copy_map(self.styles),
--  }
--}
++pub fn Props::copy(self : Props) -> Props {
++  {
 +    handlers: self.handlers,
 +    attrs: self.attrs,
 +    props: self.props,
 +    styles: self.styles,
-+  }
-+}
-+
+   }
+-  dst
+ }
+ 
 +// ============================================================================
 +// ★ moobile 扩展（fork 的一部分）
 +//
@@ -164,10 +152,15 @@
 +// 这正是 README 说的「fork 的第二档：改造 rabbita 的类型支持」。
 +// ============================================================================
 +
-+///|
+ ///|
+-pub fn Props::copy(self : Props) -> Props {
 +/// 空属性集。
 +pub fn Props::empty() -> Props {
-+  {
+   {
+-    handlers: copy_map(self.handlers),
+-    attrs: copy_map(self.attrs),
+-    props: copy_map(self.props),
+-    styles: copy_map(self.styles),
 +    handlers: PropsTable::new(),
 +    attrs: PropsTable::new(),
 +    props: PropsTable::new(),
@@ -236,5 +229,5 @@
 +) -> Unit {
 +  for event, handler in self.handlers {
 +    f(event, (v) => handler(v, scheduler))
-+  }
-+}
+   }
+ }

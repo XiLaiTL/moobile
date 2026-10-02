@@ -79,7 +79,7 @@ bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配
 | 09 | `09-vdom-diff` | `internal/vdom/diff.mbt` | 事件监听与样式消费跟着 08 的类型走 |
 | 10 | `10-vdom-ssr` | `internal/vdom/ssr.mbt` | `write_styles_attr` 的参数类型加宽 |
 | 11 | `11-vdom-moon-pkg` | `internal/vdom/moon.pkg` | 加 `style` 依赖；**2026-10-02 追加**：加 `moonbitlang/core/immut/hashmap`（patch 08 的 `PropsTable` 用它） |
-| 12 | `12-runtime-moon-pkg` | `internal/runtime/moon.pkg` | 给 `react_host.mbt` 加 js 限定（与 15 配套） |
+| 12 | `12-runtime-moon-pkg` | `internal/runtime/moon.pkg` | 给 `react_host.mbt` 加 js 限定（与 15 配套）；**2026-10-03 追加**：把 `moonbitlang/async/js_async` **显式加回来** —— 上游 0.16 把它换成了 `rabbita/js`，但我们 fork 的 `react_host.mbt` 仍用 `@js_async.Promise::from_async`（上游 runtime 里**没有**这个文件） |
 | ~~13~~ | ~~`13-server-moon-pkg-rabbita-root`~~ | — | **已随 `server/` 一起裁掉（2026-09）**，见 §2.5 |
 | 14 | `14-new-html-event-decoders` | `html/event_decoders.mbt` | **新增文件**（122 行）：解码表 + `dom_decoders()` + `passthrough_decoders()` |
 | 15 | `15-new-runtime-react-host` | `internal/runtime/react_host.mbt` | **新增文件**（224 行）：moobile 的 React 后端 |
@@ -166,34 +166,99 @@ composition / wheel / input / submit / Mouse / Keyboard / Scroll …）。
 
 ---
 
-## 4. 上游版本现状与升级（2026-09 实测）
+## 4. 上游版本现状与升级
 
-| 项 | 数据 |
+### 4.1 **已完成：0.15.4 → 0.16.0**（2026-10-03，分支 `drill/rabbita-0.16.0`）
+
+| 项 | 值 |
 |---|---|
-| 我们 vendor 的 | **0.15.4** |
-| 注册表最新 | **0.16.0** |
-| 上游仓库 tag | 只有 6 个；0.15.x 只有 `rabbita-v0.15.6` → **0.15.4 无 tag** |
-| 上游仓库形态 | **monorepo**（库在 `rabbita/` 子目录，另有 `rui` / `warren` / `vite-plugin` / `website`） |
-| 0.15.4 → 0.16.0 改动 | **72 / 220 个文件（33%）**，其中 44 个是"被重写/变短"；+3 / −3 文件 |
-| 改动最重的目录 | `internal/` 16/36、`dom/` 20/79 |
-| **与我们冲突的文件** | **5 个**：`internal/vdom/{vdom,diff,ssr}.mbt`、`html/html_utils.mbt`、`internal/runtime/moon.pkg`（另外 8 个我们改过的文件上游没动，patch 可直接重放） |
-| 上游有没有采纳我们的提案 | **没有**：0.16.0 里 `Event` 仍别名 `@dom.Event`、`Props.styles` 仍是 `Map[String, String]` |
-| 0.16.0 里的 breaking 改动 | `refactor(js)!: migrate to standard async Promise` —— `js/async.mbt` 从 `pub async fn suspend` 变成 `pub type Promise[T] = @js_async.Promise[T]`，`js/js.mbti` 被删，`internal/runtime/moon.pkg` 的依赖从 `moonbitlang/async/js_async` 换成 `rabbita/js` |
-| 对我们有价值的 | 只有一条：`feat: add HTML memoization`（长列表性能，对应新 `PLAN.md` 的 D 轨道） |
+| 现在 vendor 的 | **0.16.0**（`tools/vendor.lock`） |
+| 落地的判据 | `moon check --target js` **0 错误** · `tools/verify_all.sh` **24 / 24** · 基准**不回归**（见下表） |
+| **P1（`PropsTable` 那张不可变表）** | ✅ **保住了**（在 0.16.0 的 `vdom.mbt` 里 24 处；见 §2.1 的 E 行） |
+| **真要手工重做的 patch** | **4 个**：`04`(html/README) · `08`(vdom.mbt) · `09`(diff.mbt) · `28`(sub.mbt)；**其余 29 个直接重放** |
+| 冲突的性质 | 几乎全是**尾逗号格式位移**（上游跑过格式化），加三条真 API 变更（见 4.2） |
+| 可重建性 | 33 个 patch 在**干净**的 0.16.0 基树上 **33/33** 打得上（先用 `patch --dry-run` 逐条验收） |
 
-**结论与触发条件**：现在**不升** —— 换来的东西（SSR 修复、dom 修复、依赖对齐）对我们几乎没用，
-代价却是重做 5 处核心 patch + 一个 breaking 的 async 迁移 + 全套验证重跑。
-升级时机：**P5（yi 在真机跑通）之后**，或者我们**具体需要** memoization 那类收益时。
+**基准（`tools/perf_bench.mjs`，同会话交错，各 9 次 `min` 统计量）**：
 
-**升级演练的做法（时间盒 + 回退）**：
+| N | 0.15.4 + P1 | **0.16.0** | 变化 |
+|---|---|---|---|
+| 1000 | 7.40 ms | **7.36 ms** | −0.6% |
+| 5000 | 46.62 ms | **47.52 ms** | +1.9% |
+
+⇒ **换底既没变快也没变慢**（两组区间重叠、都在噪声内）。它换来的是 `memo` / `memo_by` / `VNode::thunk`
+（⚠️ **要应用自己调**，不是自动记忆化）以及"不再落后两个小版本"。
+
+### 4.2 换底撞到的三条真 API 变更（都会溅到应用层）
+
+| 变更 | 上游改了什么 | 我们要做什么 |
+|---|---|---|
+| `@js.Promise` | 变成 `Promise[T]`（`js/async.mbt` 从 `suspend` 变成类型别名） | `sqlite/` 的三个 FFI 填 `[Unit]` / `[String]`，并去掉多余的 `.cast()` |
+| `@common.Viewport` | `width` / `height` 由 **`Int` 变 `Double`**（`Window::inner_width/inner_height` 同改） | 库侧"宿主载荷"那条显式 `.to_double()`；`todo-app` 与 `zhouyi-reader` 的载荷显式 `.to_int()`（**在边界转，不改两端的松紧**） |
+| `internal/runtime/moon.pkg` 的依赖 | `moonbitlang/async/js_async` → `rabbita/js` | ⚠️ **我们 fork 的 `react_host.mbt` 仍需要 `@js_async`**（上游的 runtime 里**没有**这个文件）⇒ patch 12 把它**显式加回来**（原文见 §2.1 / patch 12） |
+
+### 4.3 ⚠️ "上最新"（0.16.3）的**前置条件是升工具链**
+
+- 注册表最新是 **0.16.3**（`0.15.4 → 0.16.3` 动 **126 个文件**；我们这边**只额外多 3 个冲突路径**）。
+- **但它用本机工具链编译不过**：0.16.3 把 `cmd/operation.mbt` 的 `pub(all) extenum Extension {}`
+  改成**不写体的** `pub extenum Extension`，而 `moon 0.1.20260827` / `moonc v0.10.11` **解析不了**
+  （最小探针实测：`Error [3002] missing '{'`）。
+- ⇒ 想上 0.16.3，**先 `moon upgrade`**。那是一次**全仓范围**的变更（24 条门 + 所有应用 + CI +
+  文档里记的环境版本），应当**单独做**：一次只动一个变量，并且要**站在 0.16.0 这个已知可用的状态之上**做。
+
+<details>
+<summary>2026-09 的演练预案（当时的预测，保留以便对照）</summary>
+
+| 项 | 当时的数据 / 判断 |
+|---|---|
+| 注册表最新 | 0.16.0 |
+| 上游仓库 tag | 只有 6 个；0.15.x 只有 `rabbita-v0.15.6` → 0.15.4 无 tag。⚠️ 后来实测：**`rabbita-v0.16.0` 也没有 tag**（所以 GitHub compare API 按 tag 取不到那一段） |
+| 上游仓库形态 | monorepo（库在 `rabbita/` 子目录，另有 `rui` / `warren` / `vite-plugin` / `website`） |
+| 0.15.4 → 0.16.0 改动 | 72 / 220 个文件（33%），其中 44 个"被重写 / 变短" |
+| **预测的冲突文件** | **5 个**：`vdom{vdom,diff,ssr}.mbt`、`html_utils.mbt`、`runtime/moon.pkg` —— ⚠️ **实测是 4 个 patch，而且名单不完全一样**（`ssr` / `html_utils` / `runtime` 这三个其实被 `patch` 的上下文吸收掉了；真正失败的是 `04`/`08`/`09`/`28`）。**"文件被改过" ≠ "patch 打不上"** —— 要判冲突得**实跑重放**，不能按文件级 diff 估 |
+| 上游有没有采纳我们的提案 | **没有**（`Event` 仍别名 `@dom.Event`、`Props.styles` 仍是 `Map[String, String]`） |
+| 当时的结论 | "现在不升"，触发条件 = **我们具体需要 memoization 那类收益时** ⇒ D 轨道就是这个时机 |
+
+</details>
+
+**演练 / 升级的做法（时间盒 + 回退）**：
 
 ```bash
 git switch -c drill/rabbita-0.16.0
 bash tools/vendor_sync.sh --from 0.16.0 --check   # 先看冲突落在哪几个 patch
-# 逐个 --capture 重做冲突的 patch，然后：
-moon check --target js && bash tools/check_external.sh && node tools/verify_web.js
-# 判据全绿才算成功；超时/冲突爆炸就切回主分支 —— 回退只是一条 git 命令
+# 逐个重做冲突的 patch（手法见下），然后：
+moon check --target js && bash tools/verify_all.sh && node tools/perf_bench.mjs ...
 ```
+
+**重做冲突 patch 的正确手法**（这轮踩过坑，照这个来）——**三方合并，别手改 patch 文本**：
+
+```bash
+# 三棵树（每棵都要先验干净：无 *.rej/*.orig、无"我们加的东西"）
+#   base=旧版 BASE   ours=base+全部 patch   theirs=新版 BASE
+git merge-file -p ours/<f> base/<f> theirs/<f> > merged/<f>     # 解冲突，看语义
+diff -u --label a/<f> --label b/<f> theirs_base/<f> merged/<f> > tools/patches/<n>-....patch
+```
+
+⚠️ **两条硬规矩**（本轮各栽过一次）：
+
+1. **拿来做基准的树必须是 pristine 的独立目录**。在一棵树里跑过 patch 重放之后又拿它当"上游"，
+   会把**我们自己的改动**当成"上游已有的" ⇒ 于是**悄无声息地丢掉我们加的东西**
+   （本轮 `sub/sub.mbt` 的两个 helper 就这么丢过一次，症状是"编译过了但标识符 unbound"）。
+2. **patch 的上下文行不能靠 `patch` 的 fuzz 侥幸通过**。上游改了我们 patch 的上下文行时，
+   fuzz 会把那一行**丢掉并报告成功** —— 本轮 `runtime/moon.pkg` 的 `js_async` 依赖就是这么没的。
+   ⇒ **`--check` 全绿不构成"改动完整"的证据**，必须单独核对"我们加的东西还在不在"
+   （本轮的做法：`grep -c PropsTable`、`grep viewport_of_payload` 这类**点名断言**）。
+
+### 4.4 回退（0.16.0 → 0.15.4）
+
+```bash
+git switch main && git checkout tools/patches tools/vendor.lock   # 回到升级前那份 patch 系列
+bash tools/vendor_sync.sh --apply                                  # 按 0.15.4 + patch 系列重建 vendor
+```
+
+⚠️ **`vendor/` 不在 git 里 ⇒ "切分支"保护不了它**。升级前必须自己备份：
+`tar -czf vendor-backup.tgz vendor/` + `tar -czf patches.tgz tools/patches/`（本轮就是这么做的，
+另外还单独存了未提交 patch 的差分）。
 
 ---
 

@@ -253,7 +253,9 @@ pub fn subscriptions(_model : Model, emit : @cmd.Emit[Msg]) -> @sub.Sub {
   @sub.batch([
     @sub.every(5000, emit(Tick)),
     @sub.on_visibility_change(hidden => emit(VisibilityChanged(hidden))),
-    @sub.on_resize(v => emit(SizeChanged(v.width, v.height))),
+    // ⚠️ 0.16 起 `@common.Viewport` 的 width/height 是 `Double`（上游改的），
+    // 而本应用的 `SizeChanged` 收的是 `Int` 像素 —— 在边界显式转，别把类型的松紧改掉。
+    @sub.on_resize(v => emit(SizeChanged(v.width.to_int(), v.height.to_int()))),
   ])
 }
 

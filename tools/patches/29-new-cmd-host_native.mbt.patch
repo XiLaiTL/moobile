@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cmd/host_native.mbt
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,310 @@
 +///|
 +/// 宿主能力通道（PLAN §3.6 的 N2）。
 +///
@@ -214,6 +214,49 @@
 +  #|   // 宿主给对象或给字符串都行：统一成字符串，省得每个宿主记一遍规矩。
 +  #|   const un = cap.subscribe((v) => cb(typeof v === "string" ? v : JSON.stringify(v)));
 +  #|   return { un: (typeof un === "function") ? un : null };
++  #| }
++
++///|
++/// **读一次**（同步取值）—— 与 `subscribe_*` 并列的第三种形状。
++///
++/// ## 为什么需要它（2026-10-02 第十一轮，从真实应用的痛处来的）
++///
++/// 订阅只解决"**变化**"，不解决"**当前是多少**"：而 DOM 与 RN 的 resize 事件
++/// **都不会在挂载时补发一次**。于是"读当前视口"这件事在两端都成了 0：
++///
++/// | 端 | `on_resize` 订阅 | 读一次 |
++/// |---|---|---|
++/// | Web | `resize` 事件，挂载时不触发 | `window.innerWidth` —— **本来就能读** |
++/// | RN | `Dimensions` 的 `change` 事件，不转屏不触发 | `Dimensions.get('window')` —— 也能读 |
++///
++/// 真实后果（zhouyi-reader 的罗盘）：画布边长按"窗口宽度的 94%"算，而窗口宽度**从没读到过**
++/// ⇒ 一直是回落值 360 —— 在 1400px 的浏览器里罗盘小得离谱，而**没有任何报错**。
++/// 应用侧当时的解法是"往小里取"的常数（保证不溢出），那不是响应式，是猜。
++///
++/// ## 与 `subscribe_json` 的契约差别
++///
++/// 同形状（对象或 JSON 字符串都收）**同严格**：宿主登记了 `read` 但返回值不是那个形状 ⇒
++/// 调用方**必须报错**，不许取默认值 —— 取默认值恰好复现这条通道要消灭的"静默给错值"。
++/// 宿主**没登记** `read`（老宿主 / 只实现了 subscribe）⇒ `None`，调用方据此回退，不算错。
++#cfg(target="js")
++pub fn HostCapability::read_json(self : HostCapability) -> String? {
++  read_json_ffi(self).to_option()
++}
++
++///|
++#cfg(not(target="js"))
++pub fn HostCapability::read_json(_self : HostCapability) -> String? {
++  None
++}
++
++///|
++#cfg(target="js")
++extern "js" fn read_json_ffi(cap : HostCapability) -> @js.Nullable[String] =
++  #| (cap) => {
++  #|   if (typeof cap.read !== "function") return null;
++  #|   const v = cap.read();
++  #|   if (v === undefined || v === null) return null;
++  #|   return typeof v === "string" ? v : JSON.stringify(v);
 +  #| }
 +
 +///|

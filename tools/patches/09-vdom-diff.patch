@@ -9,10 +9,10 @@
  }
  
  ///|
-@@ -123,10 +123,10 @@
+@@ -124,10 +124,10 @@
    captured_link_listener : @dom.Listener,
  ) -> IProps {
-   let { handlers, attrs, props: properties, styles } = props
+   let { handlers, attrs, props: properties, styles, } = props
 -  let slots : Map[String, Ref[(@dom.Event, &Scheduler) -> Unit]] = Map([])
 +  let slots : Map[String, Ref[(Event, &Scheduler) -> Unit]] = Map([])
    for event, handler in handlers {
@@ -22,7 +22,7 @@
      slots[event] = slot
    }
    if is_captured_link_tag(tag) {
-@@ -146,7 +146,8 @@
+@@ -147,7 +147,8 @@
      panic()
    }
    for name, value in styles {
@@ -30,9 +30,9 @@
 +    // 类型化样式 → CSSOM。camelCase 键要转成 CSS 语法，长度要补 px。
 +    sheet.set_property(@style.css_property_name(name), value.to_css())
    }
-   { props, slots }
+   { props, slots, }
  }
-@@ -598,7 +599,7 @@
+@@ -616,7 +617,7 @@
        slot.val = handler
      } else {
        let slot = @ref.new(handler)
@@ -41,7 +41,7 @@
        slots[event] = slot
      }
    }
-@@ -640,16 +641,16 @@
+@@ -658,16 +659,16 @@
    }
    for key, _ in old.props.styles {
      if !new.styles.contains(key) {
@@ -60,4 +60,4 @@
 +      stylesheet.set_property(@style.css_property_name(key), value2.to_css())
      }
    }
-   { props: new, slots }
+   { props: new, slots, }

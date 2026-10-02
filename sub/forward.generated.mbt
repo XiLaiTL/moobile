@@ -8,5 +8,5 @@
 
 ///|
 // 转发 XiLaiTL/moobile/vendor/rabbita/sub 的公开面。
-pub using @vendor {type RunningSub, type Scope, type Sub, type SubLoader, batch, custom_sub, every, none, on_animation_frame, on_key_down, on_key_up, on_mouse_move}
-pub using @vendor {on_resize, on_scroll, on_url_changed, on_url_request, on_visibility_change}
+pub using @vendor {type RunningSub, type Scope, type Sub, type SubLoader, batch, current_viewport, custom_sub, every, none, on_animation_frame, on_key_down, on_key_up}
+pub using @vendor {on_mouse_move, on_resize, on_scroll, on_url_changed, on_url_request, on_visibility_change}

@@ -14,9 +14,9 @@ pub using @vendor {body, br, button, canvas, caption, cite, code, col, colgroup,
 pub using @vendor {del, details, dfn, dialog, div, dl, dom_decoders, dt, em, embed, event_decoders, fencedframe}
 pub using @vendor {fieldset, figcaption, figure, footer, form, form_value_from_event, fragment, geolocation, h1, h2, h3, h4}
 pub using @vendor {h5, h6, head, header, hgroup, hr, html, i, iframe, img, input, ins}
-pub using @vendor {kbd, label, legend, li, link, main_, map, mark, math, menu, meta, meter}
-pub using @vendor {nav, node, noscript, nothing, object, ol, optgroup, option, output, p, passthrough_decoders, picture}
-pub using @vendor {pre, progress, q, rp, rt, ruby, s, samp, script, search, section, select}
-pub using @vendor {selectedcontent, slot, small, source, span, strong, style_tag, sub, summary, sup, svg, table}
-pub using @vendor {tbody, td, template, text, textarea, tfoot, th, thead, time, title, tr, track}
-pub using @vendor {u, ul, var_, video, wbr}
+pub using @vendor {kbd, label, legend, li, link, main_, map, mark, math, memo, memo_by, menu}
+pub using @vendor {meta, meter, nav, node, noscript, nothing, object, ol, optgroup, option, output, p}
+pub using @vendor {passthrough_decoders, picture, pre, progress, q, rp, rt, ruby, s, samp, script, search}
+pub using @vendor {section, select, selectedcontent, slot, small, source, span, strong, style_tag, sub, summary, sup}
+pub using @vendor {svg, table, tbody, td, template, text, textarea, tfoot, th, thead, time, title}
+pub using @vendor {tr, track, u, ul, var_, video, wbr}
