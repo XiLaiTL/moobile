@@ -119,30 +119,52 @@ pub fn is_library_tag(tag : String) -> Bool {
 }
 
 ///|
+/// **标签索引：模块初始化时建一次**（D3 的落地处，`PLAN.md` §4.3）。
+///
+/// 为什么必须有它：`tag_table()` 返回的是**字面量数组** —— 每调一次就新建 44 个元组，
+/// 然后线性扫一遍。而 `map_tag` 是**每个元素每帧**一次：基准负载 N=1000 时每帧 7007 个元素
+/// ⇒ 每帧三十万次元组构造 + 三十万次比较。实测收益见 `docs/PERF.md`。
+///
+/// ⚠️ **表本身没有搬家**，这是刻意的：`tag_table()` 仍是那张可读的字面量表，
+/// 因为 `tools/mbtools/src/migrate_scan.mbt` 是**按文本行**读它的（认 `("tag", …)` 形状），
+/// 把字面量挪成别的形状会让 F1 报告数出 0 条 —— 那条门会红（这是它该有的行为，不是障碍）。
+/// 所以这里只加**索引**，不动真源。
+let g_tag_index : Map[String, String] = build_tag_index()
+
+///|
+fn build_tag_index() -> Map[String, String] {
+  let m : Map[String, String] = Map([])
+  for entry in tag_table() {
+    m[entry.0] = entry.1
+  }
+  m
+}
+
+///|
 /// 查表 → 外部组件直通 → 计数回落。
 ///
 /// 三档的顺序是刻意的：
-/// 1. **命中原表**（42 条）→ 老行为，交出宿主基础组件名；
+/// 1. **命中原表**（44 条）→ 老行为，交出宿主基础组件名；
 /// 2. **带命名空间**（`antd:Button`）→ **原样直通**，交由宿主的组件注册表解析
 ///    （`MOBILE_HOST.components["antd:Button"]`）。名字写错、或那个库没装，
 ///    由宿主**点名报错**（见 `host.mbt` 的 `js_host_component`），而不是悄悄回落成 `View`
 ///    —— 后者的表现是"渲染出一个空盒子"，最难查；
 /// 3. **其余**（`img` / `table` 这类）→ 回落 `View` + 计数：不崩，但计数会暴露它。
 pub fn map_tag(tag : String) -> String {
-  for entry in tag_table() {
-    if entry.0 == tag {
-      return entry.1
-    }
+  match g_tag_index.get(tag) {
+    Some(name) => name
+    None =>
+      if is_library_tag(tag) {
+        tag
+      } else {
+        g_unmapped.n = g_unmapped.n + 1
+        if g_unmapped.names.length() < 20 {
+          g_unmapped.names.push(tag)
+        }
+        // 兜底仍是 View（不崩），但计数会暴露它
+        "View"
+      }
   }
-  if is_library_tag(tag) {
-    return tag
-  }
-  g_unmapped.n = g_unmapped.n + 1
-  if g_unmapped.names.length() < 20 {
-    g_unmapped.names.push(tag)
-  }
-  // 兜底仍是 View（不崩），但计数会暴露它
-  "View"
 }
 
 ///|
@@ -246,7 +268,7 @@ pub fn map_event(tag : String, event : String) -> String {
 /// （`fontWeight: "700"` 一旦被 `Number()` 吃掉变成数字 `700` 就非法）。
 ///
 /// 这个区分现在由**类型**保证 —— 不再需要运行时键白名单。
-fn styles_to_js(styles : Map[String, @style.StyleValue]) -> JsValue {
+fn styles_to_js(styles : @vdom.PropsTable[@style.StyleValue]) -> JsValue {
   let o = js_obj_new()
   // `Em` 是相对单位，RN 没有这个概念，必须按字号换算。
   // 字号取自**同一条样式**里的 `fontSize`；取不到时退回 16（CSS 默认字号），

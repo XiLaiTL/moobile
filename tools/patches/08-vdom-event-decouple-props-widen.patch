@@ -1,6 +1,6 @@
 --- a/internal/vdom/vdom.mbt
 +++ b/internal/vdom/vdom.mbt
-@@ -103,26 +103,43 @@
+@@ -103,46 +103,209 @@
  }
  
  ///|
@@ -30,31 +30,127 @@
 +/// `Event` → `@dom.Event`。DOM 侧的辅助函数（从事件里取值）使用。
 +#cfg(target="js")
 +pub fn as_dom_event(value : Event) -> @dom.Event = "%identity"
++
++///|
++/// ★ moobile 改造（D 轨道性能，见 `docs/PERF.md` §8）：属性表 = 字符串键的**不可变**表。
++///
++/// **为什么必须有这个包装**：`Props` 的四张表在**每个元素每帧**都会被 `Props::copy()`
++/// 整份复制一遍 —— 因为元素构造器要一份"私有草稿纸"把自己那些显式参数
++/// （`class` / `style` / `on_click` …）写进去（`html.mbt` 里 `resolve_attrs` 之后那串
++/// `push_*`）。用可变 `Map` 时"复制"只能逐条重插 ⇒ **实测 0.64 µs/元素**，
++/// 占每帧翻译成本的 **28%（N=5000）~36%（N=1000）**（消融探针实测，`PERF.md` §7.3）。
++///
++/// 换成不可变表之后，`Props::copy()` 退化成**指针拷贝：O(1)、零分配**，
++/// 而**"每个元素拿到独立副本"这条语义一点没变** —— 不可变结构的共享是安全的，
++/// "改副本"等于用一张新表替换掉那一格，原件不受影响。
++///
++/// ⚠️ **为什么做成包装类型、而不是把四处字段直接换成 `HashMap`**：
++/// 这样 `attrs[k] = v` / `.get(k)` / `.contains(k)` / `for k, v in attrs` 这些写法
++/// 在上游那 **~200 处调用点一个字都不用改**（`#alias("_[_]=_")` 接住索引赋值）。
++/// 换字段类型的代价是编译器**强制**的（漏一处就编译不过），比手工改写入点安全得多。
++pub struct PropsTable[V] {
++  mut entries : @hashmap.HashMap[String, V]
++}
++
++///|
++/// 空表。
++pub fn[V] PropsTable::new() -> PropsTable[V] {
++  { entries: @hashmap.HashMap::new() }
++}
++
++///|
++/// 索引赋值 —— 接住上游 `self.0.attrs["name"] = value` 那种写法（约 200 处）。
++#alias("_[_]=_")
++pub fn[V] PropsTable::set(self : PropsTable[V], key : String, value : V) -> Unit {
++  self.entries = self.entries.add(key, value)
++}
++
++///|
++pub fn[V] PropsTable::get(self : PropsTable[V], key : String) -> V? {
++  self.entries.get(key)
++}
++
++///|
++pub fn[V] PropsTable::contains(self : PropsTable[V], key : String) -> Bool {
++  self.entries.contains(key)
++}
++
++///|
++pub fn[V] PropsTable::remove(self : PropsTable[V], key : String) -> Unit {
++  self.entries = self.entries.remove(key)
++}
++
++///|
++pub fn[V] PropsTable::length(self : PropsTable[V]) -> Int {
++  self.entries.length()
++}
++
++///|
++pub fn[V] PropsTable::is_empty(self : PropsTable[V]) -> Bool {
++  self.entries.length() == 0
++}
++
++///|
++pub fn[V] PropsTable::iter2(self : PropsTable[V]) -> Iter2[String, V] {
++  self.entries.iter2()
++}
  
  ///|
  pub struct Props {
-   handlers : Map[String, (Event, &Scheduler) -> Unit]
-   attrs : Map[String, String]
-   props : Map[String, @variant.Variant]
+-  handlers : Map[String, (Event, &Scheduler) -> Unit]
+-  attrs : Map[String, String]
+-  props : Map[String, @variant.Variant]
 -  styles : Map[String, String]
++  handlers : PropsTable[(Event, &Scheduler) -> Unit]
++  attrs : PropsTable[String]
++  props : PropsTable[@variant.Variant]
 +  // ★ moobile 改造：样式值从一开始就是**类型化**的，不再是"待解析的字符串"。
 +  // 旧的 `Map[String, String]` 通道已删除 —— 实测零调用点。
-+  styles : Map[String, @style.StyleValue]
++  styles : PropsTable[@style.StyleValue]
  }
  
  ///|
  pub fn Props::new(
-   attrs : Map[String, String],
-   props : Map[String, @variant.Variant],
+-  attrs : Map[String, String],
+-  props : Map[String, @variant.Variant],
 -  styles : Map[String, String],
-+  styles : Map[String, @style.StyleValue],
-   handlers : Map[String, (Event, &Scheduler) -> Unit],
+-  handlers : Map[String, (Event, &Scheduler) -> Unit],
++  attrs : PropsTable[String],
++  props : PropsTable[@variant.Variant],
++  styles : PropsTable[@style.StyleValue],
++  handlers : PropsTable[(Event, &Scheduler) -> Unit],
  ) -> Props {
    { handlers, attrs, styles, props }
-@@ -146,3 +163,85 @@
-     styles: copy_map(self.styles),
-   }
  }
+ 
+ ///|
+-fn[K : Eq + Hash, V] copy_map(src : Map[K, V]) -> Map[K, V] {
+-  let dst : Map[K, V] = Map([])
+-  for k, v in src {
+-    dst[k] = v
+-  }
+-  dst
+-}
+-
+-///|
++/// **独立副本** —— 语义与上游逐条重插**完全等价**，但这里是 **O(1) 指针拷贝、零分配**：
++/// 四张表都是不可变的，共享它们不会让"副本"与"原件"互相看见对方的改动。
++///
++/// 上游这一处曾用 `copy_map` 逐条重插（四张表 × 每元素每帧）—— 那是被替换掉的那笔开销。
+ pub fn Props::copy(self : Props) -> Props {
+   {
+-    handlers: copy_map(self.handlers),
+-    attrs: copy_map(self.attrs),
+-    props: copy_map(self.props),
+-    styles: copy_map(self.styles),
+-  }
+-}
++    handlers: self.handlers,
++    attrs: self.attrs,
++    props: self.props,
++    styles: self.styles,
++  }
++}
 +
 +// ============================================================================
 +// ★ moobile 扩展（fork 的一部分）
@@ -71,7 +167,12 @@
 +///|
 +/// 空属性集。
 +pub fn Props::empty() -> Props {
-+  { handlers: Map([]), attrs: Map([]), props: Map([]), styles: Map([]) }
++  {
++    handlers: PropsTable::new(),
++    attrs: PropsTable::new(),
++    props: PropsTable::new(),
++    styles: PropsTable::new(),
++  }
 +}
 +
 +///|
@@ -110,19 +211,19 @@
 +
 +///|
 +/// 类型化样式表（只读）。
-+pub fn Props::styles_map(self : Props) -> Map[String, @style.StyleValue] {
++pub fn Props::styles_map(self : Props) -> PropsTable[@style.StyleValue] {
 +  self.styles
 +}
 +
 +///|
 +/// 字符串属性表（只读）。
-+pub fn Props::attrs_map(self : Props) -> Map[String, String] {
++pub fn Props::attrs_map(self : Props) -> PropsTable[String] {
 +  self.attrs
 +}
 +
 +///|
 +/// 非字符串属性表（只读）。
-+pub fn Props::props_map(self : Props) -> Map[String, @variant.Variant] {
++pub fn Props::props_map(self : Props) -> PropsTable[@variant.Variant] {
 +  self.props
 +}
 +

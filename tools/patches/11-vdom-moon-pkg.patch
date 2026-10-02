@@ -1,6 +1,6 @@
 --- a/internal/vdom/moon.pkg
 +++ b/internal/vdom/moon.pkg
-@@ -1,8 +1,9 @@
+@@ -1,9 +1,11 @@
  import {
 -  "XiLaiTL/moobile/dom",
 -  "XiLaiTL/moobile/cmd",
@@ -12,5 +12,7 @@
 +  "XiLaiTL/moobile/vendor/rabbita/variant",
 +  "XiLaiTL/moobile/vendor/rabbita/js",
    "moonbitlang/core/ref",
++  "moonbitlang/core/immut/hashmap",
  }
  
+ warnings = "-unused_package"

@@ -1,0 +1,19 @@
+--- a/internal/vdom/ssr_wbtest.mbt
++++ b/internal/vdom/ssr_wbtest.mbt
+@@ -1,6 +1,6 @@
+ ///|
+ test "SSR applies raw-text rules inside script and style elements" {
+-  let props = Props::new({}, {}, {}, {})
++  let props = Props::empty()
+   let script = VNode::elem(
+     "script",
+     props,
+@@ -33,7 +33,7 @@
+ test "SSR keeps escaping text in normal elements" {
+   let div = VNode::elem(
+     "div",
+-    Props::new({}, {}, {}, {}),
++    Props::empty(),
+     Array([VNode::text("a < b && b > c")]),
+   )
+   inspect(

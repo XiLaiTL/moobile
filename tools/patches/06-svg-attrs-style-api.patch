@@ -1,5 +1,14 @@
 --- a/svg/attrs.mbt
 +++ b/svg/attrs.mbt
+@@ -9,7 +9,7 @@
+ 
+ ///|
+ pub fn Attrs::build() -> Attrs {
+-  Attrs(Props::new(Map([]), Map([]), Map([]), Map([])))
++  Attrs(Props::empty())
+ }
+ 
+ ///|
 @@ -46,9 +46,14 @@
  }
  

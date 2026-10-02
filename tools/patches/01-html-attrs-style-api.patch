@@ -1,6 +1,6 @@
 --- a/html/attrs.mbt
 +++ b/html/attrs.mbt
-@@ -5,12 +5,9 @@
+@@ -5,19 +5,16 @@
  using @variant {type Variant}
  
  ///|
@@ -16,6 +16,14 @@
  
  ///|
  struct Attrs(Props)
+ 
+ ///|
+ pub fn Attrs::build() -> Attrs {
+-  Attrs(Props::new(Map([]), Map([]), Map([]), Map([])))
++  Attrs(Props::empty())
+ }
+ 
+ ///|
 @@ -60,9 +57,75 @@
  }
  

@@ -1,11 +1,13 @@
 --- a/internal/vdom/ssr.mbt
 +++ b/internal/vdom/ssr.mbt
-@@ -51,7 +51,7 @@
+@@ -50,8 +50,8 @@
+ ///|
  fn write_styles_attr(
    buf : StringBuilder,
-   attrs : Map[String, String],
+-  attrs : Map[String, String],
 -  styles : Map[String, String],
-+  styles : Map[String, @style.StyleValue],
++  attrs : PropsTable[String],
++  styles : PropsTable[@style.StyleValue],
  ) -> Unit {
    if !attrs.contains("style") && styles.is_empty() {
      return
@@ -21,3 +23,14 @@
      need_separator = true
    }
    buf.write_char('"')
+@@ -101,8 +101,8 @@
+ fn write_property_attrs(
+   buf : StringBuilder,
+   tag : String,
+-  attrs : Map[String, String],
+-  props : Map[String, @variant.Variant],
++  attrs : PropsTable[String],
++  props : PropsTable[@variant.Variant],
+ ) -> Unit {
+   for name, value in props {
+     if name == "textContent" ||

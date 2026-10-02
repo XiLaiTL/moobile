@@ -33,4 +33,8 @@ members = [
   // 手势**边界**的真机验证（web 那半在 `gesture-spike` 里，40/40）：
   // 它必须吃本地源码的理由与 canvas-demo 相同 —— 验的正是我们**还没发布**的那版手势实现。
   "examples/apps/gesture-edges",
+  // 性能基准负载（`PLAN.md` §4.1 的 D1/D2，仪器是 `tools/perf_bench.mjs`）：
+  // 它吃本地源码的理由与上面几个试金石一样 —— 它量的就是**此刻工作区里的库**，
+  // 拿已发布的旧库量出来的数字与本轮的改动无关（也正因如此它才必须进工作区）。
+  "examples/apps/perf-bench",
 ]

@@ -1,0 +1,21 @@
+// 只有 5 条 import —— 与模板同一套最小面（基准负载不该背任何能力依赖：
+// 多一个 import 就多一层"这层成本算谁的"的歧义）。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)

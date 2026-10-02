@@ -4,7 +4,7 @@
 > （原因见 `README.md` 的「原理」一节）。当前策略是 **vendor 跟版**，
 > 所以必须有一份**精确、可重放**的改动清单 —— 否则 rabbita 一发版就得靠考古。
 >
-> 📌 **现在的真相不是本文的手抄步骤，而是 `tools/patches/` 里的 15 个 patch。**
+> 📌 **现在的真相不是本文的手抄步骤，而是 `tools/patches/` 里的 33 个 patch。**
 > 本文的作用是：解释每个 patch 在干什么、为什么，以及跟版/升级时怎么用。
 > 机器可验证：`bash tools/vendor_sync.sh --check`（断言「工作区 == 上游 + 这些 patch」）。
 >
@@ -60,7 +60,11 @@ bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配
 
 ---
 
-## 2. patch 系列（27 个，按应用顺序）
+## 2. patch 系列（33 个，按应用顺序）
+
+> ⚠️ **条数只是 `ls | wc -l` 的结果，判据永远是 `--check`。** 2026-10-02 的 `--capture` 把
+> 6 个**此前没有独立 patch 的既有 fork 文件**按路径拆成了 `28`~`33` —— 那是等价重构，不是补漏
+> （capture 前后 `--check` 都通过，且结果逐文件相同）。
 
 | # | patch | 触及 | 一句话 |
 |---|---|---|---|
@@ -71,16 +75,18 @@ bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配
 | 05 | `05-html-moon-pkg` | `html/moon.pkg` | 加 `style`、`core/ref` 依赖；把 `event_decoders.mbt` 限定为 js |
 | 06 | `06-svg-attrs-style-api` | `svg/attrs.mbt` | 与 01 同款：`Attrs::style` → `Attrs::styles` |
 | 07 | `07-svg-moon-pkg` | `svg/moon.pkg` | 加 `style` 依赖 |
-| **08** | **`08-vdom-event-decouple-props-widen`** | `internal/vdom/vdom.mbt` | **核心**：`Event` 与 `@dom.Event` 解耦 + `Props.styles` 类型化 + `Props` 补一组对外访问器（106+/7-） |
+| **08** | **`08-vdom-event-decouple-props-widen`** | `internal/vdom/vdom.mbt` | **核心**：`Event` 与 `@dom.Event` 解耦 + `Props.styles` 类型化 + `Props` 补一组对外访问器（106+/7-）。**2026-10-02 追加**：`Props` 的四张表由可变 `Map` 改成 **`PropsTable[V]`（包 core 的 `immut/hashmap`）** ⇒ `Props::copy()` 从"逐条重插四张表"变成 **O(1) 指针拷贝** —— 那是**每元素每帧**都在跑的一段，实测 **−32.4%（N=1000）/ −29.3%（N=5000）**。**语义与契约零变化**（复制这个动作保留）。⚠️ 上游 0.16 **没有**这一改动（它仍是 `copy_map` + `Map`）⇒ 这是**我们的分歧**，跟版时要重放 |
 | 09 | `09-vdom-diff` | `internal/vdom/diff.mbt` | 事件监听与样式消费跟着 08 的类型走 |
 | 10 | `10-vdom-ssr` | `internal/vdom/ssr.mbt` | `write_styles_attr` 的参数类型加宽 |
-| 11 | `11-vdom-moon-pkg` | `internal/vdom/moon.pkg` | 加 `style` 依赖 |
+| 11 | `11-vdom-moon-pkg` | `internal/vdom/moon.pkg` | 加 `style` 依赖；**2026-10-02 追加**：加 `moonbitlang/core/immut/hashmap`（patch 08 的 `PropsTable` 用它） |
 | 12 | `12-runtime-moon-pkg` | `internal/runtime/moon.pkg` | 给 `react_host.mbt` 加 js 限定（与 15 配套） |
 | ~~13~~ | ~~`13-server-moon-pkg-rabbita-root`~~ | — | **已随 `server/` 一起裁掉（2026-09）**，见 §2.5 |
 | 14 | `14-new-html-event-decoders` | `html/event_decoders.mbt` | **新增文件**（122 行）：解码表 + `dom_decoders()` + `passthrough_decoders()` |
 | 15 | `15-new-runtime-react-host` | `internal/runtime/react_host.mbt` | **新增文件**（224 行）：moobile 的 React 后端 |
 | 16–26 | `16-new-clipboard-moon.pkg` … `26-new-websocket-moon.pkg` | 11 个包的 `moon.pkg` | **搬迁补录**（2026-09）：`XiLaiTL/moobile/<pkg>` → `XiLaiTL/moobile/vendor/rabbita/<pkg>` 的 import 改写，覆盖 R3 搬迁时漏记的那些包（`clipboard` `cmd` `dialog` `dom` `html/canvas` `http` `internal/duplix` `internal/rabbita` `nav` `sub` `websocket`）。**是机械改写、无语义变化** —— 落盘前它们一直是"未捕获的工作区改动"，`vendor_sync --check` 因此不可能绿 |
 | **27** | **`27-new-html-payload.mbt`** | `html/payload.mbt`（**新增文件**）+ `html/moon.pkg` 的一行 `targets` | **事件载荷通道**：`Attrs::on_raw(event, f : (Payload) -> Cmd)` + `Payload::text/json/num/bool/field`。原有的 `on_*` 载荷在 React 后端是**零值**（`event_decoders.mbt` 的透传表），于是 `Input`/`Select` 这类受控组件"能画、能点、不能用"；这条通道把**真实值**交回应用。⚠️ 旧的 `on_*` 签名**一个都没动**（它们是对 DOM 的承诺）—— 这是**平行**通道。设计见 [`docs/design/DESIGN-COMPONENT-LIBRARY.md`](docs/design/DESIGN-COMPONENT-LIBRARY.md) §5 T1 |
+| 28–33 | `28-new-sub-sub.mbt` … `33-new-sub-sub_url_wbtest.mbt` | `sub/sub.mbt` · `cmd/host_native{,_wbtest}.mbt` · `sub/sub_{visibility,resize,url}_wbtest.mbt` | **搬迁/拆分补录**（2026-10-02 `--capture` 重新分组时按路径拆出）：都是**既有** fork 文件，此前被别的 patch 连带覆盖或未单独成条。**无语义变化**（capture 前后 `--check` 都通过） |
+| **34** | **`34-new-internal-vdom-ssr_wbtest.mbt`** | `internal/vdom/ssr_wbtest.mbt` | patch 08 的**配套**（2026-10-02）：白盒测试里 `Props::new({}, {}, {}, {})` → `Props::empty()`（四张表换成 `PropsTable` 之后空表要这么造） |
 
 ### 2.5 有意裁掉的包：`server/`
 
@@ -116,6 +122,7 @@ bash tools/vendor_sync.sh --from 0.16.0   # 换基准版本（试升级），配
 | B | `Event` 类型：`#cfg(target="js") type Event = @dom.Event` → `#external pub type Event` | **解耦**：不再别名 `@dom.Event`，且对外可命名（不改这个，外部包**根本没法写 handler**） |
 | C | 新增 `dom_event` / `pub as_dom_event` | 边界强转（`%identity`），DOM 侧用 |
 | D | 新增 `Props::empty / styles / on / attr / prop / styles_map / attrs_map / props_map / each_handler` | `Props` 字段是私有的，外部包既读不到也注册不了事件；这组是必要的对外入口 |
+| **E** | **（2026-10-02）新增 `PropsTable[V]`，并把 `Props` 的四张表换成它** | **性能**：四张表原本在**每个元素每帧**被 `Props::copy()` 整份复制（逐条重插）—— `resolve_attrs` 要给每个元素一份"私有草稿纸"写它自己的 `class`/`style`/`on_click`。换成**不可变**表之后这次复制退化成 **O(1) 指针拷贝**，实测 **−32.4%/−29.3%**，而**契约与语义零变化**。<br>⚠️ **为什么是包装类型而不是直接换字段类型**：`PropsTable` 提供 `#alias("_[_]=_")` 等一小撮方法，于是上游 `html/`+`svg/` 里 **~200 处 `self.0.attrs["x"] = v` 与成百处 `.get/.contains/for…in` 一个字都不用改**；换字段类型则要动它们全部（且漏一处是**静默 bug**，而换类型漏一处是**编译错误**）。<br>⚠️ **`Props::copy()` 的语义没变**：不可变结构共享是安全的 —— "改副本"等于把那一格换成一张新表，原件不受影响。<br>⚠️ **上游 0.16 没有这一改动**（仍是可变 `Map` + `copy_map`）⇒ 跟版时**必须重放本 patch** |
 
 ### 2.2 patch 02/03/14：为什么是"一张表"而不是"逐个修"
 
