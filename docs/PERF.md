@@ -71,7 +71,9 @@ node tools/perf_bench.mjs --n 1000 --mode dom --frames 100 --warmup 30 --trials 
 |---|---|---|
 | `art-base.js`（D3 前） | `3d8b00bf0ca5419a` | `git show HEAD:render.mbt` 落回工作区 → 构建 ⇒ **精确复现** |
 | `art-d3a.js`（D3 后） | `90bdcb5fbaac274e` | 只加 D3 的 `render.mbt` 构建 ⇒ **精确复现** |
-| `art-immut.js`（**当前树** = D3 + P1） | `b114b88467bf4e39` | 当前工作区构建（P1 的产物） |
+| `art-immut.js`（D3 + P1，**旧工具链**） | `b114b88467bf4e39` | P1 落地时的工作区构建 |
+| `art-0160.js`（0.16.0，旧工具链） | `43b6fbc869f1e898` | 换底到 0.16.0 时的构建 |
+| `art-0163.js`（**当前树** = 0.16.3 + P1 + 新工具链） | `dbcd943766992603` | 当前工作区构建 |
 | `art-nocopystyle.js`（探针 B） | `bb9052fa152e77cd` | §7.3 的临时消融 |
 | `art-nocopy4.js`（探针 A） | `9b948c7640e87870` | §7.3 的临时消融 |
 
