@@ -76,6 +76,17 @@ cd "$ROOT"
 
 echo "== 离线检查 =="
 run "moon check --target js" moon check --target js
+# ★ **本仓库/test 里的 96 项白盒测试**（2026-10-03 补进门）。
+#
+# 为什么必须有这条：`moon check` **只查类型**，碰不到行为。P1（属性表改不可变）就把
+# 上游自带的 `attrs_copy_test.mbt`（"Attrs::copy isolates later mutations"）**弄红过**——
+# 而它**不在门里**，于是那是一个**已发出的语义回归**：`Props::copy` 共享了可变表对象，
+# 往副本里写会漏回原件（同一个 Attrs 传给两个元素就会串味）。
+# 是"顺手跑了一次 moon test"才发现的 —— 那说明门缺了这一格。
+# ⚠️ 它比 `moon check` 慢（要编测试），但这是"行为"这一层唯一自动化的判据。
+# ⚠️ 标签里**不写项数** —— 写死的数字一定会过期（本轮就撞上了：加了 6 条测试，标签还写着 96）。
+#    项数由 `moon test` 自己打出来（`Total tests: N`）。
+run "白盒测试（moon test --target js）" moon test --target js
 run "行尾规范（lf_normalize --check）" bash tools/lf_normalize.sh --check
 # 文档搬家最容易留下的坑：相对链接静默失效（GitHub 上 404，本地看不出来）
 run "文档相对链接（check_links）" bash tools/py.sh tools/check_links.py --quiet
@@ -87,6 +98,19 @@ run "外部模块可用性（check_external）" bash tools/check_external.sh
 # 转发包（根上的 html/ cmd/ sub/ http/）是从 vendor 的 .mbti **生成**的，生成物入库 → 能 diff。
 # 改了 vendor/rabbita/** 或升级 fork 之后忘了重跑生成器，就会在这里红。
 run "转发包与 mbti 一致（gen_forwarders --check）" bash tools/py.sh tools/gen_forwarders.py --check
+
+# F1 迁移动检：**两个实现逐项对账**（MoonBit 版是 F1 的真源，JS 版要随 npm 包发给使用者）。
+# 为什么要这条门：F1 与 E9 是两条腿 —— `create --from-rabbita` 用的是 JS 那份扫描器，
+# 而"哪些会静默失效"的判据一直挂在 MoonBit 那份上。两份答案不一致时，
+# 迁移报告会**看起来是对的**（它自己很自洽），而结论与我们的判据漂了。
+#
+# ⚠️ 默认扫描对象是**仓库外**的真实项目 `interest/yi/zhouyi_reader`；
+#    新鲜克隆 / CI 上没有它 —— 那时是 SKIP（不是 PASS）：判据不成立就不许说通过。
+if [ -d "$ROOT/../yi/zhouyi_reader" ]; then
+  run "F1 迁移动检对账（JS vs MoonBit，逐 finding 逐 hit）" node "$ROOT/tools/migrate_scan_reconcile.mjs"
+else
+  skip "F1 迁移动检对账（JS vs MoonBit）" "仓库外的 ../yi/zhouyi_reader 不在（CI / 新鲜克隆上正常）"
+fi
 
 # lockfile 里的 `resolved` URL 是否与包名对得上（**不联网**，纯结构判据）。
 #
@@ -106,7 +130,7 @@ run "lockfile 的 resolved URL 与包名一致（check_lockfile_urls）" node "$
 #   · 于是它是个**纯盲区**，写错了要等真机才知道。
 # 这条门用 stub 的 react-native 真 import、真调 subscribe、真断言载荷语义与退订；
 # 它**不**验真机上 AppState 的实际行为（那要 verify_android 的形状）。
-run "宿主平台替代物（native_rn_check，15 项）" node "$ROOT/tools/native_rn_check.mjs"
+run "宿主平台替代物（native_rn_check，19 项）" node "$ROOT/tools/native_rn_check.mjs"
 
 # 能力包的「哪端可用」矩阵（PLAN §3.6 的 N5）。
 #
@@ -182,7 +206,7 @@ fi
 if [ -d "$ROOT/examples/apps/chat-app/node_modules" ]; then
   run "组件库生成物一致（chat-app，libgen --check）" \
     bash -c "cd '$ROOT/examples/apps/chat-app' && node '$ROOT/npm/moobile-host/bin/cli.js' libgen --check"
-  run "真实应用（chat-app，22 项）" node "$ROOT/examples/apps/chat-app/verify.mjs"
+  run "真实应用（chat-app，23 项）" node "$ROOT/examples/apps/chat-app/verify.mjs"
 else
   skip "真实应用（chat-app）" "examples/apps/chat-app/node_modules 没装（cd 进去跑 npm install）"
 fi
@@ -217,6 +241,28 @@ wait "$P_CMP"; RC_CMP=$?
 tally "脚手架模板（生成/替换干净/可编译/可运行）" "$RC_TPL" "$LOG_TPL"
 tally "脚手架承载真应用（探针：多文件+多页面+过滤）" "$RC_PROBE" "$LOG_PROBE"
 tally "模板同源 T1（生成物 vs demo，清单外差异即红）" "$RC_CMP" "$LOG_CMP"
+
+# 宿主矩阵（`--host expo | rnw | webview`）：这条门守的是 SCAFFOLD §3.3 那句承诺的
+# **可执行形式** —— 「换宿主不改应用」：三个宿主生成物的 moon.mod / moon.pkg / app.mbt
+# 必须**逐字节相同**，差别只在宿主文件。离线、不装依赖、不需要 VS 工具链。
+# 「换宿主之后界面一样不一样」由两条示例守：zhouyi-reader-desktop（RNW：打进桌面宿主）与
+# zhouyi-reader-webview（静态宿主：esbuild → 静态服务 → **应用自己那 45 条判据**原样复用）。
+# ⚠️ 标签里**不能写反引号**：它在双引号里会被 bash 当成命令替换 ——
+#    原来这行写的是 `--host rnw`，于是每跑一次都会先执行一条叫 `--host` 的命令
+#    （输出 `line 238: --host: command not found`），汇总里的那格还少了半句话。
+run "宿主矩阵生成器（expo / rnw / webview，32 项）" node "$ROOT/tools/host_probe.mjs"
+
+# 生成物自查（迁移的洞）：机械迁移**移不过来**的那两块 —— 根样式 `page()` 没人挂、
+# 根上没有滚动容器（RN 的 `View` 不滚动 → 真机上超过一屏的内容够不着）。
+# 两条都**只在原生上现形**：本轮实测真机上滚 30 次界面纹丝不动，而**同一个页面**在
+# web 判据里 45/45。探针既跑真实应用（必须干净），也跑 5 个**故意做坏**的样本（必须逐条点名）。
+run "生成物自查（迁移的洞，13 项）" node "$ROOT/tools/migrate_app_audit.mjs"
+
+# F1 的新规则 `click.on-view`（`on_click` 挂在不会响的标签上）：**诱饵项目 + 真项目读数**，
+# 而且两侧实现（JS 包里的 `click-on-view.js` 与 MoonBit 真源）逐 hit 对账。
+# 当年这 5 处是**手工**找出来的（卦卡点不动、折叠点不开），现在是报告里的一条。
+run "F1 新规则 on_click-on-view（诱饵 + 两侧对账，13 项）" node "$ROOT/tools/migrate_click_scan.mjs"
+
 
 # 能力注册表与依赖是否仍一致（生成物是入库的，所以能 diff）
 if [ -d "$ROOT/examples/apps/todo-app/host/node_modules/moobile-host" ]; then

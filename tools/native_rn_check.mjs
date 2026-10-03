@@ -64,7 +64,10 @@ fs.writeFileSync(
     '  },',
     '};',
     'const dimListeners = [];',
+    // ⚠️ stub 要能改尺寸：`geometry.read()` 的判据是"读的是**当前**值"（不是启动时缓存的）
+    'let winSize = { width: 390, height: 844 };',
     'export const Dimensions = {',
+    '  get(dim) { return dim === "window" ? { ...winSize } : { ...winSize }; },',
     '  addEventListener(type, handler) {',
     '    const entry = { type, handler };',
     '    dimListeners.push(entry);',
@@ -75,7 +78,8 @@ fs.writeFileSync(
     '  listeners,',
     '  dimListeners,',
     '  emit(state) { listeners.slice().forEach((l) => l.handler(state)); },',
-    '  emitDimension(width, height) { dimListeners.slice().forEach((l) => l.handler({ window: { width, height } })); },',
+    '  emitDimension(width, height) { winSize = { width, height }; dimListeners.slice().forEach((l) => l.handler({ window: { width, height } })); },',
+    '  setWindowSize(width, height) { winSize = { width, height }; },',
     '};',
     '',
   ].join('\n'),
@@ -135,6 +139,30 @@ ok(
 );
 unGeo();
 ok('geometry 退订摘掉监听', stub.dimListeners.length === 0, `实得 ${stub.dimListeners.length}`);
+
+// ⑥b geometry.**read()** ← `@sub.current_viewport()`（第十一轮补的"读一次"那一半）
+//
+// 为什么单列一组：订阅与读一次是**两个形状**（`subscribe(cb)` / `read()`），
+// 而"只实现了 subscribe 的宿主"必须能让库侧回退（`read_json` 给 `null` → 走 DOM），
+// 所以"read 存在"与"read 的形状对不对"要分开断言。
+ok('geometry.read 是函数（读一次当前视口）', typeof RN_NATIVE.geometry?.read === 'function');
+const vp = RN_NATIVE.geometry.read();
+ok(
+  'geometry.read() 给出取整后的 {width, height}',
+  Boolean(vp) && Number.isInteger(vp.width) && Number.isInteger(vp.height) && vp.width > 0 && vp.height > 0,
+  JSON.stringify(vp),
+);
+stub.setWindowSize(412.7, 915.2);
+const vp2 = RN_NATIVE.geometry.read();
+ok(
+  'geometry.read() 读的是**当前**尺寸（不是启动时缓存的）',
+  JSON.stringify(vp2) === JSON.stringify({ width: 413, height: 915 }),
+  JSON.stringify(vp2),
+);
+ok(
+  'geometry 两个形状都在（变化走 subscribe、当前值走 read）',
+  typeof RN_NATIVE.geometry.subscribe === 'function' && typeof RN_NATIVE.geometry.read === 'function',
+);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 

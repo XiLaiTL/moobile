@@ -301,6 +301,154 @@ fn excerpt(line : String) -> String {
 }
 
 ///|
+/// 「`on_click` 挂在**不会响的标签**上」这条**结构规则**的命中：`(行号, 标签名)`。
+///
+/// 这是 `tools/mbtools` 侧的实现；JS 侧那一份在
+/// `npm/moobile-host/lib/migrate/click-on-view.js` —— **算法逐字同构**，
+/// 判据是 `node tools/migrate_scan_reconcile.mjs` 与 `node tools/migrate_click_scan.mjs`
+/// 两侧逐 finding / 逐 hit（含 `text`）一致。改这里必须同时改那里。
+///
+/// 事实（`render.mbt:243`）：`on_click` 映射成 RN 的 `onPress`，而标签表里**只有
+/// `button` / `a` 落到 `Pressable`**；`div` / `span` / `p` 落到 `View` / `Text`，
+/// 那两个组件没有 `onPress` —— 点击被**丢掉**，不报错、不警告。
+///
+/// 为什么不在"按行子串匹配"的那 14 条规则里：它要的是"标签 + 事件"两个 token 的
+/// **结构关系**（同一次调用里），单行子串判不出来（`div(… on_click=…)` 与
+/// `button(… on_click=…)` 逐字看没有区别）。
+///
+/// ⚠️ 口径与那 14 条规则一致：**扫原始文本，注释里的代码同样算命中**（兄弟规则也是这么做的）。
+///    这是有意的 —— 假阳性（注释）比假阴性（漏一个真的点不动）代价小得多，见 FINDINGS。
+///
+/// 算法（**与 JS 侧逐字同构**，别在这里顺手优化）：
+///   ① 找每一处 `on_click`，要求它后面（跳过空白）是 `=`（否则是 `on_clicked` 这类名字）；
+///   ② 从它往回扫，用括号配对找到包着它的那次调用的左括号；
+///   ③ 读左括号紧前面的标识符当标签名（`div(` / `@html.div(` 都读成 `div`）；
+///   ④ 标签名不是 `button` / `a` 就记一条（行号取 `on_click` 那一行）。
+fn scan_click_on_view(text : String) -> Array[(Int, String)] {
+  let chars = text.to_array()
+  let n = chars.length()
+  let out : Array[(Int, String)] = []
+  let needle = "on_click".to_array()
+  let mut from = 0
+  while from < n {
+    let at = match find_chars(chars, needle, from) {
+      Some(i) => i
+      None => break
+    }
+    from = at + needle.length()
+    // ① 后面必须是 `=`（跳过空白）
+    let mut j = at + needle.length()
+    while j < n && is_space_char(chars[j]) {
+      j = j + 1
+    }
+    if j >= n || chars[j] != '=' {
+      continue
+    }
+    // ② 往回找包着它的那次调用的左括号
+    let mut depth = 0
+    let mut tag : String? = None
+    let mut k = at - 1
+    while k >= 0 {
+      let c = chars[k]
+      if c == ')' {
+        depth = depth + 1
+      } else if c == '(' {
+        if depth == 0 {
+          // ③ 左括号紧前面那个标识符就是标签名（跳过空白，如 `div (`）
+          let mut p = k - 1
+          while p >= 0 && is_space_char(chars[p]) {
+            p = p - 1
+          }
+          let e = p
+          while p >= 0 && is_ident_char(chars[p]) {
+            p = p - 1
+          }
+          if e > p {
+            let mut acc = ""
+            let mut q = p + 1
+            while q <= e {
+              acc = acc + chars[q].to_string()
+              q = q + 1
+            }
+            tag = Some(acc)
+          }
+          break
+        } else {
+          depth = depth - 1
+        }
+      }
+      k = k - 1
+    }
+    match tag {
+      None => continue
+      Some(t) =>
+        if t == "button" || t == "a" {
+          continue
+        }
+    }
+    // ④ 行号 = `on_click` 之前有几个换行
+    let mut line = 1
+    let mut q = 0
+    while q < at {
+      if chars[q] == '\n' {
+        line = line + 1
+      }
+      q = q + 1
+    }
+    out.push((line, match tag { Some(t) => t; None => "" }))
+  }
+  out
+}
+
+///|
+/// 命中行的**标注**（hit 的 `text` 尾巴）。两侧必须逐字相同。
+fn click_hit_note(tag : String) -> String {
+  "   ← `" + tag + "(…) on_click=`"
+}
+
+///|
+/// 在字符数组里从 `from` 起找 `pat`，返回下标（找不到给 `None`）。
+/// 自己写而不用 `String::find`：这里要的是**字符下标**（往回走、括号配对、数换行都在同一套下标上），
+/// 而字符串 API 的下标口径（字节 / 码元）随版本漂 —— 函数里混两套下标是 bug 的温床。
+fn find_chars(chars : Array[Char], pat : Array[Char], from : Int) -> Int? {
+  let n = chars.length()
+  let m = pat.length()
+  if m == 0 || n < m {
+    return None
+  }
+  let mut i = from
+  while i + m <= n {
+    let mut ok = true
+    let mut j = 0
+    while j < m {
+      if chars[i + j] != pat[j] {
+        ok = false
+        break
+      }
+      j = j + 1
+    }
+    if ok {
+      return Some(i)
+    }
+    i = i + 1
+  }
+  None
+}
+
+///|
+/// 标识符字符（与 JS 侧一致：ASCII 字母、数字、下划线）。
+fn is_ident_char(c : Char) -> Bool {
+  let v = c.to_int()
+  (v >= 97 && v <= 122) || (v >= 65 && v <= 90) || (v >= 48 && v <= 57) || v == 95
+}
+
+///|
+/// 空白（含换行）—— 往回找标签名时要跳过 `div (` 里的那个空格。
+fn is_space_char(c : Char) -> Bool {
+  c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+///|
 /// 解析 `--root`：`moon run` 在模块目录里跑，所以用 `MBTOOLS_CWD` 拼调用者的相对路径。
 fn resolve_from_cwd(p : String) -> String {
   let abs = p.has_prefix("/") || (p.length() > 1 && p[1] == ':')
@@ -397,6 +545,42 @@ fn migrate_scan_run(args : Array[String]) -> Int raise @fs.IOError {
       hits,
     })
   }
+
+  // ── 结构规则：`on_click` 挂在**不会响的标签**上（`div` / `span` / `p` …）────────
+  //
+  // 放在这里（而不是当成第 15 条 `Rule`）：`Rule` 的契约是**按行子串匹配**，
+  // 这一条要的是"标签 + 事件"的结构关系 —— 塞进去会让那条契约名不副实。
+  // ⚠️ 位置参与对账（finding 顺序即报告顺序），JS 侧必须插在同一处。
+  let click_hits : Array[Hit] = []
+  for rel in files {
+    if extname(basename(rel)) != "mbt" {
+      continue
+    }
+    let text = @fs.read_file_to_string(root + "/" + rel, encoding="utf8")
+    let lines = text.split("\n").to_array()
+    for pair in scan_click_on_view(text) {
+      let (line_no, tag) = pair
+      let raw = if line_no - 1 < lines.length() && line_no >= 1 {
+        lines[line_no - 1].to_string()
+      } else {
+        ""
+      }
+      click_hits.push({
+        file: rel,
+        line: line_no,
+        text: excerpt(raw) + click_hit_note(tag),
+      })
+    }
+  }
+  findings.push({
+    id: "click.on-view",
+    auto: "人决定",
+    why:
+      "`on_click` 在 moobile 里映射成 RN 的 `onPress`，而标签表里**只有 `button` / `a` 落到 `Pressable`**；`div` / `span` / `p` 落到 `View` / `Text`，那两个组件没有 `onPress` —— 点击被**丢掉**，不报错、不警告。",
+    next: "把标签换成 `button`（要语义就用 `a`）—— **换标签，不是加样式**；换完这个块才有真的点击。",
+    count: click_hits.length(),
+    hits: click_hits,
+  })
 
   // ── 标签分类（要"真源两张表"，不是模式匹配）──
   //
