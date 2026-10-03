@@ -1,7 +1,7 @@
 // 由 `moobile-host libgen` 生成 —— **不要手改**。
 //
 // 组件库：antd@6.6.4（命名空间 `antd:`）
-// 生成器：moobile-host libgen 0.3.0｜manifest 版本 1
+// 生成器：moobile-host libgen 0.4.0｜manifest 版本 1
 // 组件 71 个｜生成的参数 4965 个｜未生成 4354 个
 //
 // ## 怎么用

@@ -20,5 +20,5 @@ description = "moobile 最小工程（生成器的唯一真源，见 docs/design
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.3.0",
+  "XiLaiTL/moobile@0.4.0",
 }

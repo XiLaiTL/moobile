@@ -54,7 +54,7 @@ file-missing  | README.md      | 生成物的 README 是**给使用者**的（�
 # ── 3. 两边都有、内容不同 ─────────────────────────────────────────────────────
 content       | package.json:name                          | 参数化维度（应用名）—— demo 那份用的是 create-expo-app 起的名字 `host`
 content       | package.json:scripts                       | 生成物的 scripts **链上了 `npm run build`**（§3.4.3 修的那个洞：原来 `npm run web` 会在 `./moobile.js` 上当场解析失败）；demo 靠仓库里的 `tools/build.sh`
-content       | package.json:dependencies.moobile-host     | demo 是 `file:../../../../npm/moobile-host`（跟本地源码连）；生成物是 semver `^0.3.0`（从 registry 装）。**D6 要改的就是这一条**
+content       | package.json:dependencies.moobile-host     | demo 是 `file:../../../../npm/moobile-host`（跟本地源码连）；生成物是 semver `^0.4.0`（从 registry 装）。**D6 要改的就是这一条**。⚠️ 抬版本时这一句要跟着改：`^0.3.0` 在 0.x 语义下**匹配不到 0.4.0**（`>=0.3.0 <0.4.0`），忘了改的话 `init` 出来的项目装的是旧宿主
 content       | package.json:dependencies.expo-sqlite      | demo 的本地库那条链路（"加能力"那条路的样板）
 content       | package.json:dependencies.expo-status-bar  | demo 才有
 content       | moon.mod:name                              | 参数化（模块名）：demo 是 `XiLaiTL/moobile-todo-app`，生成物是 `<应用名>`

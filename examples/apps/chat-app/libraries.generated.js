@@ -1,7 +1,7 @@
 // 由 `moobile-host libgen` 生成 —— **不要手改**。
 //
 // 组件库：react-native-markdown-display@7.0.2（命名空间 `md:`）
-// 生成器：moobile-host libgen 0.3.0｜manifest 版本 1
+// 生成器：moobile-host libgen 0.4.0｜manifest 版本 1
 // 清单：改动请改 manifest 后重跑 `libgen`，或改这里的 `libgen.config.json`。
 //
 // 组件 1 个（含复合子组件共 1 个键）｜平台 [android, ios, web]｜JSON 通道的组件 1 个

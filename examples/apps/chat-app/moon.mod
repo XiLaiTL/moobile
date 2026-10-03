@@ -20,5 +20,5 @@ description = "LLM 聊天应用（流式回复 + 本地历史 + 设置页）—�
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.3.0",
+  "XiLaiTL/moobile@0.4.0",
 }

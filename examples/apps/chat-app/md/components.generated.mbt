@@ -1,7 +1,7 @@
 // 由 `moobile-host libgen` 生成 —— **不要手改**。
 //
 // 组件库：react-native-markdown-display@7.0.2（命名空间 `md:`）
-// 生成器：moobile-host libgen 0.3.0｜manifest 版本 1
+// 生成器：moobile-host libgen 0.4.0｜manifest 版本 1
 // 组件 1 个｜生成的参数 4 个｜未生成 4 个
 //
 // ## 怎么用

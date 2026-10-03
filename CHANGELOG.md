@@ -5,16 +5,35 @@
 
 ---
 
-## 未发布（0.3.0 之后，2026-10-02）
+## 0.4.0 —— 2026-10（**已抬版，待发布**；契约**不变**，仍是 `2`）
 
-> 这一批**还没有抬版本号**：内容都在 `npm/moobile-host/` 与 `examples/` 里，
-> 库本体（`XiLaiTL/moobile`）这一批**没有改动** —— 所以"要不要发、发哪一边"是发版时才决定的事。
+> **这一版是纯增量**：库本体多了一个公开 API（流式 HTTP），宿主包多了生成器与注册的两处"声明"。
+> **没有破坏性改动** —— 契约两边都还是 `2`，老代码不用改。
+>
+> ⚠️ **两个包仍然一起发**（宿主的脚手架模板钉的是 `XiLaiTL/moobile@0.4.0` 与
+> `moobile-host@^0.4.0`）：只发库的话，`init` 出来的新项目**拿不到流式**；
+> 只发宿主的话，安装时会解析不到还没上架的库版本。**顺序：月亮包先，宿主包后。**
+>
 > 判据：离线全集 **20/20**、`libgen` 假包探针 **24/24**、chat-app 无头 **22/22** + 真机 **17/17**、
 > `antd-demo` **24/24**（见 [`docs/STATUS.md`](docs/STATUS.md) §2.1）。
 
-### 组件库接入：接一个真实 RN 组件库**不再需要写宿主代码**
+### 流式 HTTP：一个请求、很多条消息（库本体，新公开 API）
 
-- ★ **`registerLibrary` 新增 `defaultExports`**（`core.js`）：**类型定义会谎报导出** ——
+- **`@http.stream(id~, url~, headers~, body~, on_event~) -> Cmd`** 与 **`@http.abort(id) -> Cmd`**，
+  事件是 `StreamEvent = Delta(String) | Done | Fail(String)`
+  （`http/stream.mbt`，住在 `@http` 下 —— 试过独立成包，但"一问一答"与"一问多答"是同一个
+  通道的两半，分包只会让使用者多写一行 import 而两边还要各自引 `@cmd`）。
+- ★ **平台上必须是两份传输**：Web/Node 走 `fetch` + `response.body.getReader()`，
+  而 **RN 的 `fetch` 没有 `response.body`** ⇒ RN 那条走 `XMLHttpRequest` 的渐进
+  `responseText`（readyState 3）。平台判断在**发请求之前**做（`navigator.product === "ReactNative"`）。
+- 判据：试金石 `examples/apps/sse-spike/` 无头 **12/12**（含"一帧被切成两半要拼回一条"、
+  "两帧挤在一次读取里要拆成两条"、`[DONE]`、HTTP 500、非 SSE 响应、**abort 后一条都不再出现**）
+  与真机 **14/14**（验的正是上面那句：RN 那条是**另一份代码**）。
+- ⚠️ 边界（别读大）：契约里**没有**取消之外的流控（无背压）；多路并发流未验。
+
+### 组件库接入：接一个真实 RN 组件库**不再需要写宿主代码**（宿主包）
+
+- ★ **`registerLibrary` 新增 `defaultExports`**：**类型定义会谎报导出** ——
   `react-native-markdown-display` 的 `.d.ts` 写着 `export const Markdown: MarkdownStatic;`，
   而它的 JS 里 `Markdown` **只在 `default` 上**。声明之后宿主从 `mod.default` 取；
   **不声明不会自动回落**（盲取 `default` 是猜，猜错是"注册了另一个组件"），而是启动即报错并**指路**这个配置项。
@@ -38,12 +57,13 @@
   没声明时**不能**自己变成原始字符串）。**离线、不装任何包**，所以它在 CI 上也真的会跑。
   落地当天抓到两个真 bug（清单字段被静默丢掉、`defaultExports` 语义写错）。
 - **chat-app 的 `libgen --check`**：生成物被手改、或改了清单忘了重跑生成器 → 红。
+- 顺带：判据侧新增"md 组件收到的 `children` 必须是**字符串**"——
+  它读**元素 props**（那套判据从不渲染，往替身里塞断言是假的）。
 
 ### 修
 
 - `render_props` 那条路径上**没有任何改动**：这一批只加"声明"，不改渲染规则。
-- 判据侧：chat-app 无头判据新增"md 组件收到的 `children` 必须是**字符串**"——
-  它读**元素 props**（那套判据从不渲染，往替身里塞断言是假的）。
+- `emit-host` 生成的注释块首行缩进（`.trimStart()` 把它顶到了第 0 列）。
 
 ---
 

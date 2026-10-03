@@ -15,5 +15,5 @@ description = "React 组件库接入的试金石：把 antd 的组件当 moobile
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.3.0",
+  "XiLaiTL/moobile@0.4.0",
 }

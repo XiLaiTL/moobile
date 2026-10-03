@@ -16,7 +16,7 @@
 // 我们对它的全部改动见 FORK.md 与 THIRD-PARTY-NOTICE.md。
 name = "XiLaiTL/moobile"
 
-version = "0.3.0"
+version = "0.4.0"
 
 license = "Apache-2.0"
 

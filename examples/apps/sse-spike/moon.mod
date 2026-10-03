@@ -16,5 +16,5 @@ description = "SSE 流式通道的试金石（边收边显示；含分帧边界�
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.3.0",
+  "XiLaiTL/moobile@0.4.0",
 }
