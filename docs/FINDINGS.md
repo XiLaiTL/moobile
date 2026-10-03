@@ -5125,10 +5125,23 @@ cd examples/apps/todo-app/host && npm install --no-audit --no-fund   # CI 只在
 cd /d/tmp/ciclone && bash tools/verify_all.sh      # CI 跑的就是这一条
 ```
 
-⚠️ 三条容易漏的：① 必须 `--no-hardlinks`；② **`npm install` 那一步要照做**（CI 只装
-`todo-app/host`，漏了它会有几条门把 SKIP 当成本该如此）；③ **克隆出来的期望**不是"25 / 25"：
-新鲜克隆上应是 **`通过 19 · 失败 0 · 跳过 6`**（4 条 `node_modules` 不在、1 条仓库外的 F1 扫描对象、
-1 条 antd 试金石）—— **SKIP 是"判据不成立"，不是通过**。
+⚠️ 四条容易漏的（**前三条我第一次都踩了**）：
+1. 必须 `--no-hardlinks`；
+2. **`npm install` 那一步要照做**（CI 只装 `todo-app/host`，漏了它会有几条门把 SKIP 当成本该如此）；
+3. ⚠️ **Windows 上还要 `git -c core.autocrlf=false clone`**（或克隆后 `git config core.autocrlf false`
+   再重新检出一次）：Git for Windows 的系统配置默认 `autocrlf=true`，而 `.gitattributes` 只钉了**部分**类型
+   （`*.mbt` / `*.md` / `*.py` / `*.sh`…，**`.js` / `.mjs` 没钉**）⇒ **克隆之后任何一次重新检出**
+   （`reset --hard` / `checkout`）都会把那些文件写成 **CRLF**，
+   于是**本地回放会假红 4 条**（行尾 / vendor 一致 / `regen --check` / 副本新鲜度）——
+   而 **CI 跑在 Linux 上根本没有这一出**。**我第一次就把这 4 条假红当成了 CI 的问题**（差点误判）。
+4. **克隆出来的期望不是"25 / 25"**，实测是 **`通过 20 · 失败 0 · 跳过 4`**
+   （SKIP 的四条：仓库外的 F1 扫描对象、antd 试金石、SSE 试金石、chat-app 真实应用）——
+   **SKIP 是"判据不成立"，不是通过**。
+
+⚠️ 顺带逮到一处**计数不对称：24 ≠ 25**。`verify_all.sh` 里 chat-app 那一段是
+`if node_modules … then run(生成物一致) + run(真实应用) else skip(真实应用)` ——
+**else 分支只发一条 skip、却盖了两项** ⇒ **新鲜克隆报 24、本机报 25**。
+（这很可能就是文档里"23 / 24 / 25"几个数打架的来源之一。**没顺手改**：动门要另开一刀、还要重跑全集。）
 
 ### 二、它当场逮到的东西：一条断链（**本机怎么跑都是绿的**）
 
