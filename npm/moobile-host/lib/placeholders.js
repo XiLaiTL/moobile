@@ -33,6 +33,13 @@ const PLACEHOLDERS = [
     key: 'APP_NAME',
     why: 'package.json 的 name、app.json 的 name/slug、README 标题',
   },
+  {
+    // ⚠️ **必须排在 `moobile-template` 之后**：它是那个名字的"紧凑写法"（去掉连字符），
+    //    而 `com.anonymous.moobiletemplate` 又含它 —— 所以三者按长度从长到短替（见文件头的"顺序敏感"）。
+    literal: 'moobiletemplate',
+    key: 'RN_APP_NAME',
+    why: '`--host rnw` 的 app.json 里 `name`（RN 注册组件用的名字，必须与 index.js 读的那个一致）',
+  },
 ];
 
 /** 模板里**不该出现**、生成物里**必须没有**的东西。 */
@@ -58,6 +65,7 @@ function derive(name) {
     APP_NAME: slug,
     MODULE_NAME: slug,
     ANDROID_PACKAGE: `com.anonymous.${compact}`,
+    RN_APP_NAME: compact,
   };
 }
 
@@ -137,7 +145,7 @@ function derivedForms(name) {
  * @param {{APP_NAME: string, MODULE_NAME: string, ANDROID_PACKAGE: string}} values
  * @returns {string[]}
  */
-function assertIdentity(files, values) {
+function assertIdentity(files, values, opts = {}) {
   const bad = [];
   const get = (rel) => files.find((f) => f.rel === rel)?.text;
 
@@ -162,7 +170,20 @@ function assertIdentity(files, values) {
   const appJsonText = get("app.json");
   if (appJsonText) {
     try {
-      const expo = JSON.parse(appJsonText).expo || {};
+      const parsed = JSON.parse(appJsonText);
+      // ⚠️ `app.json` 的**形状随宿主不同**：Expo 那份是 `{ expo: { name, slug, android } }`，
+      //    裸 RN（`--host rnw`）那份是 `{ name, displayName }`。第一版只认 Expo 形状，
+      //    于是 `--host rnw` 生成物会被判成"名字不对" —— 锚点断言必须跟着宿主走。
+      if (opts.host === 'rnw') {
+        if (parsed.name !== values.RN_APP_NAME) {
+          bad.push(`app.json: name 是 \`${parsed.name}\`，应当是 \`${values.RN_APP_NAME}\`（RN 注册组件用的名字）`);
+        }
+        if (parsed.displayName !== values.APP_NAME) {
+          bad.push(`app.json: displayName 是 \`${parsed.displayName}\`，应当是 \`${values.APP_NAME}\``);
+        }
+        return bad;
+      }
+      const expo = parsed.expo || {};
       if (expo.name !== values.APP_NAME || expo.slug !== values.APP_NAME) {
         bad.push(`app.json: name/slug 是 \`${expo.name}\`/\`${expo.slug}\`，应当是 \`${values.APP_NAME}\``);
       }

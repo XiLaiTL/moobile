@@ -1,0 +1,32 @@
+{
+  "name": "moobile-template",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "build": "moon build --target js && moobile-host build",
+    "start": "react-native start",
+    "windows": "react-native run-windows",
+    "bundle:windows": "react-native bundle --platform windows --dev true --entry-file index.js --bundle-output out/index.windows.bundle --assets-dest out",
+    "regen": "moobile-host regen"
+  },
+  "dependencies": {
+    "@react-native-windows/find-dotnet-tools": "0.0.0",
+    "moobile-host": "^0.4.0",
+    "react": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-svg": "^15.15.5",
+    "react-native-windows": "0.83.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native/babel-preset": "0.83.10",
+    "@react-native/metro-config": "0.83.10"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

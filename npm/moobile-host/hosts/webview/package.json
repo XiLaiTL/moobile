@@ -1,0 +1,22 @@
+{
+  "name": "moobile-template",
+  "version": "1.0.0",
+  "private": true,
+  "description": "静态 Web 宿主（零 Expo、零 Metro）：打成静态站点，PWA / Tauri / Electron 外壳都能套",
+  "scripts": {
+    "build": "moon build --target js && moobile-host build && node build-web.mjs",
+    "bundle": "node build-web.mjs",
+    "serve": "node serve-web.mjs",
+    "regen": "moobile-host regen"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "moobile-host": "^0.4.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native-web": "^0.21.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

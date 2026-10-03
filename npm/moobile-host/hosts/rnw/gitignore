@@ -1,0 +1,23 @@
+# ⚠️ 这个文件在**真源**里叫 `gitignore`（没有点）—— 刻意的：
+#    `npm pack` **永远不打 `.gitignore`**（实测：即使把它单独列进 `package.json` 的 `files`
+#    白名单，tarball 里依然没有它），于是发布出去的宿主文件集里会缺这一份。
+#    生成器写盘时把它映射成 `.gitignore`（见 `lib/init.js`）。
+#    同一条规矩的另一半见本仓库 `AGENTS.md` 的「files 白名单」那一行。
+
+# 依赖
+node_modules/
+
+# MoonBit 构建产物（`npm run build` 生成）
+_build/
+moobile.js
+*.mbti
+
+# 原生工程（`npx react-native init-windows` 生成，不入库）
+/windows/
+
+# 打包产物
+/out/
+
+# 杂项
+.DS_Store
+*.log

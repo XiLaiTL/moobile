@@ -18,21 +18,28 @@ const fs = require('fs');
 const path = require('path');
 
 const { locate, read } = require('./template.js');
+const { resolveHost, HOST_IDS } = require('./hosts.js');
 const { derive, apply, assertClean, assertIdentity } = require('./placeholders.js');
 
-const USAGE = `用法：moobile-host init <目录> [--name <应用名>] [--force] [--dry-run]
+const USAGE = `用法：moobile-host init <目录> [--name <应用名>] [--host <宿主>] [--force] [--dry-run]
 
   <目录>            生成到哪（不存在就建；已存在且非空要 --force）
   --name <应用名>   应用名（默认取目录名）：小写字母/数字/连字符
+  --host <宿主>     用哪个宿主（默认 expo）：${HOST_IDS.join(' | ')}
+                      · expo = Expo（android / ios / web 一次到位）
+                      · rnw  = 裸 RN + react-native-windows（Windows 桌面）
+                    **应用侧（moon.mod / moon.pkg / app.mbt）两种宿主下逐字相同** ——
+                    换宿主只换那几个宿主文件（package.json / App.js / index.js / app.json / metro.config.js…）
   --force           目标目录非空时也往里写（会覆盖同名文件，不动其它文件）
   --dry-run         只列出将要写哪些文件、替换成什么，不落盘
 `;
 
 function parseArgs(argv) {
-  const out = { dir: null, name: null, force: false, dryRun: false };
+  const out = { dir: null, name: null, host: null, force: false, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--name' && argv[i + 1]) out.name = argv[++i];
+    else if (a === '--host' && argv[i + 1]) out.host = argv[++i];
     else if (a === '--force') out.force = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '-h' || a === '--help') out.help = true;
@@ -50,6 +57,65 @@ function nameFromDir(dir) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * 生成物的**内存形态**（不落盘）—— `init` 与 `create --from-rabbita` 共用这一份。
+ *
+ * 为什么抽出来而不是各写一遍：模板渲染里的三条断言（残留 / 身份锚点 / 忽略规则）
+ * 是"模板是真字面量"这个取舍的**对价**。抄一份到 `create` 去，早晚会漂 ——
+ * 而漂掉的那半边会以"用户拿到一个叫别人名字的项目"的形式暴露，且**没有任何门会红**
+ * （`template_check` 只测 `init`）。
+ *
+ * @param {string} name 应用名（kebab-case）
+ * @returns {{values: any, tplDir: string, files: {rel: string, text: string}[], problems: string[], missingIgnore: boolean}}
+ */
+function renderProject(name, opts = {}) {
+  const values = derive(name);
+  const host = resolveHost(opts.host);
+  const tpl = locate();
+  // 宿主文件集**覆盖**模板里的同名文件（模板本身就是 expo 宿主，所以 expo 档不需要额外文件集）
+  const merged = new Map(read(tpl.dir).map((f) => [f.rel, f]));
+  const fromHost = host.filesDir ? read(host.filesDir) : [];
+  // ⚠️ 宿主文件集里的 **`gitignore`（无点）在写盘时要变成 `.gitignore`** ——
+  //    因为 `npm pack` 永远不打 `.gitignore`（实测：单独列进 `files` 也没用），
+  //    真源里叫那个名字的话，发布出去的宿主文件集里就会缺这一份。
+  for (const f of fromHost) {
+    const rel = f.rel === 'gitignore' ? '.gitignore' : f.rel;
+    merged.set(rel, { ...f, rel });
+  }
+  // 宿主文件集只覆盖同名文件，**删不掉**模板里的宿主专属文件（Expo 模板的 `app.json` /
+  // `metro.config.js`）—— 所以宿主可以显式声明 `drop`。不删的话生成物里留着别的宿主的
+  // 配置文件，用户会以为还要装那个宿主（实测踩到，见 hosts.js 里 webview 那段）。
+  for (const rel of host.drop || []) merged.delete(rel);
+  const files = [...merged.values()];
+
+  // 忽略规则文件：`.npmignore`（npm 解包时把 `.gitignore` 改成了它）要还原回来 ——
+  // 用户项目里要的是 `.gitignore`，不忽略的话 `moobile.js` 与 `_build/` 会被提交进他的仓库。
+  let ignoreRules = 0;
+  for (const f of files) if (f.rel === '.npmignore' || f.rel === '.gitignore') ignoreRules++;
+  const normalized = files.map((f) => (f.rel === '.npmignore' ? { ...f, rel: '.gitignore' } : f));
+
+  const rendered = normalized.map((f) => ({ rel: f.rel, text: apply(f.text, values) }));
+  const problems = [...assertClean(rendered), ...assertIdentity(rendered, values, { host: host.id })];
+  return {
+    values,
+    host,
+    tplDir: tpl.dir,
+    files: rendered,
+    problems,
+    missingIgnore: ignoreRules === 0,
+  };
+}
+
+/** 把内存形态落盘。 */
+function writeProject(target, files) {
+  fs.mkdirSync(target, { recursive: true });
+  for (const f of files) {
+    const dst = path.join(target, f.rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, f.text);
+  }
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -95,42 +161,23 @@ function main(argv = process.argv.slice(2)) {
   }
 
   // ── 模板 ────────────────────────────────────────────────────────────────────
-  let tpl;
+  //
+  // 渲染逻辑**只有一份**（`renderProject`），`create --from-rabbita` 用的是同一个函数：
+  // 抄第二份出来，早晚会漂，而漂掉的那半边没有任何门会红。
+  let plan;
   try {
-    tpl = locate();
+    plan = renderProject(name, { host: args.host });
   } catch (err) {
     console.error(err.message);
     process.exit(2);
   }
-  const files = read(tpl.dir);
-
-  // ── 忽略规则文件：`.npmignore` **装出来**的名字要还原成 `.gitignore`（2026-09-21 实测）────
-  //
-  // 用户项目里要的是 `.gitignore`（不忽略的话，`moobile.js` 与 `_build/` 会被提交进他的仓库）。
-  // 但 `npm install` 解包时 **npm 会把包里的 `.gitignore` 改名成 `.npmignore`** ——
-  // 实测三份样本：
-  //   · `npm pack` 出来的 tarball 里：`template/.gitignore` ✓（所以 `files` 白名单那条没白写）
-  //   · 手写 `tar -xzf` 解出来：`.gitignore` ✓
-  //   · **`npm install` 装进 node_modules 之后：`.npmignore`** ✗ ← 就是这一步
-  // 于是"从仓库布局生成"没事、"从装好的包生成"就没有 `.gitignore` —— 而我们这边永远复现不出来。
-  // 这条门现在有了：`tools/package_check.mjs`（发布前跑，publish.sh 会调它）。
-  let ignoreRules = 0;
-  for (const f of files) {
-    if (f.rel === ".npmignore" || f.rel === ".gitignore") ignoreRules++;
-  }
-  const normalized = files.map((f) => (f.rel === ".npmignore" ? { ...f, rel: ".gitignore" } : f));
-
-  // 替换 + 三条断言（**先全部在内存里做完，再落盘**）──────────────────────────
-  // ① 残留：旧名字还在（含各种派生写法） ② 锚点：三处身份是不是**正好**是请求的名字
-  // ③ 模板里得带着忽略规则（`.gitignore` 或被 npm 改名的 `.npmignore`）
-  const rendered = normalized.map((f) => ({ rel: f.rel, text: apply(f.text, values) }));
-  const residue = assertClean(rendered);
-  const wrongIdentity = assertIdentity(rendered, values);
-  const missingIgnore = ignoreRules === 0;
-
+  const { values: planValues, tplDir, files: rendered, problems } = plan;
+  const residue = problems.filter((p) => !p.includes('应当是'));
+  const wrongIdentity = problems.filter((p) => p.includes('应当是'));
+  const missingIgnore = plan.missingIgnore;
   if (args.dryRun) {
-    console.log(`moobile-host init（dry-run）：模板 = ${tpl.dir}`);
-    console.log(`  应用名 ${values.APP_NAME}  模块名 ${values.MODULE_NAME}  包名 ${values.ANDROID_PACKAGE}`);
+    console.log(`moobile-host init（dry-run）：模板 = ${tplDir} · 宿主 = ${plan.host.label}`);
+    console.log(`  应用名 ${planValues.APP_NAME}  模块名 ${planValues.MODULE_NAME}  包名 ${planValues.ANDROID_PACKAGE}`);
     console.log(`  将写入 ${target}：`);
     for (const f of rendered) console.log(`    · ${f.rel}`);
     if (residue.length || wrongIdentity.length || missingIgnore) {
@@ -169,16 +216,23 @@ function main(argv = process.argv.slice(2)) {
   }
 
   console.log(`moobile-host init: 生成 ${path.relative(process.cwd(), target) || '.'} —— ${rendered.length} 个文件`);
-  console.log(`  模板：${tpl.dir}`);
-  console.log(`  应用名 ${values.APP_NAME} · 模块名 ${values.MODULE_NAME} · Android 包名 ${values.ANDROID_PACKAGE}`);
+  console.log(`  宿主：${plan.host.label}`);
+  console.log(`  模板：${tplDir}`);
+  console.log(`  应用名 ${planValues.APP_NAME} · 模块名 ${planValues.MODULE_NAME} · Android 包名 ${planValues.ANDROID_PACKAGE}`);
   console.log('');
   console.log('  接下来：');
   const cd = path.relative(process.cwd(), target);
   if (cd) console.log(`    cd ${cd}`);
   console.log('    npm install');
-  console.log('    npm run web        # 或 npm run android');
+  console.log(
+    plan.host.id === 'rnw'
+      ? '    npm run windows    # 桌面（要 VS 2026 + SDK 22621）；不上工具链可先 `npm run bundle:windows`'
+      : plan.host.id === 'webview'
+        ? '    npm run build      # 打成静态站点（dist/）\n    npm run serve      # 起静态服务看一眼（零依赖）'
+        : '    npm run web        # 或 npm run android',
+  );
   console.log('');
   console.log('  前提：机器上要有 moon 与 node（见生成出来的 README）。');
 }
 
-module.exports = { main, nameFromDir };
+module.exports = { main, nameFromDir, renderProject, writeProject };
