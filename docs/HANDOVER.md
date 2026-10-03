@@ -30,7 +30,7 @@ moobile 是给 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit
 
 ```bash
 bash tools/refresh_host_copies.sh     # ★ 先跑这个，见 §4-2（不跑的话下面那条门可能红）
-bash tools/verify_all.sh              # 离线全集 20 项（本地约 1 分钟；清单见 AGENTS.md §2）
+bash tools/verify_all.sh              # 离线全集 23 项（本地约 1~2 分钟；清单见 AGENTS.md §2）
 ```
 
 两者都绿再往下走。**门红了先怀疑探针**，不要先改代码 —— 这个仓库里有好几条"红的是探针、
@@ -76,6 +76,21 @@ bash tools/verify_all.sh              # 离线全集 20 项（本地约 1 分钟
 `Content-Type`/`registerLibrary` 之类的显性错误好查，**难查的是"类型定义撒谎"** ——
 `children: ReactNode` 实则要字符串、`export const Markdown` 实则只在 `default` 上。
 两个都是**真机才露头**（web 的 interop 恰好看得见具名导出）。
+
+---
+
+## 2c. 接手时**挂着**的东西（2026-10-02 第七轮：S6 收尾 + 两个"只在真机上现形"的洞）
+
+| 项 | 状态 |
+|---|---|
+| **S6 收尾：详情页三块折叠** | ✅ 已做。`<details>/<summary>` 在标签表里是**明确排除**的 → 改成受控折叠（`open_more : Array[Bool]` 进 Model + `ToggleMore(Int)`）。判据：web **21 条**（含"再点一次收起"）、真机 **9 条**。**已证伪**：`if open` → `if true` 时 **39/45**，红的正好那 6 条 |
+| **两个 web 判据永远看不见的洞**（本轮主收获） | ✅ 已修 + **判据写进库**：① 源 CSS 的 `body`/`html` 被抽成 `page()` 却**没人挂**；② 根上**没有滚动容器**（RN 的 `View` 不滚动）。现象是"真机上滚 30 次界面纹丝不动"，而**同一页面** web 判据 45/45。⇒ 新增 `npm/moobile-host/lib/migrate/app-audit.js`（`create` 落盘后自动跑，结果进 `MIGRATION.md §5`）+ 离线门 `tools/migrate_app_audit.mjs`（13 项，**含 5 个故意做坏的样本**） |
+| **F1 补上 `click.on-view`**（八续，同一轮） | ✅ 把"当年**手工**数出来的 5 处 `div(… on_click=…)`"变成 F1 报告里的一条（**结构规则**，不进"按行子串"那 14 条）。实现只有一份（`lib/migrate/click-on-view.js`，`scan.js` 与 `create.js` 共用），MoonBit 真源照抄；判据 `node tools/migrate_click_scan.mjs`（**13 项**：诱饵项目钉住期望命中 + 两侧逐 hit 对账 + 真项目 5 处）。**两个方向都证伪过**（只改 JS → 9/13；只改 MoonBit → 11/13） |
+| **第三个宿主 `--host webview`**（九续，同一轮） | ✅ 零 Expo / 零 Metro 的**静态 Web** 宿主：`init --host webview` 生成静态站点工程（esbuild 一行 `alias` → `react-native-web`）；`examples/apps/zhouyi-reader-webview/verify.mjs` **15/15**，其中第 3 层是**把应用自己那 45 条界面判据原样指向静态宿主的 URL**（⇒ 换宿主管用，不是"渲出一个壳"）。生成器侧 `node tools/host_probe.mjs` **32/32**（三宿主矩阵；原 `desktop_host_probe.mjs` 改名）。⚠️ 外壳（PWA/Tauri/Electron）本身没做 |
+| **桌面端第一次有真窗口判据**（十三续，同一轮） | ✅ `examples/apps/zhouyi-reader-electron/`：Electron **真窗口** + 应用那 **97 条判据附着打上去**（17/17）+ 两个真窗口比画布边长。★ **本机不需要 VS 工具链**（`--host rnw` 那条仍要 VS 2026 + SDK 22621，只到"打进 bundle"）。⚠️ 打包安装包/自动更新/原生菜单**没做**；这条路线**还没进脚手架**（下一步 `--host electron`） |
+| **分数（本轮实测）** | web `verify.mjs` **99/99**（十轮补 36 条 + 十一轮 2 条响应式 + 十二轮 16 条罗盘控件） · 真机 `device_check.mjs` **29/29**（+3 条模式切换） · **静态宿主 15/15（内含那 45 条判据）** · 离线全集 **24/24** · 打包形态 **10/10** |
+| **环境：Metro 还开着** | ⚠️ 8081 上**还跑着** zhouyi-reader 的 Metro（`npx expo start --web --port 8081`）；`emulator-5554` 也在跑。接手时若测别的应用，**先按 PID 关掉**（占着 8081 会拿到别的应用的 bundle，本仓库被坑过）。**不能** `Stop-Process node` 一把梭（DSH 宿主也是 node） |
+| ⚠️ **没验的（别读大）** | ① **桌面窗口本身**仍未起（缺 VS 2026 + SDK 22621）—— 但"同一份产物进 RNW 宿主"有判据（`verify.mjs` 5/5）；② 折叠那条**只在 web 与 Android 上验过**（桌面/ iOS 没跑）；③ 真机上**验不到**"输入中文 → 点卦卡"（`adb shell input text` 打不出中文），那条只由 web 判据覆盖；④ `page()` 与滚动容器是**人改的**，生成器只是**报告**它移不过来（不代改） |
 
 ---
 

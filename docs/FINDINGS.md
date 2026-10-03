@@ -3834,3 +3834,1273 @@ Hermes 上看不见。这与手势那条通道是同一类分工（"web 上验�
 | chat-app 真机 | **17/17** | markdown 真渲染（`**` / 围栏 / 列表都被吃掉 = 真解析了字符串） |
 | `antd-demo` | **24/24** + `libgen --check` | 洞一的重生成本身把它撞红过，修好后两套都对 |
 
+
+---
+
+## 补记（把 `interest/yi` 真搬过来：脚手架两条命令 + 真浏览器里跑通，2026-10-02）
+
+这一轮的目标第一次不是"库的能力"，而是**用真实应用反过来压工具**：把 `interest/yi`
+（《御纂周易折中》阅读器，1924 行视图 + 476 行 CSS + 1.7 MB 数据 + 一张 canvas 罗盘）
+用 `moobile-host create --from-rabbita` 搬成 moobile 项目，并在真 Chrome 里验收。
+产物：`examples/apps/zhouyi-reader/`（含 `MIGRATION.md` 迁移报告）。
+
+下面每一条都是**踩过之后才写下来的**，按"下一个人最容易重踩"排序。
+
+### 一、`create` 那边：五个"看起来对、边界上错"的坑
+
+| # | 现象 | 真因 | 修法 |
+|---|---|---|---|
+| 1 | 入口改写后**文件少了几百行**；症状是"`class=` 改写处数从 129 掉到 14" | 用正则惰性量词跨行去凑 `fn app()`：`/(?:\/\/\/\|\s*\n)(?:[^\n]*\n)*?fn app\(/` 里的 `(?:[^\n]*\n)*?` **能跨任意多行**，于是从文件里第一个 `///|` 开始匹配，把中间整段吃掉了 | 改成**括号配对**定边界（`matchCloseForBrace`）。**行号/边界这类东西，正则不靠谱** |
+| 2 | 41 处"这个元素已经有 `attrs=`"的假冲突（真冲突只有 2 处） | 内层元素被改写后，它插进去的 `attrs=…` **正好落在外层调用的括号里**，于是外层再问"你有 attrs 吗"就得到"有" | ① 冲突判定必须在**改之前的原文**上一次算完；② 只看**本调用参数那一层**（跳嵌套括号），别整段 grep |
+| 3 | 生成的骨架**挂不起来**：入口 `pub fn app()` 也被注释掉了 | 块级"注释掉迁不过去的代码"会**沿调用链传播**：`view` 调 `bagua_view` → `bagua_view` 有 canvas → 被注释 → `view` 编不过 → 也被注释 → 入口跟着没 | 改成**保底桩**：签名照原样留着（调用点一个字不改），函数体换成空值/`abort`，原实现以注释留在桩体里 |
+| 4 | 桩体改成 `abort` 之后，**整个页面白屏** | 罗盘那类函数返回 `Html` 且挂在**列表页**里 —— "跑到这里会炸"变成了"整页起不来"，使用者看到一条与迁移毫无关系的运行时 panic | 桩体**按返回类型给空值**：`Html`→`nothing`、`Cmd`→`@cmd.none`、`Unit`→`()`…；只有**不认识的类型**才 `abort`（那种情况必须响） |
+| 5 | 报告里的行号**总差 7 行**（指到别处） | 内联 `<style>` 的内容从它自己第 1 行起算，而它在 HTML 里可能位于第 7 行；另外选择器的行号取的是 `preludeStart`——那一位紧跟在上一条规则的 `}` 后面，算在**上一行** | `parse(text, file, baseLine)` 传内联块的起始行；选择器取**第一个非空白字符**的位置 |
+
+### 二、`on_click` 挂在 `div` 上 = **静默点不动**（跨端最隐蔽的一类）
+
+`render.mbt:243` 把 `click` 映射成 `onPress`，而标签表里**只有 `button` / `a` 落到 `Pressable`**；
+`div` / `span` / `p` 落到 `View` / `Text`，那两个组件没有 `onPress` —— **点击被丢掉，不报错、不警告**。
+
+- 实测：`interest/yi` 有 **5 处** `div(… on_click=…)`（卦卡 1 处 + 折叠 4 处）。
+  浏览器上点得动，迁过来**点不动**：真 Chrome 里"点卦卡 → 进详情"这条断言一直红，
+  而 DOM 里一切正常、控制台一句错误都没有。
+- F1 的 14 条**按行子串**规则**抓不到它**：它要的是"标签 + 事件"两个 token 的**同调用结构关系**。
+  所以这条判据做在 `create` 的 `detectClickOnView()` 里，进报告的 TODO 清单。
+- 修法是**换标签**（`div` → `button`），不是加样式。
+
+### 三、数据：相对 URL 这条路在库里**本来就不通**
+
+原项目的数据由它自己的后端在 `/reader_data.json` 提供。迁移时先按"同源相对路径"试：
+
+1. Expo 会把工程根的 `public/` 挂在站点根 —— 实测 `GET /reader_data.json` → **200 / 1717913 字节** ✓；
+2. 但界面仍然报"无法加载数据"，而**网络面板里明明是 200**：真因是 moobile 的 http 走
+   `moonbitlang/async`，它的客户端**只认完整 URL**（`request.mbt:37`：没有 `://` 直接 `raise InvalidFormat`）。
+   界面把错误吞成了一句"无法加载数据"，**真因是在浏览器控制台里逼出来的**。
+3. 更根本的一条：**原生端没有"站点根"这回事** —— 这条路本来就走不到 Android / 桌面。
+
+⇒ 结论：这份 1.7 MB 的只读数据**编译期嵌进产物**（`data_reader.mbt`，`pub let raw_json : String`）。
+量过：源文件 1.79 MB、`moon build` 4.6 s、JS 产物 1358 KB → **3104 KB**。三端零差异、启动即读、离线可读。
+
+⚠️ 顺带修掉的一处**宿主 bug**：`index.js` 的 `apiBase: apiBase || DEFAULT_API_BASE` 里
+**空串是合法值（同源）**却被 `||` 吃掉了 → 改成 `??`。症状同样是"页面说加载失败、curl 同一 URL 是 200"。
+
+### 四、桌面端（RNW）：文档与真实要求**不一致**，且 Skia 没有 Windows 后端
+
+- **RNW 0.83.2 要的是 VS 2026（≥18.6.1）**，不是官方文档页写的 VS 2022 —— 依据是它**包内自带**的
+  `rnw-dependencies.ps1`（`$vsver = "18.6.1"`）与 CLI 的 `msbuildtools.js:160`（默认 `'18.6.0'`）。
+  本机只有 VS 2022 BuildTools → `NoMSBuild: Could not find MSBuild with VCTools for Visual Studio 18.6.0 or later`。
+  绕过闸门直连 MSBuild 的下一层是 `MSB8036: 找不到 Windows SDK 版本 10.0.22621.0`。
+- **`@shopify/react-native-skia` 不支持 Windows**：`npm pack` 后 `package/windows/` **0 个文件**；
+  维护者原话"You'd need a dedicated backend for it"（issue #2058）。⇒ **罗盘在桌面上得改用
+  `react-native-svg`**（它的 tarball 里有 153 个 windows 文件，含 Fabric 实现）。
+- ✅ 有价值的那半：**JS 侧整条通了** —— 裸 RN（零 Expo）+ 仓库源码版 `moobile-host` + **同一份**
+  `moobile.js`，`npx react-native bundle --platform windows` 退出码 0。也就是说
+  "各宿主各自 pin RN 版本、共享同一份 MoonBit 产物"这条**已经是实测事实**，不再是论断。
+
+细节与 16 条诚实清单见 [`design/DESKTOP-RNW.md`](design/DESKTOP-RNW.md)。
+
+### 五、一条**判据自己**的坑（这类最容易骗过自己）
+
+`verify.mjs` 第一版把"详情页有返回入口"判成 `/六十四卦/` —— 而**列表页也有"六十四卦速查"**，
+于是"根本没跳转"也 PASS。同类还有：拿 `element.click()` 当"点到了"（RNW 的 `Pressable`
+把 handler 挂在自己那个 div 上，`.click()` 常落在包裹层）、拿"页面上有字"当"宿主编译进来了"。
+
+⇒ 判据要能**区分当前状态**：用 `‹ 六十四卦` 这种只可能出现在详情页的串，
+用**真鼠标事件**（CDP `Input.dispatchMouseEvent`）而不是 `.click()`，
+以及**信任应用自己打的日志**（`debug_log("阅读数据已装载：658049 字符")`）而不是 DOM 长相。
+
+
+### 五、★ 手势坐标那条通道：**"手势元素"必须与"坐标空间"是同一个元素**
+
+这是本轮最有价值的一条。应用把 `@gesture.attrs(...)` 挂在**外层 box**（整行宽）上，
+而角度/命中判定用的是**画布坐标**（720 那一套，圆心 (360,360)）。两者差一个**居中的偏移**：
+
+- web 实测（CDP 打点 + 应用自报坐标）：点外环 260 的位置，应用算出来是 **356** ——
+  跑到环外（222–300 之外），于是"点了没反应"。偏移量 = 48px（盒子比画布宽出来的那半）。
+- 修法一行：给手势元素钉上与画布一样的宽高。修完 web **24/24 恢复**（那条断言之前是绿的，
+  在画布尺寸从 720 改成 360 之后才暴露 —— 偏移量不变、但比例变了，于是从"勉强命中"变成"miss"）。
+
+⇒ **规矩（应用侧）**：`@gesture` 的 `x/y` 是"**承载手势的那个元素**内的坐标"，
+所以**要么让那个元素与你的坐标系同尺寸，要么自己减掉原点**。别默认"挂哪儿都一样"。
+
+### 六、★★ 库的真 bug：**同一次手势里 `start` 与 `move` 用了两个参照系**（已修）
+
+上面那条残差（Android 上拖 45° 只转约 5°、同一点转过之后命中同一卦）查到了**库侧**的真因，
+一句话：**`start` 事件的 `x/y` 和 `move` 事件的 `x/y` 不在同一个参照系里。**
+
+`npm/moobile-host/gesture-rn.js` 在原生上要自己量元素原点（`locationX/locationY` 是"手指
+底下最深那个 view"的、还会中途换，所以用 `pageX/pageY − 原点`）。但：
+
+- `grant` 那一刻量测**还没回来**（`geom.state === 'idle'`），于是 `values()` 走了
+  "退回 `locationX/locationY`"那条路，快照出来的起点就是**另一个参照系**的坐标；
+- 而 `move` 用的是 `pageX − 原点` ✓。
+
+也就是说"起点错、后续增量对" —— 净旋转被啃掉一大截（实测 45° → **5°**），
+环上命中自然也不跟手。**web 上看不见**（`MEASURE_ORIGIN` 在 web 上是 `false`，
+两端都用 `locationX`，恰好自洽）—— 又一条"web 上验过 ≠ 真机也能跑"。
+
+**真机量到的证据**（临时插桩，验完已删）：
+
+```
+[gesture-diag] grant: node=ReactNativeElement hasMeasure=true
+[gesture-diag] measure cb ox=20 oy=159.6363525390625 state=idle     ← 量测回来了，但 v0 已经算过了
+```
+
+**修法**：起点坐标**不在 `grant` 时定死** —— 存原始值（`pageX/pageY/locationX/locationY`），
+等量测就绪后再用**同一套换算**（`xyOf`）算出 `v0`。这样 `start` 与 `move` 必然同系。
+
+**修完的判据**（`device_check.mjs` 的"同一点、转过之后应命中另一卦"）：
+`风天小畜#9` → `火泽睽#38` ✅，真机 **18 / 18**。
+这条判据是刻意这么设计的：它同时覆盖**手势坐标、旋转、环上命中**三件事，
+而"命中哪一卦"正是"轮盘转了"在这个应用里的语义（截屏指纹不可靠，见上文）。
+
+⚠️ **它自己也误报过一次**：第一次跑出 16/17，看着像"修复没生效"，其实是**夹具**——
+"从详情页返回列表页"那一步打偏了（`tapText` 只点一次、不等生效），于是**拖动发生在详情页上**
+（那里没有罗盘），第二次点的自然还是同一卦。改成"轮询到确实出现「八卦罗盘」再拖"之后 18/18。
+**判据红了先怀疑判据** —— 这个仓库里已经有好几例。
+
+### 判据（本轮实测）
+
+| 门 | 分数 | 说明 |
+|---|---|---|
+| `node examples/apps/zhouyi-reader/verify.mjs` | **19/19** | 真 Chrome：首屏 / 数据装载 / 搜索→网格 / 点卦卡→详情（真爻辞）/ 样式落地 / 无异常 |
+| `moon check --target js`（含生成物） | **0 错误** | 迁移生成的项目在工作区里编得过（`--rn 0.83`） |
+| `node tools/migrate_scan_reconcile.mjs` | **对账通过** | F1 的 JS 版与 MoonBit 版 18 类 / 357 条命中逐项一致 |
+| 生成样式模块 | **104 个函数 / 声明 510 = 已映射 435 + 有损 75** | 对账不闭合就抛 |
+| 迁移报告 | **21 项 TODO**（3 保底桩 + 13 整块注释 + 5 `on_click`-on-view） | 每项都有下一步指向 |
+
+---
+
+## 补记（罗盘落地：画布通道在 **Web 上原本没有后端**，2026-10-02 续）
+
+接上一节。`interest/yi` 的罗盘（`canvas` + 鼠标拖拽）是迁移里最后一块硬骨头，
+这一轮把它搬完了 —— 结果挖出三件**库/host 侧**的事，比应用本身更值得记。
+
+### 一、组件通道没注册 = **整页空白，而且控制台不说人话**
+
+`render.mbt` 对"宿主没注册的组件"是**点名 fail-fast**（`host.mbt` 的 `js_host_component`
+会列出已注册的键）—— 设计上是对的。但在 React 里，**渲染期抛异常会把整棵树卸掉**，
+于是现场是：
+
+- `<div id="root"></div>` **空的**、`document.body.innerText` 空串；
+- 控制台**没有任何 error**（Metro 照常 200、bundle 照常加载）；
+- 我这边第一反应是"是不是数据没进来"、"是不是 CSS 全丢了" —— 都不是。
+
+⇒ **判据要能区分"空"与"错"**：这类排查第一步应该是"root 里有没有东西"，
+而不是看页面文本。`verify.mjs` 的首屏断言能抓住它（全红但**没有任何异常**），
+所以**"没有任何 console 错误 + 首屏文本为空"**这个组合本身就是一条信号。
+
+### 二、Web 上画布**没有后端**（库只提供了原生那条）
+
+`npm/moobile-host/` 里原本只有 `canvas-skia.js` → `@shopify/react-native-skia`，
+而 Skia 的注册默认 `platforms: ['android','ios']`。**Web 没有第二条注册**：
+文档里那句"要在 Web 上看同样的画面，走 CanvasKit，那是另一条注册"指的是
+`canvas-spike` 里的一次性回放脚本，不是应用能用的后端。
+
+补的：**`npm/moobile-host/canvas-web.js`** —— 零依赖、同步、浏览器原生 2D。
+它**不是"实现渲染"**（DESIGN 原则 1）：18 条 op 逐条对应 `CanvasRenderingContext2D`
+的同名方法，是**翻译**（与 `canvas-skia.js` 把 op 翻成 Skia 元素树同理）。
+顺带把"高分屏"收进后端：`setTransform(dpr,0,0,dpr,0,0)` ——
+应用侧原来那段 `prepare_canvas`（自己读 `devicePixelRatio` 重设位图）**可以删掉**。
+
+### 三、`package.json` 的 `files` 白名单**漏一个文件 = 副本里也没有它**
+
+新增 `canvas-web.js` 之后忘了加进 `files`，于是 `bash tools/refresh_host_copies.sh`
+刷完还是拿不到 —— 因为那个脚本是 `rm -rf node_modules/moobile-host && npm install`，
+而 `file:` 依赖**照样按 `files` 白名单拷**。症状是 Metro 的
+`UnableToResolveError: Unable to resolve module moobile-host/canvas-web`，
+而**源码就在那里**。⇒ 这条与 `AGENTS.md` 里"`files` 白名单"那条是同一个坑的另一面：
+**白名单同时管发布与本地 `file:` 安装**。
+
+（另：Metro 会缓存解析结果，改完之后要 `--clear` 重启才认。）
+
+### 四、应用侧：罗盘迁移的三个决定（都写进代码注释了）
+
+1. **绘制变成纯函数**：`draw_bagua_cmd`（渲染后去 DOM 找 `#bagua-canvas` 再画）→
+   `bagua_ops(model)` → `@canvas.canvas(ops, size, size)`。"模型 → 指令"可断言、可测。
+2. **坐标 1:1**：手势给的 `x/y` 是**元素内坐标**，所以画布边长必须等于元素边长 ——
+   原来是 CSS `min(94vw,720px)` 缩放的，RN 没有 CSS。做法：`@sub.on_resize` 把视口宽度喂进
+   Model → `size = min(720, 0.94 * vw)` → 画布里 `ctx.scale(size/720, size/720)`。
+   **边长不只是排版问题，它决定手势坐标能不能直接当画布坐标用。**
+3. **"长按 300ms 才能拨动"那道闸退休了**：手势通道已经把 `on_pan` 与 `on_tap` 分开报，
+   再叠一层时长判断只会让"拖了但没转"变成一个说不清的现象。轻点则**重新发一遍 `DragEnd`**
+   —— 判卦导航那套逻辑（按半径/角度算落在哪一卦）一个字都不用重写。
+
+### 判据（本轮实测，真 Chrome）
+
+| 断言 | 结果 |
+|---|---|
+| 首屏出现罗盘面板（模式按钮 + 立竿测影） | ✅ |
+| 画布位图 720×720、**非透明像素 518400**（真的画了） | ✅ |
+| **拖拽之后画面变了**（`toDataURL().length` 前 339770 → 后 365462） | ✅ 手势 → 模型 → 重绘整条链通 |
+| **轻点外环 → 进入某卦详情**（落在「萃 · 泽地萃 · 第45卦」） | ✅ 环上命中判定对 |
+| 搜索 → 网格 → 点卦卡 → 详情（真爻辞） | ✅ 未回归 |
+| 全程无 console 错误 / 未捕获异常 | ✅ |
+| 合计 | **24 / 24**（`node examples/apps/zhouyi-reader/verify.mjs`） |
+
+---
+
+## 补记（Android 端：**画布那条通道第一次上真机**，2026-10-02 三续）
+
+同一份应用（`examples/apps/zhouyi-reader/`）搬到 Android 模拟器上跑通了 —— 14 / 14 真机断言。
+下面四条都是**只在真机上才露头**的，库里之前没记过。
+
+### 一、RN 的"平台文件"必须用**无扩展名**导入，否则等于没写
+
+Skia 在 web 上**连 Metro 的解析都过不去**（`UnableToResolveError: Unable to resolve module ./animation`
+from `@shopify/react-native-skia/lib/module/index.js`），所以两条画布后端要按平台拆文件：
+
+```
+canvas-native.js        ← android / iOS：Skia
+canvas-native.web.js    ← web：空实现
+```
+
+**但 `import { x } from './canvas-native.js'` 会把平台解析锁死在 `.js` 上** ——
+Metro 只在**无扩展名**的导入上按平台挑文件。症状是：web 上仍然加载了 Skia 那份、
+于是整包解析失败、页面全白。写成 `'./canvas-native'` 才对。
+
+⚠️ 另一个**看起来该管用但不该管用**的写法：`if (Platform.OS !== 'web') require('@shopify/react-native-skia')`。
+**挡不住** —— Metro 在**打包期**解析所有 `require`，平台判断在运行期。
+
+### 二、`registerLibrary` 的平台闸门是**运行期抛**的，所以 web 那条也得按平台分支
+
+两条后端都无条件调用时，Android 上启动即红屏：
+
+```
+moobile-host: 组件库 `moobile` 声明只在 [web] 上可用，而当前平台是 `android`。
+```
+
+⇒ 三条注册要用**两种**不同的分支手段，各有原因：
+`Platform.OS === 'web'`（运行期，够用）· 平台文件（打包期，必需）· 平台文件（同上）。
+
+### 三、画布的文字要 `makeFont` —— **库里记着"没上过真机"，这次撞上了**
+
+HANDOVER §6 写着「画布**文字字形**（`makeFont` 那条路）**没上过真机**」。第一个把它搬上真机的
+应用当场红屏：
+
+```
+moobile-host/canvas-skia: 指令里有文字（`fill_text`），但没给 `makeFont`。
+  RN Skia 的 <Text> 需要一个 SkFont，而「用哪个字体」是应用的资源决定，宿主不该替你猜。
+```
+
+两处细节（都不在文档里）：
+1. **`import * as Skia from '@shopify/react-native-skia'` 拿到的是包的命名空间**，
+   **不是** native 注入的 Skia API 对象 —— 所以 `Skia.FontMgr` 是 `undefined`
+   （报 `Cannot read property 'System' of undefined`）。要字体就走包导出的
+   **`matchFont({ fontFamily, fontSize })`**，它内部才去拿 `FontMgr.System()`。
+2. 落到真机上的字形与浏览器不同：Android 上没有 "Kaiti TC"/"Charter" 这些族名，
+   `matchFamilyStyle` 找不到就回落 —— **中文排版要重新看**（这是"排版要重新验"那一类，不是 bug）。
+
+✅ 结论：`registerSkiaCanvas({ skia, makeFont })` 这条路**现在真机验过了**：
+截图 `docs/evidence/zhouyi-android-compass.png`（1080×2340）逐点取色 ——
+纸色 `#f6efe0` 最多、墨色 `#1a1410` 与朱红 `#8a2518` 都在，罗盘中心 ±260px 内有
+**1608** 个朱红采样点（四正方位）与 **5256** 个墨色采样点（环线与卦名）。
+
+### 四、真机判据的两条**边界**（不写下来就会被误当成 bug）
+
+1. **`adb shell input text` 打不出中文**：`input text 乾` 是空、`%E4%B9%BE` 原样落成字面量 `E4%9E`
+   （实测 dump 里就是这样）。所以真机上只能验到"**输入通道通了**"（键入了东西 → 模型变 → 过滤网格出现），
+   "输入中文 → 命中卦卡 → 点进去"这条留在 **web 判据**里。`device_check.mjs` 里把这条**显式打出来**，
+   免得看起来像"验过了"。
+2. **`uiautomator dump` 只给可见节点**：1080×2340 的屏上，罗盘模式按钮那行的后两个在折叠区外 ——
+   第一版拿"卦爻色环"当判据于是红了一条**其实没问题**的项。判据要取"看得见的那些"。
+
+### 判据（本轮实测）
+
+| 门 | 分数 | 说明 |
+|---|---|---|
+| `node examples/apps/zhouyi-reader/device_check.mjs` | **14 / 14** | 真机：包与 Metro 同一份 / 首屏罗盘 / 画布几何 / 拖拽不崩 / 轻点外环进卦 / 输入通道 / 无原生崩溃 |
+| `node examples/apps/zhouyi-reader/verify.mjs` | **24 / 24** | 真 Chrome（改了平台分支之后**重跑**，没回归） |
+| APK | ✅ `BUILD SUCCESSFUL in 7m 23s` | 含 Skia 的 C++（x86_64），76 MB debug 包，装机启动成功 |
+| `device_check.mjs` | **17 / 17** | 含「同一点、转过之后命中另一卦」（修掉库侧那个起点参照系的 bug 之后转绿）|
+| 改 `gesture-rn.js` 之后按规矩跑的另外两道 | web 试金石 **40 / 40** · `verify_all.sh` **21 / 21** | 见 CONTRIBUTING §1 |
+
+---
+
+## 补记（补齐第三条画布后端：**SVG**，桌面那条路先在本机验掉，2026-10-02 四续）
+
+桌面端（react-native-windows）卡在工具链上（VS 2026 + SDK 22621，见 `DESIGN-DESKTOP-RNW.md`），
+但**它的画布路径不必等工具链** —— 因为那条路是 `react-native-svg`，而它**同时支持 web**。
+所以这一轮把第三条后端写出来、并在真浏览器里验掉：**`npm/moobile-host/canvas-svg.js`**。
+
+### 三条后端的分工（一张表，别混）
+
+| 后端 | 平台 | 为什么不能兼 |
+|---|---|---|
+| `canvas-skia.js` | android / iOS | `@shopify/react-native-skia` **没有 Windows 后端**（`npm pack` 后 `package/windows/` 0 个文件）|
+| `canvas-web.js` | web | 用 DOM 的 `CanvasRenderingContext2D`，**RN 里没有** |
+| **`canvas-svg.js`（新）** | **web / windows** | —— 它是**桌面唯一现成的矢量通道**（`react-native-svg` 的 tarball 里有 153 个 windows 文件，含 Fabric 实现）|
+
+它不是"自己实现渲染"（DESIGN 原则 1）：`canvas-ops.js` 已经把指令翻成一棵**中立元素树**
+（`Path`/`Rect`/`Text`，与 Skia 那条通道共用），新文件只把那棵树映射到 react-native-svg 上 ——
+**翻译**，不是渲染器。
+
+### 判据（本机实测）
+
+| 门 | 结果 |
+|---|---|
+| 真 Chrome，**SVG 后端**（`EXPO_PUBLIC_CANVAS=svg`） | **24 / 24** —— 罗盘渲染出 **758 个矢量元素**、拖拽后画面变、轻点外环进卦 |
+| 真 Chrome，**DOM 后端**（默认） | **24 / 24**（没有回归） |
+| 真机 Android（Skia 后端） | **18 / 18** |
+
+⇒ "桌面端的画布"这一块**已经是实现 + 验过的状态**，剩下的桌面缺口只有：宿主工程 + VS 工具链。
+
+### 三个坑（都写在这儿，免得重踩）
+
+1. **变换的形状要从真源看，别照脑子里的写。** 我第一版把 op 层的变换写成
+   `{type:'translate'}`，而 `canvas-ops.js` 用的是 **React Native 的样式变换形状**
+   （`{translateX, translateY}` / `{rotate: 弧度}` / `{scaleX, scaleY}`）——
+   跑起来报 `不认识的变换 undefined`（每个元素都带一个 `undefined` 项）。
+   另外：canvas 的 `rotate` 是**弧度**、SVG 的 `rotate()` 是**度**，这一处必须换，否则画面静默转错。
+2. **判据只认一种后端 = 判据在测自己。** `verify.mjs` 原先写死 `querySelector('canvas')`
+   并用 `toDataURL()` 判"画了东西 / 画面变了" —— 换成 SVG 后端时**四条断言一起红**，
+   而红的是判据不是被测物。改成：选择器 `canvas, svg`；canvas 读**像素**、svg 数**元素**；
+   "画面变了"用**字符串哈希**（旋转只改数字，`outerHTML` 的**长度**可能一点不变）。
+3. **判据的顺序会互相污染。** "轻点外环"与"拖拽"两条原本是"先拖后点"，某些后端下
+   后一次轻点会被当成上一次拖动的**延续**（responder 还没交出去）→ "点了没反应"。
+   拆开、各自从干净状态开始之后就对了；而"点完之后要去详情页、拖拽要在列表页"这件事
+   也得显式回位（回位那一步没做时，取画布矩形直接拿到 `null` 崩掉）。
+
+---
+
+## 补记（桌面宿主落地：**"同一份产物进第三个宿主"从论断变成判据**，2026-10-02 五续）
+
+`examples/apps/zhouyi-reader-desktop/` —— 裸 RN + `react-native-windows@0.83.2` 的 Windows 宿主，
+**应用侧一行未改**（`App.js` 只是把同一份 `moobile.js` 交给宿主）。
+
+### 判据：**不必等 VS 工具链**（`node verify.mjs`，5 项）
+
+| 判据 | 结果 |
+|---|---|
+| 应用产物 `moobile.js` 在 | ✅ 3262 KB |
+| `react-native bundle --platform windows` 退出码 0 | ✅ 34.6 s |
+| 产物生成 | ✅ **8.80 MB** |
+| 产物里有**这个应用**的真串 | ✅ `御纂周易折中` |
+| 产物里有宿主接线（`mountApp` + `registerSvgCanvas`） | ✅ |
+
+它验的是"**能不能把界面打进第三个宿主**"（Metro 解析 + RNW 平台插件 + `AppRegistry` 入口 +
+跨工程 `watchFolders`），而**不是**"桌面窗口能起来"（那要 VS 2026 + SDK 22621）。
+
+⚠️ **比对串不能从产物里随便取**：第一版取到的是**库自己的报错文案**
+（`宿主给对象或给字`）—— 那种串换一个应用也照样在产物里，判据就瞎了。
+现在取的是**应用源码（`main.mbt` 等）与产物里都有**的串，才说明"这份产物是**这个应用**编的"。
+
+### 三个坑（两个是 PATH 写法，都极具误导性）
+
+1. **`spawnSync npx.cmd` 在 Windows 上直接 `EINVAL`** —— 必须 `shell: true`。
+   报错只有一句 `spawnSync npx.cmd EINVAL`，看着像"命令不存在"。
+2. **`pwsh.exe` 不在 PATH 上时，RNW 报的是"平台不存在"**：
+   `error: Invalid platform "windows" selected. Available platforms are: "ios", "android", "native"`。
+   真因链：RNW 的 CLI 加载 `react-native.config.js` 时要 require
+   `@react-native-windows/find-dotnet-tools` → 它用 `where pwsh.exe` 找 pwsh →
+   找不到就**抛错**，而 RN CLI **静默吞掉**这个错误 → 平台表里就没有 windows。
+3. **PATH 项的写法在两个位置要求相反**（这条最费时间）：
+   · 从 **bash** 里传：要 MSYS 形式（`/c/Users/...`），写 `C:\Users\...` 反而找不到；
+   · 在 **node** 里拼：要 Windows 形式（`C:/Users/...`，正斜杠即可），写 `/c/...` 找不到
+     —— 因为 `where.exe` 是原生程序，而 node **不做** MSYS 转换（它看到的 PATH 本来就是 `C:\...;D:\...`）。
+   两种写错时的报错**是同一句** `Unable to find pwsh.exe. It should have been made available by \`yarn install\``
+   —— **把人往"要装 yarn"上带**，而根治办法只是把那一项写成对的形状。
+
+   用法见 `examples/apps/zhouyi-reader-desktop/verify.mjs` 的 `windowsAppsDir()`。
+
+---
+
+## 补记（`--host rnw`：**「换宿主不改应用」第一次有了硬判据**，2026-10-02 六续）
+
+脚手架现在有第二个宿主：`moobile-host init <目录> --host rnw` 生成 **Windows 桌面宿主**
+（裸 RN + RNW）。宿主表在 `lib/hosts.js`，宿主文件集在 `hosts/rnw/`。
+
+### 判据（`node tools/desktop_host_probe.mjs`，20 项，**离线**、进 `verify_all.sh`）
+
+> ⚠️ 这个文件在 2026-10-02 晚**改名成 `tools/host_probe.mjs`** 并扩成三宿主矩阵（32 项）——
+> 本节记的是它当时（只有 expo / rnw 两个宿主）那一版的读数，读的时候别去找旧文件。
+
+它守的是 SCAFFOLD §3.3 那句承诺的**可执行形式**：
+
+| 断言 | 说明 |
+|---|---|
+| `moon.mod` / `moon.pkg` / `app.mbt` 两个宿主下**逐字节相同** | ★ 这才是「换宿主、不改应用」。只断言「文件生成了」说明不了这件事 |
+| expo 档有 `expo` 没 `react-native-windows`；rnw 档反之 | 两边的宿主确实换了 |
+| rnw 档 `@react-native-windows/find-dotnet-tools` 在 **dependencies** | RNW 0.83.2 漏声明它；放 dev 会被 `npm install` 剪掉 |
+| rnw 档 RN 0.83.x + RNW 0.83.2 | **RN 版本由宿主钉**，不是拍脑袋写的 |
+| 入口用 `AppRegistry`（不是 `registerRootComponent`）、metro 用 `@react-native/metro-config`（不是 `expo/metro-config`） | 混了就是「看起来能跑」 |
+| 生成了 `.gitignore`，里面有 `windows/` 与 `moobile.js` | 见下面第二坑 |
+| **`--host desktop`（不认识的别名）必须非零退出并列出可选值** | 证伪：拼错参数不能静默降级成 expo |
+
+### 两个坑
+
+1. **`npm pack` 永远不打 `.gitignore`** —— 连「单独列进 `files` 白名单」也不行。
+   （旧结论里只写了「列了 `template/.gitignore` 就可以」；那一条对**模板**成立，对**新加的目录**不成立：
+   实测 `hosts/rnw/.gitignore` 列进 `files` 之后，`npm pack --dry-run` 里依然没有它。）
+   ⇒ 宿主文件集里那份真源改叫 **`gitignore`（无点）**，由 `lib/init.js` 写盘时映射成 `.gitignore`。
+   这样连「`npm install` 把 `.gitignore` 改名成 `.npmignore`」那条老坑也一并绕开了。
+2. **判据别 grep 全文**。「入口不能用 Expo」这条第一版写的是 `!/expo/.test(index.js)` ——
+   而我在那份 `index.js` 的注释里**正大光明地写了「不用 Expo」**，于是假红两条。
+   改成只认 `import`/`require` 那一行（`!/from\s+['"]expo['"]/`）。
+
+### 顺带
+
+- `create --from-rabbita` 也支持 `--host` 了：`create … --host rnw` 直接把迁移产物生成成桌面工程。
+- `--host` 不认的值**当场报错**（`不认识的 --host desktop。可选的：expo · rnw`）——
+  别名会让文档漂（两个名字指同一个东西，写两遍就会有人按错的那个去查文档）。
+
+## 补记（折叠区块与两个"只在真机上现形"的洞，2026-10-02 七续）
+
+这一轮把 zhouyi-reader 的 S6 收尾做完（`<details>` 三块折叠 → 受控折叠），
+顺手逮到**两个机械迁移移不过来、而 web 判据永远看不见**的东西。
+三件事都记在这儿：判据怎么写、坑在哪、真因是什么。
+
+### 一、`<details>/<summary>` 迁不动 —— 但"悄悄不渲染"比报错更坏
+
+`details` / `summary` 在 moobile 的标签表里是**明确排除**的（`render.mbt` 的
+`excluded_tags()`：RN 没有那个开关语义）。机械迁移能做的只有"改名/注释掉"，
+于是页面上少三块内容 —— 而**少了内容页面照样"正常"**（首屏、搜索、点卦全都不受影响）。
+
+所以判据不能是"元素在不在"，得是**行为**，而且必须包含**收回去**那一步：
+
+| 断言 | 为什么这一条 |
+|---|---|
+| 标题按钮**常显**，正文**不在树上** | 区分"默认折叠"与"整块丢了" |
+| 真鼠标点标题 → 正文里那句**具体的话**出现（`元者，善之长也`） | 判据取正文的**具体句子**，不取"节点多了几个" |
+| 箭头 `▸` → `▾` | 顺带证明状态在 Model 里（不是 DOM 自己的） |
+| **再点一次 → 那句又不在树上** | ★ 只断言"点开出现了"会漏掉**半受控**（`<details>` 自带状态，写成"能开不能收"照样过前三条） |
+
+实现上三块折叠进 Model（`open_more : Array[Bool]`）+ `ToggleMore(Int)`，
+`more_section(title, i, open_more, emit, body)` 生成"按钮 + 条件渲染"。
+
+**证伪**（判据自己能不能红）：把 `more_section` 里的 `if open` 改成 `if true`（永远展开）
+→ 6 条红，且红的正好是"默认折叠"与"再点一次收起"那六条；改回来 **45 / 45**。
+判据是能分辨的，不是恒真。
+
+### 二、坑：判据别写死 `parentElement`
+
+"箭头"那条第一版读 `el.parentElement.textContent`，三条箭头断言全红 ——
+**红的是判据**：标题与 `▸/▾` 是同一行里的两个 span，中间隔着宿主生成的一层
+（web 上 `button` → `Pressable` 会多包一层 `<div>`）。
+改成**沿祖先链往上找第一个含箭头的文本**（最多 4 层）才稳。
+
+### 三、坑：写 JS 模板字符串时，注释里的反引号会把模板**提前闭合**
+
+`evaluate(\`…\`)` 里那段注释我写了 `` `▸/▾` ``，于是 node 报
+`SyntaxError: missing ) after argument list`（指向的是**几行之后**的行）——
+真因是模板在注释中间就结束了。**模板字符串里不要出现反引号**（要写就写 `▸/▾`）。
+
+### 四、★★ 生成物自查：两条"web 上永远看不见"的洞（库侧已补判据）
+
+Android 上第一次跑折叠判据时，界面**滚不动**：滚 30 次、`uiautomator dump` 逐字节相同。
+追下去是两个**各自独立**的问题，两个都只在原生上现形：
+
+| 洞 | 真因 | 为什么 web 判据看不见 |
+|---|---|---|
+| **`page()` 没人挂** | CSS 里 `body`/`html` 的声明被样式转换器抽成了独立的 `page()`（`style-emit.js` 的 `__page__` 组），**但生成物的根容器是裸的** —— 底色 / 字体族 / 行高没落到任何元素上 | 浏览器自己有 `body` 样式兜着；而 web 判据里"纸色底 / 衬线族"那几条**被别的元素满足了**，于是照样绿 |
+| **根上没有滚动容器** | HTML 靠 `overflow` 做**文档级滚动**，RN 的 `View` **不滚动** —— 不套 `ScrollView`（moobile 的 `"scroll"` 伪标签），真机上过了第一屏就**再也够不着** | DOM 自己会滚。同一个页面在 web 判据里 **45 / 45**，Android 上却是"纹丝不动" |
+
+修法是两层根容器：
+
+```moonbit
+div(attrs=@styles.att(@styles.page().flex(1.0)), [              // ← ① 源 CSS 的 body/html
+  @html.node("scroll", @styles.att(@style.Style::new().flex(1.0)), [ …整页内容… ]),  // ← ② RN 的 ScrollView
+])
+```
+
+⚠️ 根还要 `flex(1.0)`：`ScrollView` 的 `flex:1` 得有**确定的父高**才量得出视口，
+父级 auto 高时它会被量成 0（RN 的 flex 语义，不是 CSS 里"`flex-grow` 在块级上下文无效"那回事）。
+
+**收口方式（判据写进库，而不是写在指南里口口相传）**：
+
+- `npm/moobile-host/lib/migrate/app-audit.js` —— 读生成物的 `.mbt`，报
+  `page-style-unused` / `no-native-scroll` / `scroll-without-flex`（+ 目录里没有 `.mbt`）；
+- `create --from-rabbita` **落盘后自动跑一遍**，收尾打印并把结果写进 `MIGRATION.md §5`
+  （实测：拿仓库外的真源跑，当场报出 **2 条必须处理** —— 生成器**知道**自己移不过来，只是以前不说）；
+- 离线门 `tools/migrate_app_audit.mjs`（13 项，进 `verify_all.sh` → **23 项**）：
+  4 个真实应用**必须干净**、2 个例外**逐条点名**（`perf-bench` 是压测 harness，行数**刻意**撑爆视口；
+  `antd-demo` 是 web 画廊 —— 记在门里，别让它偷偷绿），外加 **5 个故意做坏的样本**。
+
+### 五、自查器自己的两个假阳性（都是"字符串不是代码"）
+
+1. **文档注释里的假代码**：`todo-app/ui.mbt` 的注释里写着"用 `node("scroll", …)`" ——
+   第一版拿**原文**扫，于是报了个不存在的 `ui.mbt:261`。
+   真因是"过滤器用了去注释文本、行扫描却用了原文"，两边不是同一份。
+2. **组件属性名也叫 `scroll`**：`antd-demo` 的 `opt_json(a, "scroll", scroll)` 被当成了滚动容器。
+   ⇒ 判据只认**伪标签的用法** `node("scroll"`，不认裸串。
+
+两条都补进了证伪样本（③ 与 ⑤）—— **"永远返回空数组"的检查器能让所有真实应用都绿**，
+所以坏样本是这条门的必需品。
+
+### 六、真机判据的两个坑（uiautomator 与软键盘）
+
+1. **`uiautomator` 只 dump 可见节点** —— 展开折叠区块后新插进来的正文落在屏幕**下面**，
+   不滚过去它根本不在 dump 里。第一版直接数"标题下面有几条长文本"，展开前后都是 1
+   （折叠本身是对的：箭头 `▸→▾` 当场就变了）。改法是**边滚边收成集合**，再做**差集**：
+   展开后"比折叠态多出的长文本"必须有 ≥2 条（实测 **14** 条），收起后多出的必须是 **0** 条。
+2. **软键盘会改布局**：上一段在搜索框里打过字，键盘还占着下半屏，而画布几何是**开头量的**
+   —— 拿旧坐标点罗盘会落到画布外，表现是"折叠标题找不到"，真因在**夹具的坐标**。
+   改法：点之前先 `keyevent 111`（ESC 收键盘）+ **重新量**画布几何 + 不行就重试（3 次）。
+
+另外顺手修了两处**判据太脆**的地方（都不是被测物的问题）：
+`adb exec-out screencap` 回陈旧帧 → "画面变了"那条改成**连截 3 次**；
+`verify_all.sh` 的标签里写了反引号 → bash 命令替换（每跑一次都执行一条叫 `--host` 的命令）。
+
+### 判据（本轮实测）
+
+| 门 | 结果 |
+|---|---|
+| `node examples/apps/zhouyi-reader/verify.mjs`（真 Chrome） | **45 / 45**（新增 21 条折叠断言）；证伪轮 **39 / 45**，红的正好是那 6 条 |
+| `node examples/apps/zhouyi-reader/device_check.mjs`（模拟器 emulator-5554） | **27 / 27**（新增 9 条折叠断言；滚动修好之前夹具红、修好后绿） |
+| `node tools/migrate_app_audit.mjs`（离线） | **13 / 13**（4 真实应用干净 + 2 例外点名 + 5 坏样本 + 1「没有 .mbt」） |
+| `bash tools/verify_all.sh` | **23 / 23**（新增第 23 条） |
+
+## 补记（F1 补上 `click.on-view`：把"手工数出来的 5 处"变成报告里的一条，2026-10-02 八续）
+
+### 一、这条规则是什么，为什么它当年不在 F1 里
+
+`render.mbt:243`：`on_click` 在 moobile 里映射成 RN 的 **`onPress`**，而标签表里
+**只有 `button` / `a` 落到 `Pressable`**；`div` / `span` / `p` 落到 `View` / `Text`，
+那两个组件**没有 `onPress` 这个 prop** —— 点击被**丢掉**：不报错、不警告、`moon check` 全绿。
+
+实测（`interest/yi`）：**5 处** `div(… on_click=…)` —— 卦卡点不动、折叠点不开。
+当年它们是在**迁移装配器**里被一个临时函数（`create.js` 的 `detectClickOnView`）找出来的，
+**F1 动检报告里没有这一条**：于是"先跑一次动检看看会静默失效什么"的人**看不到它**，
+只有走到 `create` 那一步（并且读 §4 的 TODO）才会撞见。
+
+它进不了 `RULES` 的原因很具体：`RULES` 的契约是**按行子串匹配**，
+而这一条要的是"标签 + 事件"两个 token 的**结构关系**（同一次调用里）——
+`div(… on_click=…)` 与 `button(… on_click=…)` 逐字看没有区别。所以它是 F1 里的
+**第二条结构规则**（第一条是"标签分类要查真源两张表"，也不是子串）。
+
+### 二、实现只有一份（JS 侧），MoonBit 侧照抄 —— 两处都改了
+
+| 位置 | 角色 |
+|---|---|
+| `npm/moobile-host/lib/migrate/click-on-view.js` | **唯一实现**（JS）：`scanClickOnView(text)` |
+| `npm/moobile-host/lib/migrate/scan.js` | F1 报告里报 `click.on-view`（插在 14 条规则**之后**、标签分类**之前**） |
+| `npm/moobile-host/lib/migrate/create.js` | 只 `require` 那一份（原来自己数了一遍，已删）—— 生成 §4 的 TODO 条目 |
+| `tools/mbtools/src/migrate_scan.mbt` | MoonBit 真源里的同构实现（`scan_click_on_view`） |
+
+**算法**（两侧逐字同构，别"顺手优化"）：找到 `on_click` → 要求后面（跳过空白）是 `=` →
+往回用括号配对找到**包着它的那次调用**的左括号 → 读左括号紧前面的标识符当标签名
+（`div(` / `@html.div(` / `div (` 都读成 `div`）→ 不是 `button` / `a` 就记一条，
+行号取 `on_click` 那一行。
+
+⚠️ **口径与那 14 条规则一致：扫原始文本，注释里的代码同样算命中。**
+这是**刻意的**（兄弟规则也是这样：`needle: 'class='` 在注释里一样命中）——
+假阳性（注释）比假阴性（漏掉一个真的点不动的块）代价小得多，
+而"逐字抄一份更聪明的实现"会让对账门变成在比谁的注释处理更花哨。
+
+### 三、判据：诱饵 + 真项目 + 两侧对账，三件都要
+
+`node tools/migrate_click_scan.mjs`（**13 项**，进 `verify_all.sh` → **24 项**）：
+
+- **诱饵项目**（临时目录里现造，期望值写死）：`div` ✓ / 跨行的 `@html.div(` ✓ /
+  `div (`（标签与括号间有空格）✓ / `span` ✓ / **注释里的那行也算** ✓；
+  负例：`button` ✗ / `a` ✗ / `on_clicked(1)` ✗；另有一份 `.mbt.bak` 确认规则只在 `.mbt` 上生效。
+- **两侧逐 hit 一致**：`file:line` 与 `text`（含 why/next）都比。
+- **真项目读数**：`yi/zhouyi_reader` 命中 **5 处**，且都在 `frontend/main.mbt`
+  （`484 / 1269 / 1372 / 1400 / 1463`）—— 与当年**手工数出来的 5 处**一致。
+
+**已证伪（两个方向都试了）**：
+- 只改 JS：把 `span` 塞进 `PRESSABLE_TAGS` → **9 / 13**（诱饵少一条 + 两侧 count 4 vs 5，红 4 条）；
+- 只改 MoonBit：在真源里把 `span` 当会响的 → **11 / 13**（两侧 count 5 vs 4，红 2 条）。
+⇒ 这条门两个方向都盯着，不是"只比一边"。
+
+### 四、对账门的读数变化
+
+`node tools/migrate_scan_reconcile.mjs`：**18 类 / 357 条命中** → **19 类 / 362 条**
+（新增 `click.on-view` 5 条），两侧**逐 finding 逐 hit** 仍然一致
+（第 15 行，插在 `canvas.api` 与 `tag.excluded` 之间 —— `finding` 顺序参与对账）。
+
+### 五、顺带修掉的一处"两个真源"
+
+`create.js` 里那份 `detectClickOnView` 与 F1 要报的是**同一件事**，两处各写一遍 =
+一个必然的漂移点（`migrate_scan_reconcile.mjs` 的文件头记着"副本 ≠ 源码"那次事故）。
+现在实现搬到 `click-on-view.js`，`scan.js` 与 `create.js` 共用一份；
+`create.js` 的文件头那段"为什么 F1 抓不到、所以在 create 里做"的说明也一并改成了现状。
+
+## 补记（第三个宿主：**零 Expo、零 Metro 的静态 Web**，2026-10-02 九续）
+
+### 一、这一轮补的是哪一块
+
+SCAFFOLD §3.3 承诺"支持一个新平台 = **换一个宿主**，不是改库"，宿主表里一直挂着
+`--host webview`（PWA / Tauri / Electron 的底座）却没落地。本轮把它做出来，
+判据分两层（与桌面那条同构）：
+
+| 层 | 判据 | 结果 |
+|---|---|---|
+| **生成器**（离线） | `node tools/host_probe.mjs` | **32 / 32** —— 三个宿主（expo / rnw / webview）的应用侧 `moon.mod`/`moon.pkg`/`app.mbt` **逐字节相同**，宿主文件确实换了 |
+| **真跑**（要 Chrome + 依赖） | `node examples/apps/zhouyi-reader-webview/verify.mjs` | **15 / 15** —— 其中第 3 层是**把应用自己那 45 条界面判据原样指向静态宿主的 URL**，报 **45 / 0** |
+
+> ★ 第二层那句话是这一轮最有力的一句证据：**同一份 MoonBit 产物 + 同一套 45 条界面判据，
+> 换一个宿主（连 Metro 都没有）照样全过**。而它不是重写一遍断言 —— 是 `spawn` 那个脚本、
+> 读它的汇总行（用户会跑的也是它）。
+
+顺带把 `tools/desktop_host_probe.mjs` **改名成 `tools/host_probe.mjs`**：它现在守的是
+**整张宿主矩阵**（三个宿主），留着旧名会让"这条门守什么"变成猜的。
+
+### 二、★ 一个 8 分钟没输出的教训：`spawnSync` 会**堵死自己进程里的服务**
+
+第一版 `verify.mjs` 用 `spawnSync` 调应用的判据脚本。结果：**8 分钟没输出**，
+页面在 Chrome 里停在 `about:blank`，而**单独在前台跑同一条命令 3 分钟就 45/45**。
+
+真因：**静态服务就跑在父进程里**，而 `spawnSync` 是**同步**的 —— 它阻塞事件循环，
+父进程的 HTTP server 无法响应请求 ⇒ Chrome 拿不到 6 MB 的 bundle ⇒ 子进程里的页面永远
+渲染不出来。表现极具误导性（"这条门只是很慢"），因为**没有任何一处报错**。
+
+修法：换成异步 `spawn` + `await`（`Promise` 包一层，带 10 分钟硬超时）。
+⇒ **规则**：只要本进程还担着"服务/回调"的角色，就用异步 `spawn`；`spawnSync` 只适合
+"父进程在这段时间里确实什么也不用干"的场合。
+
+### 三、同一类假红第三次出现：**判据别 grep 全文，注释里会写**
+
+宿主矩阵探针加进 webview 后，三条新判据当场假红，全是同一个病：
+
+| 假红 | 真因 |
+|---|---|
+| "依赖表里没有 `react-native`" | 用了**前缀**正则 `/^react-native/` → 把 `react-native-web` 也命中（而它正是这个宿主要用的） |
+| "入口不 import expo" | `index.js` 的**注释里**正大光明地写着 `import { registerRootComponent } from 'expo';`（对照说明） |
+| "不给静态宿主引 react-native-svg" | `App.js` 的注释里写着"别引 `react-native-svg`，会撞 peer 冲突" |
+
+这在本仓库是**第三次**（第一次：rnw 的 `index.js` 注释里写"不用 Expo"；第二次：`app-audit`
+扫到 `todo-app` 注释里的 `node("scroll", …)`）。所以这轮把规矩写进代码：
+探针里加了一个 **`code()` 助手（只留代码行，去掉 `//` 之后的注释）**，新判据一律过它。
+⇒ **规则**：断言只认**代码行**；包名比较用**确切名字**，不用前缀。
+
+### 四、宿主文件集只**覆盖**、删不掉：`drop` 是补上的那一半
+
+`init` 的模板本身就是 Expo 宿主，宿主文件集只会**覆盖同名文件** —— 于是第一次
+`init --host webview` 生成出来的工程里**留着 `app.json` 与 `metro.config.js`**（Expo 的配置）。
+它们不参与构建（依赖表里没有 expo），但用户看见它们会以为"还得装 Expo"。
+
+修法：宿主描述符加 `drop: [...]`（`lib/hosts.js` 里 webview 声明丢那两份），`init`
+在合并之后删掉。判据两条一起立：**webview 档没有那两份**，而 **expo / rnw 档仍然有**
+（drop 不许溢出到别的宿主）。
+**已证伪**：把 `drop` 那行删掉 → 探针 **31 / 32**，红的正是这一条。
+
+### 五、两个小坑（都写进了注释）
+
+1. **`react-native-svg` 会把 `react-native` 本体拖进来**：静态宿主里 `react@19.2.0` 与它
+   要的 RN 0.87.1（peer `react ^19.2.3`）撞 ERESOLVE。所以这个宿主**只注册 DOM 2D**
+   画布后端 —— 它本来也用不到 SVG 那条（那是桌面宿主的通道）。
+2. **`init` 的收尾提示要跟着宿主走**：原来只有 expo / rnw 两档，webview 用户会照着一句
+   `npm run web` 去敲 —— 而那个脚本在静态宿主里根本不存在。现在按宿主给三句。
+
+### 六、对账与门
+
+| 门 | 结果 |
+|---|---|
+| `node tools/host_probe.mjs`（**改名**，离线，进 `verify_all.sh`） | **32 / 32**（原 20 项 + webview 档 12 项）；证伪：删 `drop` → 31/32 |
+| `node examples/apps/zhouyi-reader-webview/verify.mjs`（要 Chrome + 依赖，手动跑） | **15 / 15**（含"应用那 45 条判据在静态宿主上全过"） |
+| `bash tools/verify_all.sh` | **24 / 24**（第 21 条从"桌面宿主生成器"变成"宿主矩阵生成器"，项数 20 → 32） |
+| `node tools/package_check.mjs` | 见下面那条（新宿主文件集要随包发出去：`files` 里 `hosts/` 已覆盖，实测 tarball 里有 `hosts/webview/`） |
+
+### 七、★ 模板**生成出来的**工程端到端跑过（不只是手写示例）
+
+上面那条 15/15 跑的是 `examples/apps/zhouyi-reader-webview/` —— 那份宿主是**手写的**。
+而"用户拿到的是**生成物**"（SCAFFOLD §3.4：模板是唯一真源），所以还得拿**模板生成**的工程再撞一次：
+
+```
+init --host webview  →  把 moobile-host 换成本地 file:  →  npm install（30 个包，无 expo/metro）
+  →  把真应用的 moobile.js 放进去  →  node build-web.mjs（模板自带）  →  node serve-web.mjs
+  →  应用自己的 45 条判据打这个 URL
+```
+
+实测（2026-10-02）：`dist/bundle.js 6239 KB`、静态服务 HTTP 200、**通过 45 失败 0**。
+⇒ "模板生成的 webview 工程能承载真应用"**是判据，不是推理**；手写示例与模板**没有漂开**。
+
+⚠️ 这条链**没有**进 `verify_all.sh`（要 Chrome + 装依赖），与 `host-swap-spike` 同一档：
+手动跑、脚本在 FINDINGS 这一段里（一条 20 行的 bash）。
+
+### 八、两个"只有真装一遍才看得见"的坑
+
+1. **`moobile-host@^0.4.0` 还没发布** ⇒ **生成出来的工程 `npm install` 直接失败**
+   （`ETARGET: No matching version found for moobile-host@^0.4.0`）。
+   这不是本轮引入的：工作区已经是 `0.4.0`，而 registry 上还是 `0.3.0`（见 STATUS §1）。
+   绕法（仓库里的探针一直是这么干的）：把生成的 `package.json` 里那条依赖改成本地
+   `file:` 路径再装。**对真实用户**的含义很直接：**发版之前，生成物装不上** —— 这条本来就写在
+   §1 的"已发布 vs 工作区"里，这里只是又一次撞上它。
+2. **Windows 上 `file:` 依赖的路径写法**：写 `file:/d/ai_project/...`（MSYS 风格）会被 npm
+   解析成 **`C:\d\ai_project\...`**（它把 `/d/` 当成当前盘下的目录），报
+   `ENOENT … C:\d\ai_project\…\package.json`。要写 **`file:D:/ai_project/...`**。
+   （仓库里那些 `file:../../../npm/moobile-host` 是相对的，所以一直没暴露这个坑。）
+
+## 补记（第十轮：把"没判据的功能"逐个补上判据 —— 顺手逮到三个真缺陷，2026-10-02 十续）
+
+### 一、起因：详情页有**六个折叠族 + 三个状态族**一条判据都没有
+
+前九轮的 web 判据（45 项）只覆盖了底部三块折叠（`more_view`）。而同一个详情页里，
+**卦辞 / 大象 / 彖辞逐句 / 爻辞 / 小象**这五个折叠族，以及**变爻标记 / 错综互预览 / 上下卦导航**
+这三个状态族，从没被断言过 —— 而它们**全都动过**（`on_click` 挂错标签会静默失效、
+`<details>` 换成受控、样式重挂）。**没有判据的迁移 = 靠运气**，这一轮就是来收这笔账的。
+
+补完之后 `verify.mjs` 从 **45 → 81 项**，而**其中三条一开始就是红的** —— 三个都是真缺陷：
+
+### 二、★ 缺陷一：爻线**根本不存在**（`class=` 动态拼 + RN 默认方向）
+
+`yao_view` 里那根"爻线"原来是 `button(class=line_cls, …)`，而 `line_cls` 是**运行时拼**的
+（`"m-yao-line yang" + bian/hl`）。迁移报告把它标成了 `dynamic-class` TODO（"动态 class 只能靠人工"），
+**一直没做**。后果不是"样式差一点"：
+
+- `class=` 在 moobile 里**静默失效** ⇒ 那根线没有任何尺寸；
+- 它的内容只有 ○/× 标记（不选变爻时是空的）⇒ 它的盒子是 **0×0**；
+- ⇒ **变爻标记在 web 与真机上都点不到**（实测：`elementsFromPoint` 在那个点上拿不到它，
+  点完 ○ 的个数 1 → 1）。
+
+修的时候还撞到第二层：RN 的**默认 flex 方向是 `column`**（CSS 是 `row`），而原 `.m-yao` 是
+网格 `160px 1fr` —— 转换器只留下了 `gap` 与 `align-items`，没写方向 ⇒ 爻线与文本**竖着堆**，
+而我第一版给爻线只写了 `flex:1`（没给宽度）⇒ 在 column 容器里**量成 0×0**。
+两处一起修：行容器显式 `flex_direction(Row)`，爻线给**确定宽高**（160×32，原网格列宽与 `.m-yao-line` 的高度）。
+
+⇒ 现在判据是"**点爻线 → 页面上 ○ 的个数 +1**，且「变卦」按钮出现，点了它跳到 111110=夬"。
+
+### 三、★★ 缺陷二：侧栏的 sticky 退化成相对定位，**压住了下一栏 70px**
+
+`大象` 那一行点不开。量了几何才看清真因（**先按"少媒体查询"猜了一轮，猜错了**）：
+
+| 量到的东西 | 值 |
+|---|---|
+| 布局容器 | `(112,121,519,1054)`，样式 `gap: 44px; align-items: flex-start;` —— **没有方向** ⇒ RN 默认 **column** |
+| 第一个子元素（侧栏） | 布局盒 `y=121..372`，但它**画**在 `y=191` —— 差 **正好 70px** |
+| 第二个子元素（正文栏） | `y=416` 起 |
+
+`y=191` 那个 70 从哪来？`.m-side { position: sticky; top: 70px }` —— **sticky 在 RN 里没有对应物，
+转换器留下了 `top: 70px`**，于是它变成 `position: relative; top: 70`：**相对定位只挪画的位置、
+不占布局位置** ⇒ 侧栏整体下移 70px，**压在正文栏上**；正文栏在后面 ⇒ 画在上面 ⇒
+**大象那一行的点击落到了正文栏那句提示上**（`elementsFromPoint` 的头两个就是那句提示的 span/div）。
+
+修法：① 侧栏不再用 `aside_m_side()`（那个样式只剩下退化的 `top`），改用**网格列宽本身**（`width: 250px; flex-shrink: 0`）；
+② 布局容器显式 `flex_direction(Row)`。
+
+### 四、★ 缺陷三：媒体查询那个断点，**用"换行 + 最小宽度"表达**（而不是去读窗口宽度）
+
+原 CSS 有 `@media (max-width: 760px) { .m-layout { grid-template-columns: 1fr } }`，
+迁移报告写着"RN 没有媒体查询，断点要在 **Model 里按窗口宽度**表达"——
+**但那条路走不通**：`model.vp_w` 来自 `@sub.on_resize`，而它**刻意不补发初始值**
+（"与 DOM 一致"），不转屏 / 不拖窗口**恒为 0**。
+
+所以断点改成**结构性**表达：两栏 + `flex_wrap: Wrap` + 右栏 `min_width(320)`
+⇒ 放得下就并排、放不下自动换行成单栏 —— **不需要知道窗口多宽**（在原生上尤其重要，
+手机不转屏时 `vp_w` 就是 0）。效果与原断点几乎同一条线（757px 换行 vs 原来的 760px）。
+
+> 📌 **库侧的缺口**（这轮没做，写在这儿）：`@sub.on_resize` 只有订阅、**没有"读当前视口"** ——
+> 应用想按窗口宽度做任何判断都做不到（罗盘画布当时就是靠一个"往小里取"的回落值绕过去的）。
+> 补法：宿主能力加一个 `geometry.read()`（web 用 `window.innerWidth/innerHeight`，
+> 原生用 `Dimensions.get('window')`），库侧给一个 `@sub.on_resize` 的兄弟 API。
+
+### 五、判据自己的四个坑（都记下来，别再踩）
+
+| 坑 | 真因 | 改法 |
+|---|---|---|
+| `○`/`×` 断言"页面上有没有" | 详情页那句操作提示里**本来就有**「阳→老阳 ○，阴→老阴 ×」 | 改成**数 ○ 的个数**（点一下 +1）；`×` 改成"**文本恰好等于 × 的那个节点**在不在" |
+| `title` 定位元素 | **react-native-web 不把 `title` 落到 DOM**（`querySelectorAll('[title]')` 数出 **0**） | 按**形状**找（空文本 + 宽 100–260 + 高 24–40 + 有子元素） |
+| "往上找祖先"找可点元素 | 会先撞上**爻辞那一行**（它不是爻线）⇒ 点击落在别处，"点了没反应"其实是**没点着** | 同上：按被点物的**形状**找，别靠"离谁近" |
+| 变卦的期望值 | 判据写"六爻皆变 → 坤"，而**只点了一根爻线** ⇒ 111110 = **夬**（第 43 卦）—— **红的是判据** | 按"实际标了几个变爻"算期望 |
+
+再加一条**夹具纪律**：这几段判据会**跳走**（变卦 → 夬、下一卦 → 坤、错综互 → 坤），
+所以每段之前/之后都用 `backToQian()` 回到乾 —— 否则红出来的是"找不到错卦那一枚"，
+**看起来像功能坏了**（第一版就是这样，浪费了一轮诊断）。
+
+### 六、判据（本轮实测）
+
+| 门 | 结果 |
+|---|---|
+| `node examples/apps/zhouyi-reader/verify.mjs`（真 Chrome） | **81 / 81**（45 → 81：新增 36 条 —— 5 个折叠族 × 4 条 + 变爻 6 条 + 上下卦 4 条 + 错综互 6 条） |
+| ↳ 其中三条的**前后对照**（判据能不能红） | 修之前：大象注疏红、变爻 ○ 个数 1→1 红、变卦按钮不出现红；三个缺陷修完 → 全绿 |
+| `node examples/apps/zhouyi-reader/device_check.mjs`（模拟器） | **26 / 26**。⚠️ 条数从 27 变成 26：删掉了一条**阈值型**判据（"折叠时标题下面长文本 ≤2 条"）—— 它在真机上实测是 **3 条**（另外两个折叠标题 + 页脚都算长文本），阈值只会随屏幕高度抖；换成**更硬的**两条："展开后才出现的那句正文"（取出样句）在展开时在、收起时不在。判据变少一条、变强一档 |
+| `bash tools/verify_all.sh` | **24 / 24**（离线：这轮只改应用与文档） |
+
+## 补记（第十一轮：补上"**读一次当前视口**"这条能力 —— 罗盘此前一直画在回落值上，2026-10-02 十一续）
+
+### 一、症状：罗盘在 1400px 的浏览器里只有 360px 大，而且**没有任何报错**
+
+原实现的画布边长是 CSS 算的：`min(94vw, 720px)`。迁移后这条得自己算（RN 没有 CSS），
+应用写成 `canvas_side(vp_w)`，而 `vp_w` 来自 `@sub.on_resize` —— **订阅只推"变化"，
+两端都不补发初始值**（DOM 的 `resize` 不在挂载时触发；RN 的 `Dimensions` 的 `change`
+不转屏不触发）。于是：
+
+| | 实得 | 应该是 |
+|---|---|---|
+| web（1378px 窗口） | **360**（回落值） | 720 |
+| 真机 | 要等一次转屏才对 | 挂载即正确 |
+
+360 这个数字是**当时的绕法**："哪端都不溢出的保守尺寸" —— 那不是响应式，是猜。
+而它在 758px 宽的窗口里"看着还行"，所以**肉眼和判据都没抓到**（第十轮补齐判据时才暴露）。
+
+### 二、库侧补的是什么：与 `subscribe_*` 并列的**第三种形状**
+
+宿主能力通道原来只有两种形状：`subscribe_bool` / `subscribe_json` —— 都答"**变化**"，
+没有一种答"**现在是**"。这一轮补上：
+
+```moonbit
+// cmd/host_native.mbt —— 能力对象上的 read()
+pub fn HostCapability::read_json(self : HostCapability) -> String?
+
+// sub/sub.mbt —— 应用真正调的那一句（宿主能力优先，问不到回退 DOM）
+pub fn current_viewport() -> Viewport?
+```
+
+RN 宿主侧（`native-rn.js` 的 `geometry`）多了 `read()`：
+
+```js
+read() {
+  const { width, height } = Dimensions.get('window');
+  return { width: Math.round(width), height: Math.round(height) };
+}
+```
+
+**三条设计取舍**（都在代码注释里写了理由）：
+
+1. **不靠"挂载时补发一次 subscribe"来实现** —— 那会让两端行为不一致（DOM 的 `resize`
+   也不在挂载时触发），而"补齐初始值"应该是**一句显式 API**，两端同一套语义；
+2. **严格解、形状不对当场报错**（同 `subscribe_json`）：取默认值恰好复现这条通道要消灭的
+   "静默给错值"；宿主**没登记** `read`（老宿主）⇒ `None` ⇒ 调用方回退，**不算错**；
+3. **回退 DOM 之前先问 `host_has_dom()`** —— RN 上 `window` 存在但 `innerWidth` 是
+   `undefined`，直接读会**静默给 0**（这正是当初 `on_resize` 栽过的那个坑）。
+
+### 三、应用侧：首帧就把窗口宽度算进去，顺带把第十轮"拆掉"的窄屏档补回来
+
+`init_app` 里读一次（不是 Cmd，也不是订阅）：
+
+```moonbit
+let vp_w = match @sub.current_viewport() {
+  Some(v) => v.width.to_double()
+  None => 0.0  // 拿不到就明确回落到 0：`canvas_side(0)` 那条分支有保守尺寸 + 理由
+}
+```
+
+第十轮我把"窄屏档"（爻线 32→27 / 160→120）**拆掉了**，理由写得很清楚：`vp_w` 恒为 0，
+拿它做判断等于永不生效。**这一轮数据源补上了，所以按原 CSS 的语义把它做回来** ——
+两栏布局的 `flex_wrap` 兜底仍然留着（窗口被拖到极窄时它保证不重叠）。
+
+### 四、判据（这一轮新增的两条，正好是那条 API 的验收）
+
+| 断言 | 结果 |
+|---|---|
+| 首屏画布边长 == `min(94vw, 720)`（窗口 1378px ⇒ 720） | **实得 720**（修之前是 **360**，这条会红） |
+| 窗口收窄到 400px ⇒ 边长变成 `min(94×4, 720)`=376 | **实得 376** |
+
+外加宿主替代物门（`tools/native_rn_check.mjs`，**15 → 19 项**）：`read` 存在 / 形状取整 /
+**读的是当前值**（改 stub 尺寸后再读）/ 两个形状都在（变化走 subscribe、当前值走 read）。
+
+### 五、这一轮的"连锁账"
+
+第十轮我在 FINDINGS 里把这条记成"库侧的缺口（这轮没做）"，这一轮把它做掉了 ——
+**并且它顺带解释了两个此前只能猜的现象**：① 罗盘为什么在大窗口里那么小；
+② 为什么"媒体查询的断点"当时只能改成结构性表达。
+⇒ 一条能力缺口的代价往往不是一处 bug，而是**一串**只能靠绕法活着的代码。
+
+### 六、改这条通道要跑的门（写清楚，免得下次漏）
+
+- `bash tools/vendor_sync.sh --capture` 再 `--check`（动了 `vendor/rabbita/**` **必须**）
+- `python3 tools/gen_forwarders.py`（`sub/forward.generated.mbt` 是新名字清单）
+- `node tools/native_rn_check.mjs`（宿主替代物的形状）
+- `node tools/cap_platform.mjs`（"哪端可用"矩阵；**它的条目按真实用到的 DOM API 点**，
+  加一个自造的键会红 —— 这轮踩过一次）
+- `bash tools/verify_all.sh` + 两条宿主实测（web 83 项 / 真机 26 项）
+- `node examples/apps/zhouyi-reader-webview/verify.mjs`（期望条数跟着应用走：45 → 81 → **83**）
+
+## 补记（第十二轮：罗盘面板那四族控件补上判据 —— 三条都是**判据自己的错**，2026-10-02 十二续）
+
+### 一、这一轮补的是最后一块"没判据的交互族"
+
+十一轮结束时，详情页那几族都判据齐全了，剩下的空白是**首页罗盘面板**：
+四个模式（伏羲先天 / 后天文王·卦气 / 京房八宫 / 卦爻色环）、立竿测影、环层/顺序按钮 ——
+它们各自是一份**独立的绘制逻辑**（迁移时改动最多的地方），却只有"按钮在不在"这一条弱断言。
+
+补完：`verify.mjs` 从 **83 → 99 项**。判据形状是"**两条后果**"：
+① 按钮**变成选中态**（底色变成"on"那一版）；② **画布像素真的变了**（`toDataURL` 的哈希）。
+只判 ① 会漏"模型变了但没重绘"，只判 ② 会漏"点到别的按钮也碰巧刷了屏"。
+另有两条收口判据：**四种模式两两不同**、**切回去是同一张图**（可逆）。
+
+### 二、结果是：**应用是对的，判据错了三次**（都记下来）
+
+| 判据的错 | 真因 | 改法 |
+|---|---|---|
+| "点「卦气」之后画布没变" | **默认模式就是「后天文王 · 卦气」** —— 原项目如此（`interest/yi/.../frontend/main.mbt:106` 的 `mode: GuaQi`），移植照搬 ✓。我点的是**已经选中的按钮**（无操作，像素当然不变） | 先把默认模式断言查实，再点**另外三个**；四个模式各取一张图比"两两不同" |
+| "画布没变"（第一次跑的版本） | **画布还没重绘完就采样**：点完 500ms 读到的是上一帧/中间态。单跑探针、点完等 1.5s，四张图哈希两两不同 ⇒ 应用没问题 | 加 `canvasHashSettled()`：**连续两次读到同一个值**才算稳（判据要能分辨"没变"与"还没画完"） |
+| "「卦爻色环」按钮没变成选中态（底色 none）" | **同名文本**：切到色环模式后面板标题也变成"卦爻色环"，而"取第一个匹配"取到了那个 `h2`（它没有背景色） | 在所有同名候选里**挑能解析出背景色的那个**（按钮才有） |
+
+> 这一轮**没动一行应用代码** —— 三处红全是判据的错。这本身是个有用的结论：
+> **判据红 ≠ 被测物坏**；动手改应用之前先做一次"这条红能不能用一句命令解释成判据自己的问题"的自检
+> （前十一轮里"红的是判据"已经出现过七八次了）。
+
+### 三、真机侧也补了（用与 web **同构但不同手法**的判据）
+
+真机读不到画布像素（Skia 原生绘制），所以两侧判据**注定不一样**，但可以同构：
+- web：`toDataURL` 哈希变化；
+- 真机：**截屏指纹**变化 + **切回去要求指纹复原**（只判"变了"会把"点任意按钮都乱刷一屏"也算过）。
+
+判据（`device_check.mjs`，26 → **29 项**）：点「京房八宫」→ 画面变了（Skia 那条路径也跟着模式走）、
+切回「后天文王 · 卦气」→ 画面**复原**。⚠️ 这一条与截屏那条一样要**重试**（`screencap` 会回陈旧帧）。
+
+### 四、顺带核到的一件事：迁移报告的 TODO 清单**已经过期**
+
+`MIGRATION.md` §4 还挂着 26 项"必须人工处理"，而实际状态是：
+
+| 报告里的类别 | 条数 | 现在 |
+|---|---|---|
+| `class=line_cls`（动态类名） | 1 | ✅ 第十轮修（爻线重写） |
+| `class="m-yaos"` / `m-detail` / `rl-name` / `rl-label`（上下文键对不上） | 4 | ✅ 都是**状态标记**，本来就不该有样式（源码 CSS 里查无此规则）—— 已在代码注释里写明 |
+| `more_view` / `draw_bagua_cmd` / `bagua_view`（保底桩） | 3 | ✅ 都重写完了（`more_view` 十轮、罗盘十一轮） |
+| `@dom` 直连的整块注释 | 13 | ✅ 全部重写/删除（`grep @dom` 现在 **0 命中**） |
+| 入口/using/import 改写（自动完成） | 5 | ✅ 无需动作 |
+
+⇒ **报告是产物，产物会过期**。它记的是"迁移那天工具搬不动什么"，而应用在这之后被人改了很多；
+判据（`verify.mjs` 99 项 + `device_check.mjs` 29 项 + `migrate_app_audit`）才是**当前状态**的来源。
+下次再有人问"这个应用还差什么"，先看判据与 README 的诚实清单，别直接读 §4。
+
+## 补记（第十三轮：**桌面端真的起了窗口** —— Electron 宿主，本机不需要 VS 工具链，2026-10-02 十三续）
+
+### 一、这一轮补的是目标里最后一个"没有真机实测"的端
+
+前三端的状态是：web ✅ 真 Chrome、Android ✅ 模拟器、**桌面** ⚠️ 只到"能把界面打进 RNW 的 bundle"
+（`#host rnw` 要 **VS 2026 + SDK 22621**，本机没有）。而目标写的是
+"**在对应宿主上实测**" —— 桌面这一格一直空着。
+
+这一轮用 **Electron** 把它填上了：`examples/apps/zhouyi-reader-electron/`，**一个真窗口**，
+里面装的就是静态 Web 那份产物（`build.mjs` 与 `../zhouyi-reader-webview/build.mjs` 同一条流水线）。
+
+> **两条桌面路线不是二选一**，它们答的问题不同：
+> · `--host rnw`（裸 RN + RNW）答"**同一份产物能不能进 React Native 的原生宿主**"（要 VS 工具链）；
+> · **Electron** 答"**桌面端能不能真的跑起来给人用**"（本机就能验）。
+> 判据分别在 `examples/apps/zhouyi-reader-desktop/verify.mjs`（5 项）与本轮新增的
+> `examples/apps/zhouyi-reader-electron/verify.mjs`。
+
+### 二、★ 判据复用：给应用那份判据加"**附着模式**"，于是桌面端不用重写断言
+
+`../zhouyi-reader/verify.mjs` 新增 `PROBE_CDP_URL` —— **附着到别人的 CDP 端点**（不自己起浏览器、
+**也不导航**，因为宿主已经加载了它自己的入口）。于是 Electron 判据第三层就是：
+
+```
+起窗口（带 --remote-debugging-port） → PROBE_CDP_URL=http://127.0.0.1:<port> node ../zhouyi-reader/verify.mjs
+```
+
+实测：**97 / 97**（应用那份判据在 Electron 窗口里全过）。与 webview 那条同构 ——
+"换宿主之后界面行为一样"这句话，在**四个宿主**上都是判据了。
+
+### 三、换宿主踩到的五个坑（每个都会让你误以为应用坏了）
+
+| # | 现象 | 真因 | 处置 |
+|---|---|---|---|
+| 1 | 界面判据里"点一下应当出现"**整批红**，而点击的效果**在下一条断言时才出现**（像"慢一拍"） | **Chromium 给隐藏窗口降频**（判据跑时窗口是 `show:false`）：rAF/定时器被节流 ⇒ React 的提交晚于我的固定 `sleep(500)` | ① `main.js` 里四个开关关掉节流（`disable-renderer-backgrounding` / `disable-background-timer-throttling` / `disable-backgrounding-occluded-windows` / `webPreferences.backgroundThrottling:false`）；②★ **判据改成"点完等到页面真的变了"**（`clickAt` 等 DOM 变化，超时按当前状态判）—— 固定 sleep 在任何慢宿主上都是错的 |
+| 2 | "切回默认模式 ⇒ 同一张图"在 Electron 红、在 Chrome 绿 | 我自己的响应式测试用 CDP 把 **dpr 从 1.5 改成 1 再清掉**，而**画布位图分辨率跟着 dpr 走** ⇒ 跨过它的两次像素哈希没有可比性（判据红，应用没问题） | ① 把响应式那段**挪到模式判据之后**；② 快照里补 **`bw/bh`（位图尺寸）**，让"图变了"与"分辨率变了"能分开看 |
+| 3 | 同上那条**仍然**红（第二轮） | **首帧那张图与之后同一模式的图不同**（实测：首次进「卦气」的哈希与第二次不同，第二、三次相同 ⇒ 首帧字体定型） | 基准取**稳定态**：先走一趟"切走再切回"，再量基准（两个稳定态相比） |
+| 4 | "窗口收窄到 400px ⇒ 画布跟着变"在 Electron 红 | `Emulation.setDeviceMetricsOverride` 是**浏览器夹具**的能力；附着到 Electron 上时"窗口多大"是**宿主的事**，模拟出的视口不算数 | 附着模式下**跳过**这一组（打印 SKIP 说明理由），改由宿主自己用**两个不同尺寸的真窗口**验（见下） |
+| 5 | 小窗口的画布 367，而按 `window.innerWidth` 算是 381 | **Electron 窗口的内尺寸在页面加载之后才定型**（`init` 读到 390，之后才是 406 —— 一个窗口边框的量级），而应用是"首帧读一次 + 之后靠 resize" | 判据改成"**跟随窗口宽度**（±20px 容差，理由写在注释）+ **明显不是回落值 360**"—— 判的是那个性质，不是那一像素 |
+
+### 四、桌面端的响应式：用**两个真窗口**验（不用模拟）
+
+`ELECTRON_WIN_W=1280` 与 `420` 各起一个窗口，读各自的画布边长：
+
+| 窗口 | 视口 | 画布边长 | 判定 |
+|---|---|---|---|
+| 1280（dpr 1.5） | 1266 | 720（= min(94vw,720) 的上限） | ✓ |
+| 420（dpr 1.5） | 406 | 367 | ✓ 跟随窗口、**不是 360 那个回落值** |
+
+⇒ 第十一轮补的 `@sub.current_viewport()` 在**第三个宿主**上也验证了（web / Android / 桌面）。
+
+### 五、判据（本轮实测）
+
+| 门 | 结果 |
+|---|---|
+| `node examples/apps/zhouyi-reader-electron/verify.mjs`（**真窗口**，要 `npm install`） | **17 / 17**（含"应用那 97 条判据在窗口里全过"+ 小窗口响应式 4 条） |
+| `node examples/apps/zhouyi-reader/verify.mjs`（真 Chrome） | **99 / 99**（附着模式改动后重跑确认没坏） |
+| `bash tools/verify_all.sh` | **24 / 24** |
+| 装 Electron 的坑 | npm 的 postinstall **被镜像跳过**（`added 13 packages in 1s` 但没有二进制）⇒ 手动 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js` |
+
+### 六、还有一个"看起来像应用崩了"的坑：**隐藏窗口不合成帧**
+
+第一版判据跑完**没有汇总行**，而退出码是 0 —— 因为收尾那段 `Page.captureScreenshot`
+**一直不返回**（Chromium 不为**不可见**窗口合成帧），脚本卡在 `await` 上。
+跑的人看到的是"没有输出"，很容易读成"应用挂住了"。
+处置：给截图加 **6 秒硬上限**并在超时时**打一行说明**（"隐藏窗口不合成帧 —— 要看截图就用
+`ELECTRON_HEADLESS=0` 跑一次"）。**证据类操作不该把判据挂住**，这条与"截图只是旁证"是一套取舍。
+
+### 七、桌面端这一格的现状（写清楚，别读大）
+
+- ✅ **Electron 这条**：真窗口 + 应用那 97 条判据全过 + 真窗口响应式 ⇒ "桌面端能跑起来给人用"**是判据**；
+- ⏳ **RNW 那条**（`--host rnw`）：仍只到"能把界面打进 bundle"（5 项），窗口要 VS 2026 + SDK 22621；
+- ⏳ **这条路线还没进脚手架**：现在它是手写示例（`examples/apps/zhouyi-reader-electron/`），
+  下一步是把它做成第四个宿主档 `--host electron`（与 `hosts/webview/` 同源 + 叠加主进程那几份文件）。
+
+## 补记（第十四轮：性能基线**重测** + 归因**改判** —— 首测把成本记在了错误的函数上，2026-10-02 十四续）
+
+### 一、症状：一份"看起来很确定"的归因，实际指到了空处
+
+首测的 `PERF.md` §7 写着：`render_props` 调 `props.styles_map()`，"而它（`vdom.mbt:163`）是
+`copy_map(self.styles)`"，并据此排了"下一刀 = 去掉 `styles_map()` 的那次复制（一行实验）"。
+
+**实际读源码：`styles_map()` 在 `:221`，实现就是 `self.styles` —— 只读、零复制。**
+`copy_map` 确实在 `:163`，但那行属于 **`Props::copy`**。⇒ **照那"一行实验"去改，会改在一个
+根本没有 `copy_map` 的函数里**（改完什么都不会发生，而人会以为"探针无效、归因不成立"）。
+
+**真因**：写归因时把**行号**当成了**函数名**（`:163` 是 `copy_map(self.styles)` 那一行的位置，
+被读成了"`styles_map()` 就是它"）。**解法**：引用代码事实必须**贴函数名 + 它的实现**，
+只贴行号不算证据 —— 行号会在任何一次编辑后失效，而且它不携带"这行属于谁"这个信息。
+
+### 二、真因之外还有一层：`Map` 是**可变**的，所以"去掉那次复制"根本不是一行实验
+
+首测把 `Props.styles` 描述成"**不可变 HAMT**"。查标准库：
+`~/.moon/lib/core/builtin/linked_hash_map.mbt:42` 的 `Map` 是带 `mut entries : FixedArray[…]`
+的**可变** LinkedHashMap（有 grow / rehash）。
+
+**这件事有实际后果**：`copy_map` **不是白花的** —— 它撑的是 `Attrs::copy` 的公开契约
+（注释原文 "Return an independent copy that can be extended without mutating `self`"）。
+真去掉它，"副本"和"原件"就共享同一张表，**改副本会漏回原件**。
+⇒ 那一刀是**语义决策**，不是一行实验。**"不可变"这个词一旦想当然，整条推理链就都歪了。**
+
+### 三、解法：**用消融探针定位成本，而不是读代码**
+
+纠正归因的正确手法不是"再读一遍代码"（首测就是这么错的），而是**做一处消融、量差**：
+把 `Props::copy` 临时改成**共享四张表**，构建成留档产物，与对照**在同一会话里交错跑**。
+结果（`min` 统计量，各 9 次）：**−36.1%（N=1000）/ −27.8%（N=5000）**，
+折算 **0.64 µs/元素**（两个规模 0.643 / 0.635，几乎完全相同）。
+
+**探针的三条硬规矩**（写下来，否则实验会污染成"事实"）：
+
+1. 改 `vendor/**` 前先**字节级备份**（记 `sha256`），测完还原并**重新校验哈希**；
+2. 探针**不入 patch 系列** —— 别对半成品跑 `vendor_sync.sh --capture`（那会把实验写进真源）；
+3. 探针与对照**必须同会话交错**（理由见下条），且**核对负载形状断言**（`shape_ok`）没变
+   —— 否则你量的是"换了个负载"，不是"省了这些成本"。
+
+### 四、顺带逮到的两条测量学坑（都影响判据口径）
+
+- **在负载下量的 A/B 会放大差值**：D3 首测报 −10.7%@N=1000，机器空闲后重测只有 **−7.6%**。
+  机制说得通 —— 改前版本分配更多，在 CPU 争抢下被罚得更狠。**"别人的 CPU 占用"对两个变体的
+  惩罚并不相等**，所以它不只是噪声，还是**有方向的偏差**。
+- **跨会话同一份产物能差 7%**：`art-d3a.js`（同一哈希、同机、同参数）在重测批次是 11.68 ms、
+  在探针批次是 12.49 ms。⇒ **A/B 只能同会话交错比**；跨会话只能比"两组区间是否重叠"。
+  本轮把"**两组各 9 次的 `min` 区间不重叠**"定为"硬结论"的门槛，就是为了这个。
+
+### 五、本轮实测（数字）
+
+| 项 | 结果 |
+|---|---|
+| 基线（重测，机器空闲，`min` 统计量） | N=1000 **12.64 ms**（7007 元素）/ N=5000 **84.90 ms**（35007 元素）· 每元素 **1.8–2.4 µs** |
+| D3（重判） | **−10.5%@N=5000**（区间完全不重叠）/ **−7.6%@N=1000**（区间轻微重叠） |
+| A/B 配对的可信度 | 两份留档产物**都能从源码重建出同一哈希**（`3d8b00bf…` / `90bdcb5f…`），即**只差 D3 一处** |
+| 归因（消融探针） | 四张表全共享 **−36.1% / −27.8%**（**0.64 µs/元素**）；只共享 `styles` −15.4% / −5.6% |
+
+### 六、★ 把那一刀真的落下去（同日续）：三条坑 + 一条语言事实
+
+#### ① "删掉那次复制"是错的 —— 它是元素的**私有草稿纸**
+
+探针量出那笔复制值 0.64 µs/元素之后，最自然的下一步是"那就别复制了"（一行）。**读构造器才发现不行**：
+
+```moonbit
+let (attrs, children) = resolve_attrs(attrs, children)
+push_class(class, attrs)      // ← 复制之后，元素还在往这份 attrs 里写自己的显式参数
+push_style(style, attrs)
+VNode::elem("button", attrs.to_props(), children)
+```
+
+上游那次 `copy` **不是防御性复制**，而是元素"把自己的 `class` / `style` / `on_click` 写进去"的草稿纸。
+删掉它会**污染调用方的 `Attrs`** —— 同一个 Attrs 传给第二个元素，第二个就继承第一个推入的属性。
+**真因**：把 `resolve_attrs` 函数体读成了整条路径（它自己确实不改写，**但它的调用方紧接着改写**）。
+**解法**：**让复制变便宜，而不是取消它** —— 见 ③。
+
+> 📌 这条同时纠正了本文件同轮 §一～§四 的叙述惯性：我当时把"归因正确"误当成了"改法显而易见"。
+> **归因回答"钱花在哪"，不回答"怎么省"。**
+
+#### ② 语言事实：MoonBit 的索引赋值可以自定义（`#alias("_[_]=_")`）
+
+- 写法：普通方法名 + **`#alias("_[_]=_")`**（core 的 `builtin/array.mbt` 就是这么写的）。
+  旧语法 `fn T::op_set` **仍能用**，但会报 `deprecated_syntax`。
+- ⚠️ **是三个占位符**：写成 `"[_]="` 会得到
+  `[4015] Type ... has no method op_set`（看着像"不支持"，其实是字符串写错）。
+- 实测可行的三件事：`t[k] = v` 走 `op_set`；`self.field = self.field.add(...)`（**`mut` 字段经 `self` 赋值**）；
+  `for k, v in t`（包装类型提供 `iter2` 即可）。
+- **收益**：上游那 **~200 处** `self.0.attrs["name"] = value` 与成百处 `.get/.contains/for…in`
+  **一个字都不用改**。
+
+#### ③ 优先选"编译器强制"的改法
+
+同一目标有两条路：
+
+| 路 | 做法 | 漏一处的后果 | 改动面 |
+|---|---|---|---|
+| A 手工 | 给 ~210 个写入点插"是否需要先复制"的检查（copy-on-write） | **静默 bug**（漏点悄悄共享可变表） | 大且易漏 |
+| **B 换类型** | 把四张表换成**不可变**表（`PropsTable[V]` 包 `immut/hashmap`）⇒ `Props::copy()` 退化成 **O(1) 指针拷贝**，**复制这个动作保留** | **编译不过** | 7 个文件 |
+
+选了 B：契约与语义**零变化**（不可变结构共享天然安全），并且靠编译器把改动面一次枚举干净
+（`moon check` 逐层报错：`vdom/ssr.mbt` → `html|svg/attrs.mbt` → `render.mbt`，共 4 轮收敛）。
+
+#### ④ 改 `vendor/**` 的完整流程与判据（照抄即可）
+
+字节级备份（记 `sha256`）→ 改 → **构建留档产物**（不在测量中途重编）→
+`bash tools/vendor_sync.sh --capture` → `bash tools/vendor_sync.sh --check`。
+**`--check` 过了才叫"这次改动能被重建"** —— 第三方目录是 gitignore 的，`git status` 不会提醒你漏了 patch。
+
+⚠️ 顺带一条观察：`--capture` 报"更新 25 个、新增 8 个"，其中 6 个新增是**既有 fork 文件**（`cmd/host_native*`、
+`sub/*_wbtest` 等）被拆成了独立 patch —— 这是按路径重新分组，**不是补漏**：capture 前后 `--check` 都通过，
+且结果逐文件相同。**判据是 `--check`，不是 patch 的条数。**
+
+#### ⑤ 收益与代价要一起报（别只报赢的那一半）
+
+时间 **−32.4%（N=1000）/ −29.3%（N=5000）**；但 **`heap_delta` 中位数方向相反**
+（N=1000：81 → 98 MB；N=5000：233 → 154 MB）⇒ **"分配量"本轮没有结论**。
+不可变表的插入要分配路径节点，用可变表则不用 —— 所以"省了复制"与"插入变贵"是两笔账，
+**要分开测**（本轮只测了净值）。
+
+### 七、换底 `rabbita 0.15.4 → 0.16.0`（2026-10-03）：五条，其中**两条是方法论级的**
+
+**结果**：`moon check` 0 错误 · `verify_all.sh` **24/24** · 基准**不回归**（N=1000 7.40→7.36 ms、
+N=5000 46.62→47.52 ms，区间重叠）· **P1（`PropsTable`）在 0.16.0 上活着**。
+33 个 patch 里**只有 4 个**要手工重做（`04`/`08`/`09`/`28`），其余 29 个直接重放。
+
+#### ★ 坑一（最值钱）：**拿"被自己改脏的树"当基准，会悄无声息地丢掉我们自己的东西**
+
+侦察冲突时我在同一个目录里跑了一遍"把 33 个 patch 全打一遍"，**那棵树就被打脏了**
+（失败的 patch 留下了部分已应用的 hunk）。接着做三方合并时，我把**那棵脏树当成了"上游"**
+⇒ 于是"我们加的 helper"在基准里已经存在 ⇒ 合并结果与 patch **都不再包含它们**。
+
+**症状很隐蔽**：`moon check` **编译通过**（编的是没被丢掉的那部分），
+直到另一处报 `The value identifier viewport_of_payload is unbound` 才暴露 ——
+一条 helper 定义 + 两个调用点，静默消失。
+
+**解法**（两条都要）：
+① 基准树 / ours 树 / verify 树**各自独立**，**只在 verify 树里跑重放**；
+② 动手前**先验收三棵树都干净**（`*.rej` / `*.orig` 为空，且"我们加的东西"在 ours 里有、在 theirs 里没有）。
+
+> 📌 与 §六 是同一个形状：**"谁是基准"必须是被验证过的事实，不是顺手拿来的那个目录。**
+
+#### ★ 坑二：`patch` 的 fuzz 会**丢掉上下文行并报告成功**
+
+`12-runtime-moon-pkg.patch` 里 `"moonbitlang/async/js_async",` 是**上下文行**。
+上游 0.16 把它换成了 `"moonbitlang/async",` ⇒ 对不上 ⇒ `patch` 用 fuzz 把尾部上下文
+**丢掉并报告成功** ⇒ **依赖悄悄没了**，`react_host.mbt` 报 `Package "js_async" not found`。
+
+**解法**：patch 必须**显式**写出我们要的每一行（用干净基树 `diff` 生成，出现在 `+` 那一侧）；
+并且**"我们加的东西还在不在"要点名断言**（本轮 `grep -c PropsTable` / `grep -c viewport_of_payload`）
+—— **不能拿 `--check` 全绿当"改动完整"的证据**。
+
+#### 坑三：判断"哪些 patch 会冲突"必须**实跑重放**，不能按"文件被上游改过"估
+
+`FORK.md` 当年按**文件级 diff** 预测"5 个文件冲突"，实测是 **4 个 patch，名单还不一样**
+（预测里的 `ssr.mbt` / `html_utils.mbt` / `runtime/moon.pkg` 被 `patch` 的上下文吸收了；
+真正失败的是 `04`/`08`/`09`/`28`）⇒ **"文件被改过" ≠ "patch 打不上"**。
+侦察要在**独立干净副本**里 `patch --dry-run` 跑一遍到底（否则就是坑一）。
+
+#### 坑四：上游的 API 变更会**溅到应用层**，比想象的多一级
+
+`@common.Viewport` 的 `width/height` 从 `Int` 改 `Double`（`Window::inner_width/inner_height` 同改）
+⇒ 涟漪到**三层**：库的宿主载荷解析（`sub.mbt`）、`todo-app` 的 `SizeChanged(Int, Int)`、
+`zhouyi-reader` 的 `Viewport(Int, Int)`；另一条 `@js.Promise` → `Promise[T]` 溅到 `sqlite/`。
+**解法**：**在边界显式转**（`.to_double()` / `.to_int()`），**不改两端接口的松紧** ——
+否则"上游改了类型"会变成"我们把契约改松了"，而后者没人发现得了。
+
+#### 坑五：**"上最新"可能是语言/工具链问题，不是冲突问题**
+
+最新是 0.16.3，但它把 `cmd/operation.mbt` 的 `pub(all) extenum Extension {}` 改成**不写体的**
+`pub extenum Extension` —— 本机 `moon 0.1.20260827` / `moonc v0.10.11` **解析不了**
+（最小探针实测 `Error [3002] missing '{'`）。⇒ 上 0.16.3 **得先升工具链**。
+**教训**：动手合并之前，先拿**目标版本的最小语法探针**验一次"本机编译器认不认" ——
+否则可能把一整套 patch 重做完了才发现根本编不过。
+
+### 八、升工具链（2026-10-03）：**六条坑，其中三条会伪装成"代码问题"**
+
+**结果**：`moon 0.1.20260827 → 0.1.20260920` · `moonc v0.10.11 → v0.10.14+7d59c7ec9` ·
+`core 0.10.11+6ff76a5f9 → 0.10.14+7d59c7ec9`。
+判据：`moon check` 0 错误 · `verify_all.sh` **24 / 24**（在 0.16.0 的树上）·
+**不写体的 `extenum` 现在编得过**（带对照探针实测）⇒ **0.16.3 可达**。
+
+#### ★ 坑一：`moon upgrade` **要 TTY**，非交互 shell 下连 `-f` 都不行
+
+`moon upgrade` / `moon upgrade -f` 都报 `Error: IO error: not a terminal`；
+`winpty moon upgrade -f` 也不行（`stdin is not a tty`）。
+⇒ **正路是官方归档**（`binaries/latest/moonbit-<target>.zip` + `.sha256`）。
+⚠️ 更坑的是：那次失败的 `moon upgrade` **没有退出**，一直挂在那儿**占着 `moon.exe`** ——
+后面覆盖安装就报 `Device or resource busy`（见坑五）。
+
+#### ★★ 坑二：官方归档**不含 `lib/core`** —— 只换 `bin/` 会得到假的"代码错误"
+
+`moonbit-windows-x86_64.zip` 里只有 `bin/ lib/ include/ share/`，**没有 `lib/core`**。
+只覆盖 `bin/` 之后（`moonc` 已新、core 还是旧）编译我们的树，报的是：
+
+```
+Error: [4015] Type BytesView has no method unsafe_read_uint32_le.   ← 在 .mooncakes/moonbitlang/async 里
+Error: [4014] has type : ?Error / wanted : ...
+```
+
+**30 条错误全在依赖里、一条都不在我们的代码里** —— 极容易被读成"新编译器不兼容我们的依赖"。
+真因是**核心库与工具链版本错配**（新 moonc 配旧 core）。判据：`~/.moon/lib/core/moon.mod` 的
+`version` 必须与 `moonc -V` 对得上 ⇒ core 从 `cores/core-latest.tar.gz` 下，
+而它**是按工具链版本命名的**（本地缓存里的旧 core 就叫 `0.1.20260827+8f8e8db1e.zip`）。
+
+#### ★★ 坑三：光解压 core 不够 —— 官方脚本里还有一步 `moon bundle`
+
+换完 core 仍报 9 条：
+
+```
+Error: Sys_error("…\lib\core\_build\js\release\bundle\json\json.mi: No such file or directory")
+```
+
+`moon build` 产出 `_build/js/release/**build**/`，而树要的是 `**bundle**/`。
+真因：**官方安装脚本 `install/unix.sh` 里有这一步**（读它就是最快的答案）：
+
+```bash
+moon -C "$lib_dir"/core bundle --warn-list -a --all
+moon -C "$lib_dir"/core bundle --warn-list -a --target wasm-gc --quiet
+```
+
+⇒ **"官方安装器做的事"就是清单**：抄它的步骤，别自己猜。
+
+#### 坑四：`core` 里的符号链接在 Windows 上建不出来（只有一个，影响可控）
+
+`tar xf` 报 `Cannot create symlink … ./core/lazy_list/README.md -> README.mbt.md`
+（Git Bash 没有建符号链接的权限）。**只有一个**，而且是文档文件 ⇒ 照旧安装的样子
+（旧 core 里那个位置是**普通文件**）复制一份即可。
+
+#### ★ 坑五：Windows 上**运行中的 exe 不能覆盖，但能改名**
+
+`cp moon.exe` 报 `Device or resource busy`（占用者正是坑一里那次卡住的 `moon upgrade`）。
+**解法**：`mv moon.exe moon-<旧版本>.exe.bak` 再放新的进去（Windows 允许重命名运行中的 exe），
+**别硬删**；顺手 `taskkill` 掉那个卡住的进程。
+⚠️ 代价：改名后若中途停手，`~/.moon/bin` 会留下**混合工具链**（本轮真出现过：
+`moon` 旧 + `moonc` 新）—— 所以这步要一次做完，并用 `moon -V` 的三行**逐行核对**。
+
+#### 坑六：换完工具链**警告暴涨**（89 → 391），但门不一定红
+
+新 lint 更严，`moon check` 的警告数从 **89 涨到 391**。**本次实测：24 条门仍全绿** ——
+所以"警告变多"不等于"门要红"；但也**别当噪声**：它意味着**别的仓库/CI（装 `latest`）
+看到的警告比我们本地文档里记的多得多**。
+📌 顺带纠一条老结论：`DEV.md` 曾写"工作区钉 `0.1.20260827`、CI 装 `latest`，两代都该绿" ——
+**现在两边都是 `latest` 了**（而且本文件早已实测"钉不住"：版本化 URL 一律 403）。
+
+### 九、再冲到 `0.16.3`（同日）：**一条好消息 + 一条方法论上的复利**
+
+**结果**：`tools/vendor.lock` = `0.16.3` · `moon check` **0 错误** · `verify_all.sh` **24 / 24** ·
+基准**不回归**。而且**一行代码都不用改**（`0.16.0 → 0.16.3` 落在我们覆盖路径上的差异全是格式）。
+
+#### 好消息：33 个 patch 里**只有 1 个**打不上
+
+| 步骤 | 预测的冲突 | **实测** |
+|---|---|---|
+| `0.15.4 → 0.16.0` | 5 个文件 | **4 个 patch，名单还不同** |
+| `0.16.0 → 0.16.3` | 3 个额外路径 | **只有 1 个**（`04` = `html/README.mbt.md`） |
+
+⇒ **"文件被上游改过" ≠ "patch 打不上"，而且这个偏差是双向的**（既可能像上次那样"看着像冲突其实不冲突"，
+也可能反过来）。**判冲突只能实跑重放**；按文件级 diff 估出来的清单，两次都不准。
+
+#### 方法论上的复利：把上次的教训变成流程，这次一次就对
+
+第一步换底时我丢了东西（拿跑脏的树当基准 ⇒ `sub.mbt` 的两个 helper 静默消失）。
+这次**先把三棵树全部验收干净再动手**：
+
+```bash
+# 三棵树各自独立，且都验：无 *.rej/*.orig、且"我们加的东西"在 ours 里有、在 theirs 里没有
+for d in v163 base160 base154; do find $d \( -name '*.rej' -o -name '*.orig' \) | wc -l; done
+```
+
+结果：**33/33 验收通过，且点名断言（`grep -c PropsTable` = 24、`fn viewport_of_payload` 在）一次过**。
+⇒ 教训只有在**变成可执行的检查**之后才算学到 —— 否则它只是一段叙事。
+
+#### 一条口径纪律：同时动两个变量时，别声称归因
+
+`0.16.3` 那一刀**同时**动了工具链与上游版本，所以基准只能回答"整套有没有变慢"：
+实测 N=1000 `7.22 → 7.50 ms`（`min` 统计量 +3.9%，但 `min` 中位 −0.6%）、N=5000 `46.70 → 47.61 ms`
+（+2.0% / −0.4%）—— **两种统计量符号相反、区间重叠 ⇒ 在噪声内**。
+**要分各自的贡献，得各留一份产物重测**（本轮没做，所以不写"是谁带来的"）。
+
+#### 附带观察
+
+换到 0.16.3 之后 `moon check` 的警告数从 **391 掉到 169/164** —— 上游在新 lint 下更干净了。
+⚠️ 这与 §八 坑六并不矛盾：**警告数是"代码 × 编译器"的函数，换任何一边都会变**，别把它当版本好坏的指标。

@@ -11,7 +11,7 @@ moobile 是 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit �
 
 | | |
 |---|---|
-| **MoonBit 包** | `moon add XiLaiTL/moobile@0.2.2` |
+| **MoonBit 包** | `moon add XiLaiTL/moobile@0.4.0` |
 | **宿主（JS）** | `npm install moobile-host`（React Native / Expo） |
 | 已实测 | Web ✅ ｜ Android 真机 ✅（Android 14 / x86_64） |
 | 未实测 | iOS（宿主工程可生成，本机无法构建验证）｜ 桌面（未提供宿主） |
@@ -35,7 +35,7 @@ version = "0.1.0"
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.2.2",
+  "XiLaiTL/moobile@0.4.0",
 }
 ```
 

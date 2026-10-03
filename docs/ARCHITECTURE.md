@@ -111,11 +111,16 @@ globalThis.MOBILE_HOST = {
 > | 平台替代物 | `MOBILE_HOST.native.<name>`（如 `visibility`） | 宿主预设（RN 在 `native-rn.js`，Web **不装**） | **回退 DOM**（Web 本来就该走 DOM，不需要谁登记） |
 >
 > 库侧契约与回退逻辑在 `vendor/rabbita/cmd/host_native.mbt`（通道 + `subscribe_bool` /
-> `subscribe_json` 两个适配器 + `host_has_dom` 运行时探测），
+> `subscribe_json` / **`read_json`** 三个适配器 + `host_has_dom` 运行时探测），
 > RN 侧实现在 `npm/moobile-host/native-rn.js`。
-> **现阶段两个能力**：`visibility` ← `@sub.on_visibility_change`（布尔流）、
-> `geometry` ← `@sub.on_resize`（JSON 载荷）；其余按"有替代物但形状不同"
-> 排序见 `PLAN.md` §3.6 的 N5。
+> **现阶段两个能力、三种形状**：`visibility` ← `@sub.on_visibility_change`（布尔流）、
+> `geometry` ← `@sub.on_resize`（**订阅**：只在变化时推）与 `@sub.current_viewport()`（**读一次**：
+> 同步取当前值）；其余按"有替代物但形状不同"排序见 `PLAN.md` §3.6 的 N5。
+>
+> ⚠️ **"订阅"与"读一次"是两个形状，别互相替代**（2026-10 实测的教训）：两端都**不会**在挂载时
+> 补发一次尺寸，所以"应用需要知道窗口多宽"这件事**只有读一次能解** ——
+> 缺了它，按窗口宽度算尺寸的代码会**静默**用回落值（真实后果：罗盘一直画 360px，
+> 在 1400px 的窗口里小得离谱，而没有任何报错）。见 [`FINDINGS.md`](FINDINGS.md) 十一续。
 >
 > 判据分两层，**别把前者读成后者**：`tools/native_rn_check.mjs` 用 stub 的 `react-native`
 > 验的是这个文件的**逻辑**（订阅 / 载荷映射 / 退订 / 覆盖）；

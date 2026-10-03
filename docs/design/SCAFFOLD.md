@@ -125,9 +125,26 @@ PLAN §1.2 已定的结论，这里只落地：**支持一个新平台 = 换一�
 
 ```
 --host expo      (默认)   Expo 宿主：android / ios / web 三端一次到位
---host webview   (后续)   PWA / Tauri / Electron 外壳，复用同一份 Web 产物
---host rn-bare   (后续)   不带 Expo 的裸 RN 宿主（桌面/版本冲突时用）
+--host rnw       ✅ 已落地  裸 RN + react-native-windows：**Windows 桌面**
+--host webview   ✅ 已落地   零 Expo / 零 Metro 的**静态站点**（PWA / Tauri / Electron 外壳的底座）
 ```
+
+⚠️ 中间那行原写的是 `rn-bare`（"不带 Expo 的裸 RN"）。落地时选了更具体的名字 **`rnw`**：
+裸 RN 本身不是一个平台，**具体那个平台才决定一切**（RN 版本由它钉、画布后端由它决定）。
+宿主表在 `npm/moobile-host/lib/hosts.js`，宿主文件集在 `npm/moobile-host/hosts/<id>/`。
+
+**三个宿主各自由什么决定**（这张表就是"宿主"这个维度的全部内容）：
+
+| 宿主 | 打包/服务 | 入口 | 画布后端 | 产物 |
+|---|---|---|---|---|
+| `expo`（默认） | Metro + `expo start` | `registerRootComponent` | web→DOM 2D、android/iOS→Skia | android / ios / web |
+| `rnw` | Metro（`@react-native/metro-config`） | `AppRegistry` | windows→SVG | Windows 桌面（要 VS 2026 + SDK 22621） |
+| `webview` | **esbuild + 静态服务器**（零 Metro、零 Expo） | `AppRegistry` | web→DOM 2D | **一个静态站点**（`dist/`） |
+
+`--host rnw` 与 `--host expo` 的差别**只在宿主文件**：
+`package.json` / `App.js` / `index.js` / `app.json` / `metro.config.js`（+ `babel.config.js`），
+而 **`moon.mod` / `moon.pkg` / `app.mbt` 逐字节相同** —— 这条有门在断言
+（`node tools/host_probe.mjs`，**32 项**，进 `verify_all.sh`；原名 `desktop_host_probe.mjs` —— 它现在守三宿主矩阵）。
 
 脚手架**只**负责：选宿主 → 装对应 npm 依赖 → 写对应 `App.js`/`package.json`/`app.json`。
 MoonBit 侧（`moon.mod` / `moon.pkg` / `app.mbt`）在任何宿主下**完全一样** ——
@@ -382,6 +399,7 @@ PLAN §1.1 记了一条还没用起来的机制：`moon.mod` 支持
 | **样式** | `class=` + CSS 文件（含伪类 / 媒体查询 / 后代选择器） | 类型化 `Attrs::styles(Style)`，**封闭属性集** | CSS → `Style` 调用 | 半自动（F2），**必然有损** |
 | **标签** | 116 个标签里的任意一个 | 44 条有映射，12 条**明确排除**（`img`/`video`/`canvas`/`svg`/`table`/`select`/`details`/`dialog`…） | 接第三方组件库（**I 轨道**）或改写 | **不自动**，必须人决定（动检点名） |
 | **事件载荷** | 真实 DOM 事件（坐标、输入值） | 载荷通道已落地（**I1 ✅ 2026-09**：`Attrs::on_raw` + `Payload::text/json/num/bool/field`）；**坐标/手势那一档**的状态见 `docs/STATUS.md` | 读坐标/读值的代码要重写 | **不自动**（动检点名） |
+| **点击挂在哪个标签上** | 任意元素都能挂 `onclick` | `on_click` 映射成 RN 的 `onPress`，而只有 `button` / `a` 落到 `Pressable` | 把标签换成 `button`（要语义就用 `a`）—— **换标签，不是加样式** | **不自动**（动检的 `click.on-view` 逐条点名，10-02 落地） |
 | **浏览器能力** | `@dom` 直连、`fetch`、`localStorage` | 能力注册表（宿主注入 `MOBILE_HOST.db` 等） | 换成能力包（**N 轨道**） | 半自动 |
 | **构建目标** | 常见 `wasm-gc` / `js` | **只支持 `js`**（传递性 js 锁） | 改 `preferred_target` / `supported_targets` | 自动 |
 | **平台承诺** | 只有浏览器 | Web + Android + iOS（iOS 未实测） | 无动作，但排版要重新验（R1 行内流那条） | —— |
@@ -411,6 +429,37 @@ npx moobile-host create --from-rabbita <既有项目路径> my-app
 > **判据是"报告零遗漏"，不是"自动改对了多少"。**
 > 这条是刻意的：自动改写猜错的代价，是把 bug 埋进用户的代码里，而他不会知道。
 
+#### 3.7.4.1 生成后自查：**机械迁移移不过来的两块**（2026-10-02 补，真机逼出来的）
+
+迁移能编译、**web 判据能全绿**，仍然可能少两样东西 —— 而它们**只在原生上现形**：
+
+| 洞 | 为什么会漏 | 为什么 web 看不见 |
+|---|---|---|
+| 源 CSS 的 `body`/`html` 声明（生成器抽成了 `page()`）**没人挂到元素上** | 那组声明是从**选择器**抽出来的，没有对应的元素可挂 —— 得有人把它指到根容器上 | 浏览器自带 `body` 样式；而"纸色底 / 衬线族"那几条断言被**别的元素**满足了 |
+| 根上**没有滚动容器** | HTML 靠 `overflow` 做文档级滚动，RN 的 `View` **不滚动** | DOM 自己会滚 |
+
+实测（zhouyi-reader 迁到 Android）：真机上**滚 30 次、界面纹丝不动**，而同一个页面在
+web 判据里 45/45。两处修法是两层根容器：
+
+```moonbit
+div(attrs=@styles.att(@styles.page().flex(1.0)), [                 // ① body/html 的声明
+  @html.node("scroll", @styles.att(@style.Style::new().flex(1.0)), [ …整页… ]),  // ② RN 的 ScrollView
+])
+```
+
+**收口方式**（判据写进库，而不是写在指南里口口相传）：
+
+- `lib/migrate/app-audit.js` —— 读生成物的 `.mbt`，报 `page-style-unused` /
+  `no-native-scroll` / `scroll-without-flex`（+ 目录里没有 `.mbt`）；
+- `create --from-rabbita` **落盘后自动跑一遍**，收尾打印并把结果写进 `MIGRATION.md §5`
+  （所以"生成器知道自己移不过来什么"这件事是**可执行的**，不是一句承诺）；
+- 离线门 `tools/migrate_app_audit.mjs`（13 项，进 `verify_all.sh`）：真实应用必须干净、
+  已记录的例外**逐条点名**、**5 个故意做坏的样本必须逐条点名**（含两个诱饵：注释里的假代码、
+  组件属性名也叫 `scroll`）—— 因为**"永远返回空数组"的检查器能让所有真实应用都绿**。
+
+> ⚠️ 这一条**不改变**上面那句"判据是报告零遗漏"：自查也**只是报告**。
+> 它不替人改代码 —— `page()` 该挂哪一层、滚动容器该包住哪几块，是人的决定。
+
 #### 3.7.5 依赖与顺序：E9 = **E × F 的收口**，天然最后做
 
 ```
@@ -430,6 +479,7 @@ F1 迁移动检（可提前，成本最低）→ I 轨道（接住 img / canvas 
 | **S9-3** | 生成的项目 `moon check` **0 错误**（动不了的部分以 `TODO` 标出，而不是删掉） | `moon check --target js` |
 | **S9-4** | 迁移后的项目在 Web 宿主上**跑起来**（至少"静态页可读"这一档） | 走 `tools/verify_web.js` 那类门 |
 | **S9-5** | 报告里**每一项都有下一步指向**（F2 / F3 / I / 人工），**没有"未知"这一类** | 报告结构自身可断言 |
+| **S9-6**（10-02 补） | **生成后自查**跑过，且"根样式没人挂 / 根上没滚动容器"这两条**要么干净、要么在报告里点名** | `node tools/migrate_app_audit.mjs`（离线 13 项，含 5 个故意做坏的样本）；`create` 的收尾输出与 `MIGRATION.md §5` |
 
 > **为什么把它写进脚手架、而不是做成独立工具**：迁移的**终点**永远是"一个 moobile 项目"——
 > 也就是脚手架的生成物。独立工具就得再造一套宿主 / 模板 / 版本配套（§5）。
@@ -444,7 +494,7 @@ F1 迁移动检（可提前，成本最低）→ I 轨道（接住 img / canvas 
 
 | 子命令 | 谁实现 | 状态 | 产物 / 约定 |
 |---|---|---|---|
-| `init <dir>` | E（`lib/init.js`） | ✅ | 生成一个项目；**不装 npm 依赖、不做交互** |
+| `init <dir> [--host expo\|rnw]` | E（`lib/init.js` + `lib/hosts.js`） | ✅ | 生成一个项目；**不装 npm 依赖、不做交互**。`--host rnw` 出 Windows 桌面宿主 |
 | `build` | E（`lib/build.js`） | ✅ | 发现 MoonBit 产物 → 搬成 `./moobile.js`（Metro 只认工程目录内的路径） |
 | `regen` | H（已有，`lib/regen.js`） | ✅ | `registry.generated.js`（入库、可 `--check`） |
 | `libgen` | **I 轨道**（`libgen/`） | ✅ 已落地（2026-09） | manifest + MoonBit DSL 包 + 宿主注册；`--check` 能 diff（E8 只接线不实现；I 轨道已把它实现，见 `docs/design/DESIGN-COMPONENT-LIBRARY.md`） |
