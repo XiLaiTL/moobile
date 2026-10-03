@@ -9,7 +9,10 @@
 > Windows 桌面原生，**现在能不能做、差什么、要付多少**。
 >
 > 本文的全部数字都来自 **2026-10-02 本机一次连续实测**（`<探针目录>\RnwProbe`，日志原件在
-> [`.scratch/rnw-probe/logs/`](../../.scratch/rnw-probe/logs/)）。凡是没跑过的，一律进 §6 的诚实清单。
+> `.scratch/rnw-probe/logs/`）。
+> ⚠️ **这里是路径而不是链接，是有意的**：`.scratch/` 是 **gitignore 的一次性探针目录** ——
+> 本机有、**新鲜克隆里没有**，写成链接会让 `check_links` 在 CI 上红（本机却看不出来，
+> 实测踩过，见 [`../FINDINGS.md`](../FINDINGS.md) 的 CI 收口补记）。凡是没跑过的，一律进 §6 的诚实清单。
 >
 > 关联：`PLAN.md` §1.2（宿主是可替换件）、`PLAN.md` §7 **决策点 4**（桌面端档位，本文给它补上 ② 的实测）、
 > `docs/HANDOVER.md` §4-4（重活挪 E:）、`docs/design/SCAFFOLD.md`（宿主 = npm 包）。
@@ -224,8 +227,8 @@ Command failed with error NoMSBuild: Could not find MSBuild with VCTools for Vis
 
 ### 2.2 逐项清单 × 本机现状（每条都有可复现的查询命令）
 
-> 查询命令与输出合并存在 [`.scratch/rnw-probe/logs/16-q1-evidence.log`](../../.scratch/rnw-probe/logs/16-q1-evidence.log)，
-> 另加 `logs/06-rnw-deps-check.log`（**官方检查脚本自己的输出**）。
+> 查询命令与输出合并存在 `.scratch/rnw-probe/logs/16-q1-evidence.log`（同上：**本地探针目录、未入库**，
+> 所以是路径不是链接），另加 `logs/06-rnw-deps-check.log`（**官方检查脚本自己的输出**）。
 
 | # | 要求 | 出处 | 本机现状 | 查询命令 |
 |---|---|---|---|---|

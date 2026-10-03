@@ -5104,3 +5104,54 @@ for d in v163 base160 base154; do find $d \( -name '*.rej' -o -name '*.orig' \) 
 
 换到 0.16.3 之后 `moon check` 的警告数从 **391 掉到 169/164** —— 上游在新 lint 下更干净了。
 ⚠️ 这与 §八 坑六并不矛盾：**警告数是"代码 × 编译器"的函数，换任何一边都会变**，别把它当版本好坏的指标。
+
+---
+
+## 补记（发布 0.4.0 那天：**在新鲜克隆里预演 CI**，逮到一条"本机绿、CI 红"的断链，2026-10-03 十五续）
+
+### 一、可复用的手法：把 CI 的条件在**本机复现出来**（不是"把本机的门再跑一遍"）
+
+这个仓库有条老规矩：**"本机全绿 ≠ CI 会绿"** —— 因为 CI 每次都是**新鲜克隆**
+（没有 `vendor/`、没有各应用的 `node_modules`、没有 `_build`、没有 `.scratch/`）。
+所以"本机 25/25"**不构成**推送前的证据，当时能做的只有"推上去看"。
+
+**这一轮把它变成了本机就能做的事** —— 一条命令把"新鲜"这个条件造出来：
+
+```bash
+git clone --no-hardlinks . /d/tmp/ciclone          # 克隆**只含入库内容** ⇒ 天然没有那四样
+cd /d/tmp/ciclone && git checkout main
+bash tools/vendor_sync.sh --apply                  # CI 的第一步（这一步曾缺失 ⇒ CI 永远不可能绿）
+cd examples/apps/todo-app/host && npm install --no-audit --no-fund   # CI 只在这一个目录装依赖
+cd /d/tmp/ciclone && bash tools/verify_all.sh      # CI 跑的就是这一条
+```
+
+⚠️ 三条容易漏的：① 必须 `--no-hardlinks`；② **`npm install` 那一步要照做**（CI 只装
+`todo-app/host`，漏了它会有几条门把 SKIP 当成本该如此）；③ **克隆出来的期望**不是"25 / 25"：
+新鲜克隆上应是 **`通过 19 · 失败 0 · 跳过 6`**（4 条 `node_modules` 不在、1 条仓库外的 F1 扫描对象、
+1 条 antd 试金石）—— **SKIP 是"判据不成立"，不是通过**。
+
+### 二、它当场逮到的东西：一条断链（**本机怎么跑都是绿的**）
+
+预演结果 **`通过 19 · 失败 1 · 跳过 4`** —— 红的那条是 **`文档相对链接（check_links）`**，
+而**本机它一直是绿的**。真因：
+
+```
+断链 2 个：
+  docs/design/DESKTOP-RNW.md:12  ->  ../../.scratch/rnw-probe/logs/
+  docs/design/DESKTOP-RNW.md:227 ->  ../../.scratch/rnw-probe/logs/16-q1-evidence.log
+```
+
+那两处把**一次性探针目录**写成了 Markdown **链接**。而 `.scratch/` 是 **gitignore 的** ——
+本机有（探针留下的），**新鲜克隆里没有** ⇒ **本机绿、CI 红**。
+修法**不是**去放宽门（**门是对的**：那种链接在 GitHub 上永远点不动），而是把文档改对：
+**写成路径、不写成链接**，并在原地写明"为什么这里只能是路径"。
+
+⇒ 一般形式值得记住：**"本机有、仓库没有"的路径，在文档里一律不能写成链接。**
+同类嫌疑：`.scratch/**`、`_build/**`、`vendor/**`、各应用的 `node_modules/**`。
+
+### 三、这次预演顺带证实了两件事
+
+- ✅ `tools/vendor_sync.sh --apply` 在**新鲜克隆里能重建出 `vendor/`**（那条修复仍然成立）；
+- ✅ `moon check` 能编译**新加进工作区的 `zhouyi-reader`** —— 它唯一的外部依赖是
+  `XiLaiTL/moobile@0.4.0`，而那一版**当天刚发布**。（**发布之前**这其实是个隐患：
+  工作区成员之外没人能解析到它。现在通了。）
