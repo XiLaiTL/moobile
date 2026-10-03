@@ -59,6 +59,65 @@ cd my-app && npm install && npm run web
 模板的真源是仓库的 `examples/apps/template/`；发布时 `publish.sh` 会按发布规矩把它拷进包里
 （`init` 跑在别人的机器上，模板必须随包走）。
 
+## 宿主档（`--host expo | rnw | webview`）
+
+**支持一个新平台 = 换一个宿主，不是改库**：`moon.mod` / `moon.pkg` / `app.mbt` 在三个档下
+**逐字节相同**（这条有门在断言：`node tools/host_probe.mjs`，32 项，离线跑）。
+
+| 宿主 | 打包 / 服务 | 入口 | 画布后端 | 产出 |
+|---|---|---|---|---|
+| `expo`（默认） | Metro + `expo start` | `registerRootComponent` | web→DOM 2D、android/iOS→Skia | android / ios / web |
+| `rnw` | Metro（`@react-native/metro-config`） | `AppRegistry` | windows→SVG | Windows 桌面（窗口要 VS 2026 + SDK 22621） |
+| `webview` | **esbuild + 静态服务器**（零 Metro、零 Expo） | `AppRegistry` | web→DOM 2D | **一个静态站点**（`dist/`，PWA / Tauri / Electron 的底座） |
+
+```bash
+npx moobile-host init my-app --host webview
+cd my-app && npm install
+npm run build     # moon build + moobile-host build + esbuild → dist/
+npm run serve     # 零依赖静态服务，浏览器打开即看
+```
+
+⚠️ 宿主文件集**只覆盖同名文件、删不掉**模板里的（模板本身是 Expo 档）—— 所以宿主可以声明
+`drop: [...]`（webview 就丢了 `app.json` / `metro.config.js` 这两份 Expo 专属的）。
+往宿主文件集里加文件时注意两件事：文件名 `gitignore`（**无点**，`npm pack` 永远不打 `.gitignore`，
+`init` 写盘时映射回 `.gitignore`），以及加完跑 `bash tools/refresh_host_copies.sh`。
+
+## 从一个**既有的 rabbita 项目**迁移（`moobile-host create --from-rabbita`）
+
+```bash
+npx moobile-host create --from-rabbita ../my-rabbita-app my-app     # 落盘
+npx moobile-host create --from-rabbita ../my-rabbita-app my-app --dry-run   # 只看一遍
+```
+
+它做三件事：**动检报告**（会静默失效的项逐条点名）/ **新项目**（宿主 + 依赖 + 视图尽量原样搬运）/
+**TODO 清单**（每一项都有下一步）。产出的 `MIGRATION.md` 是产物的一部分 —— **先读它的 §4**。
+
+| 参数 | 说明 |
+|---|---|
+| `--name` / `--rn` / `--host expo\|rnw` / `--host-dep` | 同 `init`（`--host rnw` 直接生成桌面工程） |
+| `--dry-run` | 只报统计，不落盘（**别对着已经手工移植过的项目 `--force`**，会盖掉人工改动） |
+
+### 落盘后的**生成后自查**（报告 §5）
+
+机械迁移有**两块移不过来**，而它们**只在原生上现形**（web 上看不出来）：
+
+| id | 是什么 | 为什么 web 看不见 |
+|---|---|---|
+| `page-style-unused` | 源 CSS 的 `body`/`html` 声明被抽成了 `page()`，但**没人挂到元素上** | 浏览器自带 `body` 样式兜着 |
+| `no-native-scroll` | 根上**没有滚动容器** —— RN 的 `View` **不滚动** | DOM 自己会滚 |
+
+两条的后果都很具体：页面底色 / 字体族丢了、**手机上超过一屏的内容用户够不着**（实测：真机上滚不动）。
+修法是两层根容器：
+
+```moonbit
+div(attrs=@styles.att(@styles.page().flex(1.0)), [                 // ① body/html 的声明
+  @html.node("scroll", @styles.att(@style.Style::new().flex(1.0)), [ …整页… ]),  // ② RN 的 ScrollView
+])
+```
+
+`create` 收尾会把自查结果打出来（`N 条必须处理`）。**它只报告、不替你改** ——
+`page()` 挂哪一层、滚动容器包住哪几块，是人的决定。
+
 ## 把 MoonBit 产物搬进宿主目录（`moobile-host build`）
 
 ```bash
@@ -79,7 +138,8 @@ moon build --target js && npx moobile-host build     # 生成出来的项目里�
 
 | 子命令 | 做什么 | 状态 |
 |---|---|---|
-| `init` | 从模板生成一个项目 | ✅ |
+| `init` | 从模板生成一个项目（`--host expo \| rnw \| webview`） | ✅ |
+| `create` | 从**既有的 rabbita 项目**迁移生成一个项目（含动检报告 + 生成后自查） | ✅ 见上一节 |
 | `build` | 把 MoonBit 产物搬进宿主目录 | ✅ |
 | `regen` | 从依赖生成能力注册表 | ✅ |
 | `libgen` | 组件库生成（manifest + MoonBit DSL + 宿主注册） | ✅ 见下一节 |

@@ -27,6 +27,7 @@ const USAGE = `moobile-host —— moobile 的宿主侧工具
 
 用法：
   moobile-host init <目录> [--name <应用名>]     从模板生成一个项目
+                  [--host expo|rnw]              用哪个宿主（默认 expo；rnw = 裸 RN + RNW 桌面）
   moobile-host build [--release] [--out <文件>]  把 MoonBit 产物搬到宿主目录
   moobile-host regen [--out <文件>] [--check]    生成 / 核对能力注册表
 
@@ -71,6 +72,10 @@ function main() {
   //    没放就落到下面那句"名字已冻结、还没实现"。
   const table = {
     init: ['../lib/init.js'],
+    // `create --from-rabbita`（E9：从一个**既有** rabbita 项目生成 moobile 项目）。
+    // 与 `init` 的区别：`init` 从空目录开始；`create` 会**读你的项目**，出一份迁移报告
+    // 并把视图机械改写过来（见 lib/migrate/create.js 的文件头）。
+    create: ['../lib/migrate/create.js'],
     build: ['../lib/build.js'],
     regen: ['../lib/regen.js'],
     libgen: ['../bin/libgen.js', '../libgen/cli.js', '../libgen/index.js', '../lib/libgen.js'],
