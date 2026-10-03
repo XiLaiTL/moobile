@@ -32,11 +32,12 @@
 >    **npm 对"未认证"的 `PUT` 回 404**，看着像"包名不对"，其实是 **token 过期**。
 >    佐证：`npm whoami --registry=https://registry.npmjs.org/` → **`E401 Unauthorized`**。
 >    失败的 PUT **什么都没发出去**（复核：线上仍是 `0.3.0`；工作树干净、没留下 tarball 或模板副本）。
-> 3. ⇒ **要收尾只差一步**：刷新 npm 凭据（`npm login --registry=https://registry.npmjs.org/`
->    或换一个新 token 写进 `~/.npmrc` 的 `//registry.npmjs.org/:_authToken`），
+> 3. ⇒ **要收尾只差一步**：刷新 npm 凭据（`npm login --registry=https://registry.npmjs.org/`，
+>    或换一个新 token 写进 `~/.npmrc` 里**官方源那一条**），
 >    再 `bash npm/moobile-host/publish.sh`（开了 2FA 时它会提示 OTP），最后
 >    `bash tools/check_published.sh` 复核。
 >    ⚠️ **别用默认 registry 登录** —— 本机默认是淘宝镜像（只读，发不上去）。
+>    ⚠️ 文档里**不要写出凭据字段名**（本仓库的泄漏门会点名 —— 这条我第一次就踩了）。
 >
 > **这个"半边"状态对使用者是安全的**（已核）：线上宿主包 `0.3.0` 里那份模板钉的是
 > `moobile@0.3.0` / `moobile-host@^0.3.0`，所以 `npx moobile-host init` 出来的项目
