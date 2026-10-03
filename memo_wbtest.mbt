@@ -94,3 +94,46 @@ test "memo_list_i：键立刻算、f 惰性执行、序号传对" {
   assert_eq(seen[0], 0)
   assert_eq(seen[2], 2)
 }
+
+///|
+/// `memo_list_keyed` 的判据：**键真的交给 React 了**，而且记忆化还在。
+///
+/// 为什么要断言到 `Children::Map` 这一层：这两个入口的**全部差别**就是"React 拿不拿得到 key"。
+/// 只断言"行数对"抓不住它 —— 数组版也满足。断言"产物是 keyed 孩子、且键 = `by` 的结果"
+/// 才拦得住"说好是 keyed、其实还在走数组"那类改动（它**不会有任何别的症状**）。
+test "memo_list_keyed：产物是 keyed 孩子、键就是 by 的结果、每行仍是 thunk" {
+  let cells = memo_list_keyed([1, 2, 3], by=n => n * 2, f=n => @html.span("\{n}"))
+  // ⚠️ 必须用**显式的 trait 调用**：上游只给 `Html` 写了 `pub extend … IsChildren::{to_children}`，
+  //    `Map[String, Html]` 那份没有 ⇒ `cells.to_children()` 不是方法（`Error [4015]`）。
+  //    这正是"用户会怎么用它"那条路 —— 容器（`div`）也是按 `C : IsChildren` 收孩子的。
+  match @html.IsChildren::to_children(cells) {
+    @vdom.Children::Map(m) => {
+      assert_eq(m.length(), 3)
+      // 键必须是 `by` 的结果（`Int` → `String`），**不是位置**之类的东西
+      assert_true(m.get("2") is Some(_))
+      assert_true(m.get("4") is Some(_))
+      assert_true(m.get("6") is Some(_))
+      for k, v in m {
+        match v {
+          @vdom.VNode::Thunk(h, _) => assert_eq(k, h.to_string())
+          _ => fail("每行都应当是 VNode::Thunk —— 否则就没在记忆化")
+        }
+      }
+    }
+    _ =>
+      fail("memo_list_keyed 应当产出 keyed 孩子（Children::Map）；产出数组 = React 拿不到 key")
+  }
+}
+
+///|
+/// `memo_list_keyed` 的**额外契约**：键必须**唯一**（重复键会被 `Map` 折叠 ⇒ **少一行**）。
+///
+/// 这条不是"放宽断言"，而是**把一个已知行为钉住** —— 它正是 `memo_list` 仍是默认入口的理由。
+/// ⚠️ 若哪天改成"重复键就报错 / 就回退成数组"，这条会红：那时应当**改这条测试**
+/// （并写进 CHANGELOG），而不是让它悄悄变绿。
+test "memo_list_keyed：重复键会被折叠（这就是它比 memo_list 更严的那条契约）" {
+  let keyed = memo_list_keyed([1, 2], by=_ => 7, f=n => @html.span("\{n}"))
+  assert_eq(keyed.length(), 1) // 两条同键 ⇒ 折叠成一条（后一条覆盖前一条）
+  let plain = memo_list([1, 2], by=_ => 7, f=n => @html.span("\{n}"))
+  assert_eq(plain.length(), 2) // 数组版：行还在（最坏只是不省）
+}

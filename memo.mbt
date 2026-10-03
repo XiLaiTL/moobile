@@ -85,3 +85,49 @@ pub fn[T] memo_list_i(
     @html.memo_by((i, x), p => f(p.0, p.1), by=_ => key)
   })
 }
+
+///|
+/// **带 React key 的版本**（`memo_list_keyed`）—— 把**同一个** `by` 也交给 React 当 key。
+///
+/// ```moonbit
+/// // `by` 只算一次：既是库的缓存键，也是 React 的 key —— 两处不会漂
+/// @html.div(attrs=attrs(...), @moobile.memo_list_keyed(model.rows, by=r => r.id, f=row_html))
+/// ```
+///
+/// ## 为什么要有它（`memo_list` 缺的那一半）
+///
+/// `memo_list` 返回的是 `Array[Html]`，而 React **看不到任何 key** ⇒ 它只能**按位置**更新。
+/// 于是"**头部插一行**"这类操作里：库这一侧的位置定位全部落空（重算），React 那一侧也只能
+/// 按位置逐个改。返回 `Map[String, Html]` 则走 `Children::Map` 那条通道
+/// （`render.mbt` 的 `js_with_key`），**React 拿到 key** ⇒ 已有节点可以被**搬动**而不是重建。
+///
+/// ## ⚠️ 它的契约比 `memo_list` **更严**：键必须**唯一**
+///
+/// 返回的是 `Map`（React 的 key 本来就要求唯一），所以**重复键会被折叠 ⇒ 直接少一行**
+/// （后一条覆盖前一条）。而 `memo_list` 在同样情况下最坏只是"**不省**"（各位置各自算自己的，
+/// 行还是在的）。这是两个入口唯一的取舍，也是 `memo_list` 仍是默认入口的原因。
+///
+/// | 情况 | `memo_list`（数组） | `memo_list_keyed`（keyed） |
+/// |---|---|---|
+/// | 键**完备**且唯一 | 命中即复用 | 命中即复用 ＋ **React 能搬动节点** |
+/// | 键**不完备** | 画旧内容（`memo` 自己的契约） | 画旧内容（同左） |
+/// | 键**重复** | 最坏只是不省，行还在 | ⚠️ **少一行** |
+///
+/// ⇒ **只在你确定键唯一时用它**（`id` / 主键那种）。不确定就用 [`memo_list`]。
+///
+/// ⚠️ 键的**完备性**要求与 `memo_list` 逐条相同（见 `memo_list` 的文档）：
+/// 键相同必须蕴含"这一行的 HTML 与 handler 等价"。
+pub fn[T] memo_list_keyed(
+  xs : Array[T],
+  by~ : (T) -> Int,
+  f~ : (T) -> @html.Html,
+) -> Map[String, @html.Html] {
+  let m : Map[String, @html.Html] = Map([])
+  for x in xs {
+    // ★ `by` **只在这里算一次**：同一个值既当库的缓存键（`Int`）、又当 React 的 key（`String`）。
+    //   两处共用一处派生 —— 这正是 keyed 版相对"自己再传一个 key=" 的价值。
+    let key = by(x)
+    m.set(key.to_string(), @html.memo_by(x, f, by=_ => key))
+  }
+  m
+}
