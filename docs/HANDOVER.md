@@ -30,7 +30,7 @@ moobile 是给 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit
 
 ```bash
 bash tools/refresh_host_copies.sh     # ★ 先跑这个，见 §4-2（不跑的话下面那条门可能红）
-bash tools/verify_all.sh              # 离线全集 23 项（本地约 1~2 分钟；清单见 AGENTS.md §2）
+bash tools/verify_all.sh              # 离线全集（清单见 AGENTS.md §2；项数以它自己打的汇总行为准）
 ```
 
 两者都绿再往下走。**门红了先怀疑探针**，不要先改代码 —— 这个仓库里有好几条"红的是探针、
@@ -186,8 +186,11 @@ npx moobile-host@<新版本> init hello --name hello && cd hello && npm install 
 ### 3-3 朝真实应用走：F1 + 拍决策点 3
 
 - **决策点 3**（`PLAN.md` §6）：`interest/yi` 移植要不要做，以及做哪一档
-  (a) 全做 / (b) 小步（跳过罗盘）/ (c) 暂停。**从立项起就没拍过板**，这是"最大的空白"。
-  ⚠️ 成本判断已更新：原以为最贵的罗盘（Skia）**已经落地且真机验过**，所以 (b) 里"跳过罗盘"的理由少了一半。
+  (a) 全做 / (b) 小步（跳过罗盘）/ (c) 暂停。✅ **2026-10 已拍板：走 (a) 全做，决策点关闭**；
+  细排由 [`plan/PLAN-yi-port-2026-10.md`](plan/PLAN-yi-port-2026-10.md) 接手，**主体也已落地**：
+  `examples/apps/zhouyi-reader/` 四个宿主形态都过判据（`docs/STATUS.md` §2.1）。
+  ⚠️ 成本判断当年更新过一次：原以为最贵的罗盘（Skia）**已落地且真机验过**，(b) 的理由少了一半 ——
+  后来直接走了 (a)。
 - **F1 迁移动检**（`PLAN.md` §5.1）：扫一个既有 rabbita 项目、出一份"迁移还差什么"的报告。
   ⚠️ **这里原来写着"报告本身从没对着 yi 跑过" —— 2026-10-01 复核：那句话是错的。**
   报告**跑过**（`docs/STATUS.md` §2.1 与 `FINDINGS.md` 的 F1 补记都记着 09-21 那次：
@@ -195,7 +198,10 @@ npx moobile-host@<新版本> init hello --name hello && cd hello && npm install 
   本轮真正修掉的是**另一件事**：报告里那三句"下一步"**已经过期、在指错路**
   （说"手势通道尚未实现"、"画布真机未验、手势未做" —— 而这两条 10-01 都已落地并真机验过），
   已改成事实。见 `FINDINGS.md` 的 F1 坑四。
-  ⇒ **F1 剩下的不是"跑报告"，是"用报告回答决策点 3"** —— 那需要人拍板。
+  ⇒ **F1 剩下的不是"跑报告"** —— 报告已经答了决策点 3（拍板 + 主体落地，见上）。
+  它现在是一条**常驻的门**（`tools/migrate_scan_reconcile.mjs`，JS 与 MoonBit 两份实现逐项对账），
+  剩下的活是 `PLAN.md` §5.1 的 **F3 指南 / F4 `moon add` 提示**，以及把生成物里那
+  **21 项 TODO** 逐条决定掉。
 - ✅ 已落地：`tools/check_lockfile_urls.mjs` 已接进 `verify_all.sh`（**第 16 条门**，纯结构判据、
   不联网、已用诱饵证伪）。**理由**：这台机器的 npm 走 npmmirror，那个 bug 会**再次**把 404 的
   `resolved` URL 写进 lockfile，而症状是"新鲜克隆装不上、本机完全看不出来"。
