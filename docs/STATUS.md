@@ -16,9 +16,22 @@
 
 | 东西 | registry 上的 | 工作区里的 | 差异 |
 |---|---|---|---|
-| 月亮包 `XiLaiTL/moobile` | **`0.3.0`**（2026-10-01 发布；mooncakes API 实测版本列表 `0.3.0 / 0.2.2 / 0.2.1 / 0.2.0 / 0.1.0`） | `0.3.0` | **已对齐** —— 契约 `2`、`canvas/`、`gesture/`、组件库机制、`libgen`、脚手架都发出去了 |
-| 宿主包 `moobile-host`（npm） | **`0.3.0`**（2026-10-01 发布；`dist-tags.latest = 0.3.0`，线上 tarball **35 个文件**） | `0.3.0` | **已对齐** —— `lib/init.js`、`lib/build.js`、`bin/libgen.js`、整套 `template/`（含 `template/.gitignore`）都在线上 |
-| **契约版本** | **两边都是 `2`** | 两边都是 `2` | **已自洽**（线上 npm 的 `core.js` 是 `export const CONTRACT = 2`） |
+| 月亮包 `XiLaiTL/moobile` | **`0.3.0`**（2026-10-01 发布；**2026-10-03 复核**：mooncakes API 的版本列到 `0.3.0` 为止 —— `0.3.0 / 0.2.2 / 0.2.1 / 0.2.0 / 0.1.0`，**没有 `0.4.0`**） | **`0.4.0`**（已抬版） | ⚠️ **未对齐：工作区领先一版**，`0.4.0` 还没发 |
+| 宿主包 `moobile-host`（npm） | **`0.3.0`**（2026-10-01 发布；**2026-10-03 复核**：`versions = ['0.2.0','0.3.0']`、`latest = 0.3.0`） | **`0.4.0`**（已抬版） | ⚠️ **未对齐**：同上 |
+| **契约版本** | 两边都是 `2` | 两边都是 `2` | **仍自洽** —— `0.4.0` 这一版**契约不变**（纯增量），所以不是破坏性变更 |
+
+> ⚠️ **2026-10-03 复核：`0.4.0` 在两个 registry 上都还没有**（两条都直连查、绕开本机代理）：
+> `curl https://mooncakes.io/api/v0/modules/XiLaiTL/moobile` → `versions` 到 `0.3.0`；
+> `npm view moobile-host versions --registry=https://registry.npmjs.org/` → `0.2.0 / 0.3.0`。
+> ⇒ 所以这一版是**已抬版、待发布**（`CHANGELOG.md` 的 `0.4.0` 条目就是这么写的）。
+>
+> 发布前的自检**本会话已全绿**：`bash npm/moobile-host/publish.sh --dry-run`（打包自检 ✓ ·
+> **打包形态门 10/10** ✓ · 泄漏自检 ✓ · 自报 `moobile-host@0.4.0`；tarball 里**确实带上了**
+> 新增的 `hosts/rnw/gitignore`、`hosts/webview/gitignore`）与 `moon package --list`
+> （产物齐全：`_build/publish/XiLaiTL-moobile-0.4.0.zip`）。
+> ⚠️ **顺序不能反：月亮包先、宿主包后** —— 脚手架模板钉的是 `XiLaiTL/moobile@0.4.0` 与
+> `moobile-host@^0.4.0`，而 0.x 语义下 `^0.3.0` **匹配不到** `0.4.0`（只发一边就会让
+> 用户 `init` 出来的项目**装不上**）。
 
 > ✅ **2026-10-01：0.3.0 已发布，两个包都核过 —— §4-1 那条"最硬的阻塞"结了。**
 > 实测证据（本轮跑的，见 §2.1）：`check_published.sh` 对 **线上** `0.3.0` 通过（9 个公开包齐全）；
