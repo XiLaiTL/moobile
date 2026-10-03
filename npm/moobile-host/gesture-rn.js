@@ -106,14 +106,30 @@ export function withGestures(Base, displayName) {
         Math.max((g && g.numberActiveTouches) || 0, (n.touches || []).length, 1);
       /** 一次事件的"原值"。`start` 用的是 grant 那一刻的快照（见 `confirmStart`）。 */
       const ready = () => geom.current.state === 'ready' || geom.current.state === 'fallback';
+      /**
+       * ★★ **同一个参照系**：把"一次触摸的原始值"换算成契约里的 `x/y`。
+       *
+       * 修的是这样一件事（真机量出来的）：`grant` 那一刻量测**还没回来**，
+       * 于是 `start` 的坐标走了"退回 `locationX`"那条路，而随后的 `move` 用的是
+       * `pageX − 原点` —— **同一次手势里两个参照系**（原生上 `locationX` 是"手指底下最深
+       * 那个 view"的坐标，与"挂手势的元素"差一截）。
+       * 后果实测：拖 45° 只转约 5°（起点错、后续增量对，于是净旋转被啃掉一截）。
+       * 这与本文件顶上记的那次 `dx=155` 事故是**同一类**，只是发生在 `x/y` 这一半。
+       *
+       * 所以起点坐标**不在 grant 时定死**：存原始值，等量测回来再换算（`v0Of`）。
+       */
+      const xyOf = (raw) => {
+        const g0 = geom.current;
+        if (g0.state === 'ready' && MEASURE_ORIGIN) {
+          return { x: raw.pageX - g0.ox, y: raw.pageY - g0.oy };
+        }
+        return { x: raw.locationX, y: raw.locationY };
+      };
       const values = (n, g) => {
         const p = primary(n);
         // ★ `x/y`：原点已知就用 `pageX/pageY − 原点`（**参照系永远稳定**）；
         //    否则退回 `locationX/locationY`（web 上这本来就是对的）。
-        const g0 = geom.current;
-        const xy = g0.state === 'ready' && MEASURE_ORIGIN
-          ? { x: p.pageX - g0.ox, y: p.pageY - g0.oy }
-          : { x: p.locationX, y: p.locationY };
+        const xy = xyOf(p);
         return { x: xy.x, y: xy.y, ax: p.pageX, ay: p.pageY, pointers: pointers(n, g) };
       };
       const emitWith = (handler, v, phase) => {
@@ -152,9 +168,15 @@ export function withGestures(Base, displayName) {
        * RNW 派发给 `currentResponder`）。`start` 用 grant 那一刻的**数值快照**
        * 发出，所以"起点 = 按下点、`dx=0`"这条不受影响 —— 确认事件与 grant 是同一个 DOWN。
        */
+      /** 起点的坐标：**按量测后的参照系**换算（量测没回来就不该被调用，见调用点）。 */
+      const v0Of = () => {
+        const raw = start.current.v0raw;
+        const xy = xyOf(raw);
+        return { x: xy.x, y: xy.y, ax: raw.pageX, ay: raw.pageY, pointers: raw.pointers };
+      };
       const confirmStart = () => {
         const s = start.current;
-        if (!s.armed || s.started || s.over || !s.v0) return;
+        if (!s.armed || s.started || s.over || !s.v0raw) return;
         // 量测还没回来就把 `start` 挂起（`wantStart`）——`start` 的坐标不能用估的，
         // 一旦用 `locationX` 吐出去，应用拿到的起点就落在**别的参照系**里（正是要修的那个 bug）。
         if (!ready()) {
@@ -162,7 +184,7 @@ export function withGestures(Base, displayName) {
           return;
         }
         s.started = true;
-        emitWith(onPan, s.v0, 'start');
+        emitWith(onPan, v0Of(), 'start');
       };
       /**
        * 吐一个相位。量测还没回来时：非收尾相位**攒起来**（几毫秒的事），
@@ -186,10 +208,10 @@ export function withGestures(Base, displayName) {
       const drainQueue = () => {
         const s = start.current;
         if (!ready()) return;
-        if (s.wantStart && s.armed && !s.started && !s.over && s.v0) {
+        if (s.wantStart && s.armed && !s.started && !s.over && s.v0raw) {
           s.wantStart = false;
           s.started = true;
-          emitWith(onPan, s.v0, 'start');
+          emitWith(onPan, v0Of(), 'start');
         }
         const q = queue.current;
         queue.current = [];
@@ -262,7 +284,15 @@ export function withGestures(Base, displayName) {
             }
           }
           // ⚠️ 顺序：`primary` 要用刚写好的 `id`，所以快照必须在上面之后取。
-          start.current.v0 = values(n, g);
+          // ★ 这里**只存原始值**（`pageX/pageY/locationX/locationY`），不在这里换算 ——
+          //   这一刻量测几乎一定还没回来，换出来的就是"另一个参照系"的坐标（见 `xyOf`）。
+          start.current.v0raw = {
+            pageX: n.pageX,
+            pageY: n.pageY,
+            locationX: n.locationX,
+            locationY: n.locationY,
+            pointers: pointers(n, g),
+          };
           // 这里**不吐** `start` —— 这个 `grant` 可能只是询问，见 `confirmStart` 上面那段。
         },
         // ★ 被拒 = 刚才那个 `grant` 只是询问，我们并没有拿到这次手势。把待定清掉，

@@ -103,7 +103,11 @@ export function installHost(options = {}) {
     components: withGestureComponents({ ...COMPONENTS, ...(components || {}) }),
     // 平台替代物（`MOBILE_HOST.native`）—— 见 native-rn.js 与 vendor/rabbita/cmd/host_native.mbt
     native: withNative(native),
-    apiBase: apiBase || DEFAULT_API_BASE,
+    // ⚠️ 用 `??` 而不是 `||`：**空串是合法值，意思是"同源"**。
+    //    用 `||` 的话 `apiBase: ''` 会被当成"没给"，回退到 127.0.0.1:8787 ——
+    //    而应用侧的相对路径（`/reader_data.json`）就永远打不到自己那个站点根上。
+    //    实测症状：页面显示「加载失败」而 curl 同一个 URL 是 200，且**宿主没报任何错**。
+    apiBase: apiBase ?? DEFAULT_API_BASE,
     platform: platform || Platform.OS,
     scheduleTask: scheduleTask || defaultScheduleTask,
     scheduleFrame: scheduleFrame || defaultScheduleFrame,

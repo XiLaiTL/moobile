@@ -58,8 +58,8 @@ export const RN_NATIVE = {
    * 会把"静默给错值"这一类单独报出来）。
    *
    * 语义上与 DOM 那条**对齐**：同样只在**变化时**推送，不补发当前尺寸 ——
-   * 想要初始尺寸请在应用侧自己取（两端一样），不要指望这条订阅先给你一个值。
-   * （`Dimensions.get('window')` 拿得到，但在这里补发会让两端行为不一致。）
+   * 想要初始尺寸请用下面的 `read()`（两端是**同一句**：`@sub.current_viewport()`），
+   * 不要指望这条订阅先给你一个值。
    */
   geometry: {
     subscribe(cb) {
@@ -68,6 +68,20 @@ export const RN_NATIVE = {
         cb({ width: Math.round(window.width), height: Math.round(window.height) });
       });
       return () => sub.remove();
+    },
+    /**
+     * **读一次当前视口**（同步）—— 订阅只解决"变化"，不解决"现在是多少"，
+     * 而 RN 的 `Dimensions` 的 `change` 事件**不转屏就不会触发**。
+     *
+     * ⚠️ 为什么不能靠"挂载时补发一次 subscribe"来省掉这条：那会让两端行为不一致
+     * （DOM 的 `resize` 也不在挂载时触发），而"补齐初始值"这件事应该在**库侧那一句 API**
+     * 里做（`@sub.current_viewport()`），这样 Web / RN 用的是同一套语义。
+     *
+     * 形状与 `subscribe` 一致（`{width, height}`，取整），库侧严格解、形状不对当场报错。
+     */
+    read() {
+      const { width, height } = Dimensions.get('window');
+      return { width: Math.round(width), height: Math.round(height) };
     },
   },
   // 缺口（N5b 剩下的）：
