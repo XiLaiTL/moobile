@@ -16,22 +16,36 @@
 
 | 东西 | registry 上的 | 工作区里的 | 差异 |
 |---|---|---|---|
-| 月亮包 `XiLaiTL/moobile` | **`0.3.0`**（2026-10-01 发布；**2026-10-03 复核**：mooncakes API 的版本列到 `0.3.0` 为止 —— `0.3.0 / 0.2.2 / 0.2.1 / 0.2.0 / 0.1.0`，**没有 `0.4.0`**） | **`0.4.0`**（已抬版） | ⚠️ **未对齐：工作区领先一版**，`0.4.0` 还没发 |
-| 宿主包 `moobile-host`（npm） | **`0.3.0`**（2026-10-01 发布；**2026-10-03 复核**：`versions = ['0.2.0','0.3.0']`、`latest = 0.3.0`） | **`0.4.0`**（已抬版） | ⚠️ **未对齐**：同上 |
-| **契约版本** | 两边都是 `2` | 两边都是 `2` | **仍自洽** —— `0.4.0` 这一版**契约不变**（纯增量），所以不是破坏性变更 |
+| 月亮包 `XiLaiTL/moobile` | ✅ **`0.4.0`**（**2026-10-03 发布**；`moon publish` 回 `Server status: 200 OK`，复核 API：`latest = 0.4.0`） | `0.4.0` | **已对齐** ✅ |
+| 宿主包 `moobile-host`（npm） | **`0.3.0`**（2026-10-01 发布；2026-10-03 复核 `latest = 0.3.0`） | **`0.4.0`** | ❌ **未对齐：宿主包发不出去** —— 见下 |
+| **契约版本** | 两边都是 `2` | 两边都是 `2` | **仍自洽** —— `0.4.0` 契约不变 |
 
-> ⚠️ **2026-10-03 复核：`0.4.0` 在两个 registry 上都还没有**（两条都直连查、绕开本机代理）：
-> `curl https://mooncakes.io/api/v0/modules/XiLaiTL/moobile` → `versions` 到 `0.3.0`；
-> `npm view moobile-host versions --registry=https://registry.npmjs.org/` → `0.2.0 / 0.3.0`。
-> ⇒ 所以这一版是**已抬版、待发布**（`CHANGELOG.md` 的 `0.4.0` 条目就是这么写的）。
+> ⚠️ **2026-10-03：`0.4.0` 只发出去了一半 —— 月亮包 ✅、宿主包 ❌（npm token 过期）**
 >
-> 发布前的自检**本会话已全绿**：`bash npm/moobile-host/publish.sh --dry-run`（打包自检 ✓ ·
-> **打包形态门 10/10** ✓ · 泄漏自检 ✓ · 自报 `moobile-host@0.4.0`；tarball 里**确实带上了**
-> 新增的 `hosts/rnw/gitignore`、`hosts/webview/gitignore`）与 `moon package --list`
-> （产物齐全：`_build/publish/XiLaiTL-moobile-0.4.0.zip`）。
-> ⚠️ **顺序不能反：月亮包先、宿主包后** —— 脚手架模板钉的是 `XiLaiTL/moobile@0.4.0` 与
-> `moobile-host@^0.4.0`，而 0.x 语义下 `^0.3.0` **匹配不到** `0.4.0`（只发一边就会让
-> 用户 `init` 出来的项目**装不上**）。
+> 顺序是照规矩走的（**月亮包先**，避免"模板钉了还没上架的库版本"）：
+> 1. `moon publish` → **`Server status: 200 OK`、退出码 0**；复核
+>    `curl https://mooncakes.io/api/v0/modules/XiLaiTL/moobile` → `latest = 0.4.0` ✅
+> 2. `bash npm/moobile-host/publish.sh` → **打包全过**（tarball **64 个文件 / 199.3 kB**，
+>    `template/` 与新增的 `hosts/` 都在），但**上传被拒**：
+>    `npm ERR! code E404 … PUT https://registry.npmjs.org/moobile-host - Not found`。
+>    ★ **这正是 [`FINDINGS.md`](FINDINGS.md) 记过的那条坑的原样复现**：
+>    **npm 对"未认证"的 `PUT` 回 404**，看着像"包名不对"，其实是 **token 过期**。
+>    佐证：`npm whoami --registry=https://registry.npmjs.org/` → **`E401 Unauthorized`**。
+>    失败的 PUT **什么都没发出去**（复核：线上仍是 `0.3.0`；工作树干净、没留下 tarball 或模板副本）。
+> 3. ⇒ **要收尾只差一步**：刷新 npm 凭据（`npm login --registry=https://registry.npmjs.org/`
+>    或换一个新 token 写进 `~/.npmrc` 的 `//registry.npmjs.org/:_authToken`），
+>    再 `bash npm/moobile-host/publish.sh`（开了 2FA 时它会提示 OTP），最后
+>    `bash tools/check_published.sh` 复核。
+>    ⚠️ **别用默认 registry 登录** —— 本机默认是淘宝镜像（只读，发不上去）。
+>
+> **这个"半边"状态对使用者是安全的**（已核）：线上宿主包 `0.3.0` 里那份模板钉的是
+> `moobile@0.3.0` / `moobile-host@^0.3.0`，所以 `npx moobile-host init` 出来的项目
+> **照样装得上**，只是拿不到 `0.4.0` 的新东西（宿主档 / 迁移装配器 / 两个画布后端 / 三处修复）。
+>
+> 发布前的自检（都是本会话实跑）：`publish.sh --dry-run` 打包自检 ✓ ·
+> **打包形态门 10/10** ✓ · 泄漏自检 ✓；`moon package --list` 产物齐全
+> （`_build/publish/XiLaiTL-moobile-0.4.0.zip`）。⚠️ 离线全集在本会话是 **25 / 25**、
+> 白盒测试 **104 / 104**。
 
 > ✅ **2026-10-01：0.3.0 已发布，两个包都核过 —— §4-1 那条"最硬的阻塞"结了。**
 > 实测证据（本轮跑的，见 §2.1）：`check_published.sh` 对 **线上** `0.3.0` 通过（9 个公开包齐全）；
