@@ -32,6 +32,9 @@ pub fn Mount::handles(self : Mount) -> JsValue {
   js_obj_set(o, "unsupported", js_closure_int(() => unsupported_count()))
   js_obj_set(o, "unmapped", js_closure_int(() => unmapped_tag_count()))
   js_obj_set(o, "unmapped_names", js_closure_string(() => unmapped_tag_names()))
+  // memo 诊断：命中/未命中（"看起来包了 memo、其实没有"是这一层唯一的失败模式）
+  js_obj_set(o, "memo_hits", js_closure_int(() => memo_hit_count()))
+  js_obj_set(o, "memo_misses", js_closure_int(() => memo_miss_count()))
   o
 }
 
@@ -70,6 +73,9 @@ pub fn[Model : Eq, Msg] handlers_with_init(
 pub struct Frame {
   mut element : JsValue
   store : Store
+  /// 这一挂载点的 **memo 缓存上下文**（见 `render.mbt` 的 `MCtx`）。
+  /// 放在这里而不是模块全局：同一进程里挂两个应用时，全局缓存会互相冲掉。
+  ctx : MCtx
 }
 
 ///|
@@ -138,7 +144,7 @@ fn[Model : Eq, Msg] mount_impl(
   // input / submit / Mouse / Keyboard / Scroll …），而 yi 的罗盘拖拽
   // 正好踩在里面 —— 所以改成整表替换，一处生效。
   @html.event_decoders.val = @html.passthrough_decoders()
-  let frame : Frame = { element: js_null(), store: Store::new() }
+  let frame : Frame = { element: js_null(), store: Store::new(), ctx: MCtx::new() }
   // 用的是 rabbita **官方**的 `create_state_machine` —— 它给出真实的
   // `Emit[Msg]`（`emit(Msg)` 产出真实的 `Cmd`）。moobile 不重写状态机。
   //
@@ -162,7 +168,7 @@ fn[Model : Eq, Msg] mount_impl(
   // 关键：把 **host 自己**当作 scheduler 交给处理器。
   // 用任何 stub 都会让 `scheduler.add(cmd)` 静默变成 no-op（踩过）。
   host.on_frame(v => {
-    frame.element = render_node(v, host)
+    frame.element = render_root(v, host, frame.ctx)
     frame.store.bump()
   })
   { host, frame }

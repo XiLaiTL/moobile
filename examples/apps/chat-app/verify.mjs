@@ -332,6 +332,20 @@ check(
   `此刻「${assistantText()}」= ${grew} 字（攒完一次给的话这里会是 8）`,
 );
 check("生成中看得出来（状态行「生成中…」+ 光标）", early.includes("生成中") && early.includes("▍"), "");
+
+// ★ **memo 在真应用里生效没有** —— 判据是**库自报的两个计数**（`memo.mbt` / `PERF-RECIPES.md`
+//   里就是这么自查的），不是读代码相信：
+//   · 流式期间每来一段，**其余每一行**都该命中缓存（`memo_hits` 涨）；
+//   · 而"正在生成的那条"必须**每次都重算**（`memo_misses` 涨）—— 否则光标与长出来的字就是**冻住**的。
+//   两个都要涨才算过：只涨命中 ⇒ 界面冻住了；只涨未命中 ⇒ memo 根本没接上。
+const hits0 = handlesRef.memo_hits(), miss0 = handlesRef.memo_misses();
+await sleep(300); // 让流再推几段（每段一帧）
+const dHit = handlesRef.memo_hits() - hits0, dMiss = handlesRef.memo_misses() - miss0;
+check(
+  "★ 流的每一段只重算「正在生成的那条」，其余行命中 memo",
+  dHit > 0 && dMiss > 0,
+  `这段里 命中 +${dHit} · 未命中 +${dMiss}（两行时应当 ≈ 1:1）`,
+);
 await sleep(700);
 check("长完了：全文在界面上", has("你好，我是助手。"), TREE().slice(-160));
 // ★ 这条盯的是**通道**，不是 markdown 的渲染结果：内容必须作为**原始字符串**到达组件。

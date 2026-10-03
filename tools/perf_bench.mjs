@@ -15,6 +15,12 @@
 //   · `dom` —— 真 React + react-dom + jsdom + DOM 组件表。量整条 Web 帧成本；
 //     与 `translate` 的差 ≈ React 的 diff/commit + DOM API 调用（见下面的边界）。
 //
+//     ⚠️ **`dom` 档的量纲取决于 `NODE_ENV`**（2026-10-03 实测）：`NODE_ENV=production`
+//     时 `require("react")` 走 `react.production.js`，而 **`act` 只在 development 构建里导出**
+//     ⇒ 两条计时路：有 `act` 用它（另报 `act_floor_ms` 供扣除），没有就用
+//     "派发点击 + **一个微任务**"（实测：`dispatchEvent` 返回时 DOM 还是旧的）。
+//     仪器把 `NODE_ENV` / 构建类型 / 冲刷方式**写进读数**，跨读数比较前先对这三项。
+//
 // ── 它**不**测什么（关键：别把这两档读成"手感"）────────────────────────────────
 // 1. **没有布局**：jsdom 不实现布局引擎，RN 的 Yoga 也不在。真机掉帧里很大一块是
 //    布局与绘制 —— 那要 Chrome Performance / `dumpsys gfxinfo`（D2 原文）。
@@ -26,10 +32,12 @@
 // 5. `dom` 档里 React 的 commit 是**往 jsdom 里写**，它的 DOM 操作比真浏览器慢，
 //    所以"React 那部分的绝对值"也偏悲观；只有差值的方向是可信的。
 //
-// ── 三条自证新鲜的机制（本仓库的规矩：工具的产出要能自证"这是不是这次的"）──────
+// ── 四条自证新鲜的机制（本仓库的规矩：工具的产出要能自证"这是不是这次的"）────────
 // · 打印产物的 **sha256 + mtime + 字节数**：A/B 两次必须比这个哈希，哈希一样才叫同一份产物；
 // · 打印**宿主副本与源码的 md5 是否一致**（`core.js`）—— 副本陈旧会让"量的是旧代码"；
-// · 打印**实测元素数**与负载的**理论元素数**（`4N+5`）是否相等 —— 负载形状变了这里会立刻红。
+// · 打印**实测元素数**与负载的**理论元素数**（`7N+7`）是否相等 —— 负载形状变了这里会立刻红；
+// · `dom` 档**每帧自证落地**：比对表头的 `tick` 有没有推进 —— 没推进就说明那一帧
+//   根本没发生（`frames_dropped > 0` ⇒ 这一次的读数作废，不是"很快"）。
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -60,7 +68,7 @@ function parseArgs(argv) {
   const out = {
     ns: [1000], mode: "translate", frames: 200, warmup: 50, label: "",
     json: "", deps: DEFAULT_DEPS, child: false, quiet: false,
-    trials: 1, artifact: "", profile: false,
+    trials: 1, artifact: "", profile: false, memo: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -75,6 +83,7 @@ function parseArgs(argv) {
     else if (a === "--deps") out.deps = path.resolve(val());
     else if (a === "--artifact") out.artifact = path.resolve(val());
     else if (a === "--profile") out.profile = true;
+    else if (a === "--memo") out.memo = true;
     else if (a === "--child") out.child = true;
     else if (a === "--quiet") out.quiet = true;
     else if (a === "--help" || a === "-h") { console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 40).join("\n")); process.exit(0); }
@@ -138,6 +147,7 @@ if (!args.child && (args.ns.length > 1 || args.trials > 1 || args.profile)) {
         "--frames", String(args.frames), "--warmup", String(args.warmup),
         "--child", "--quiet", "--json", jf, "--trials", "1"];
       if (args.label) argv2.push("--label", args.label);
+      if (args.memo) argv2.push("--memo");
       if (args.deps !== DEFAULT_DEPS) argv2.push("--deps", args.deps);
       if (args.artifact) argv2.push("--artifact", args.artifact);
       const r = spawnSync(process.execPath, argv2, { stdio: "inherit" });
@@ -167,19 +177,32 @@ if (!args.child && (args.ns.length > 1 || args.trials > 1 || args.profile)) {
 // ── `--profile`：用 V8 的 CPU profiler 回答"这些毫秒花在谁身上" ────────────────
 //
 // ⚠️ 采样本身有开销，所以**这一档的耗时数字只能用来看"占比"，不能当基线**。
+//
+// ⚠️ **必须把 `--expose-gc` 一起给子进程**（2026-10-03 实测踩到）：不给的话子进程会在
+// "gc 兜底"那一步**再 re-exec 一次**，于是目录里出现**两份都算"新鲜"的 profile** ——
+// 一份来自只干了一件事（`spawnSync`）的中间进程，一份来自真干活的那个。
+// 第一版按 `readdir` 顺序挑，挑中的正是中间进程 —— 报出来 98.4% 是 `spawnSync`，
+// 看上去"采样坏了"，其实真因是**采错了进程**。给了 `--expose-gc` 就没有 re-exec。
 function runProfiled(a) {
   const dir = path.join(ROOT, ".scratch", "perf", "cpuprofile");
   mkdirSync(dir, { recursive: true });
   const before = new Set(readdirSync(dir));
-  const argv2 = ["--cpu-prof", `--cpu-prof-dir=${dir}`, fileURLToPath(import.meta.url),
+  const argv2 = ["--expose-gc", "--cpu-prof", `--cpu-prof-dir=${dir}`, fileURLToPath(import.meta.url),
     "--n", String(a.ns[0]), "--mode", a.mode, "--frames", String(a.frames),
     "--warmup", String(a.warmup), "--child", "--quiet", "--trials", "1"];
   if (a.artifact) argv2.push("--artifact", a.artifact);
+  if (a.memo) argv2.push("--memo");
   if (a.deps !== DEFAULT_DEPS) argv2.push("--deps", a.deps);
   const r = spawnSync(process.execPath, argv2, { stdio: "inherit" });
   const fresh = readdirSync(dir).filter((f) => f.endsWith(".cpuprofile") && !before.has(f));
   if (fresh.length === 0) { console.error("没有拿到 .cpuprofile"); return 1; }
-  const p = JSON.parse(readFileSync(path.join(dir, fresh[fresh.length - 1]), "utf8"));
+  // 万一还是有多份（比如别的步骤又 re-exec 了一次）：**挑采样最多的那一份**，
+  // 而不是按目录顺序挑 —— 干活的进程采样必然多，"只拉起子进程"的那种几乎没有。
+  const read = (f) => JSON.parse(readFileSync(path.join(dir, f), "utf8"));
+  const cands = fresh.map((f) => ({ f, p: read(f) }));
+  cands.sort((x, y) => y.p.samples.length - x.p.samples.length);
+  if (cands.length > 1) console.log(`（目录里有 ${cands.length} 份新鲜 profile，取采样最多的那份：${cands[0].f} · ${cands[0].p.samples.length} 个样本）`);
+  const p = cands[0].p;
   const byId = new Map(p.nodes.map((n) => [n.id, n]));
   const self = new Map();
   for (let i = 0; i < p.samples.length; i++) {
@@ -200,6 +223,12 @@ function runProfiled(a) {
   for (const [k, us] of rows) {
     const pct = (us / total) * 100;
     console.log(`  ${pct.toFixed(1).padStart(5)}%  ${(us / 1000).toFixed(1).padStart(8)} ms  ${k}`);
+  }
+  // "采错了进程"的**特征签名**：采样被 `spawnSync` 占据 ⇒ 这是"只负责拉起子进程"的那一层，
+  // 不是干活的进程。这个签名要能自己喊出来，否则读的人只会以为"这段代码就是慢在 spawn"。
+  if (/^spawnSync/.test(rows[0][0]) && rows[0][1] / total > 0.5) {
+    console.log(`\n❌ **这一份 profile 采的是错的进程**（>50% 落在 \`spawnSync\`）：真因见 \`runProfiled()\` 的注释 ——`);
+    console.log(`   子进程多 re-exec 了一层。读数**作废**，别引用。`);
   }
 
   // ── 调用者归因：把"这 15% 花在数组分配上"推进到"**谁**在造这些数组" ─────────
@@ -301,6 +330,35 @@ function makeStubReact(counts) {
   };
 }
 
+// ── 记账**代理** React（dom 档数元素用）：记完账照样调用**真** `React.createElement` ──
+//
+// ⚠️ 为什么不能像 translate 档那样换成桩（2026-10-03 实测踩到）：桩返回的是
+// `{type,key,props}` 这种**仿制品**，而运行时会把建好的元素树**缓存**下来。
+// 数完元素再把真 React 换回来，React 渲染到的就是那棵**桩元素的树**
+// ⇒ `React error #31: Objects are not valid as a React child`，**整棵树渲染不出来**。
+// 症状极具欺骗性：帧照样"跑完"，报出来的每帧只有 0.03 ms（因为什么都没落地）。
+// 代理这条路**产物是真的**，所以计数与渲染可以同时成立。
+function makeCountingReact(React, counts) {
+  const bump = (k) => { counts[k] = (counts[k] || 0) + 1; };
+  const tally = (props) => {
+    for (const k of Object.keys(props || {})) {
+      if (k !== "children" && k !== "style" && k !== "key" && /^on[A-Z]/.test(k) && typeof props[k] === "function") bump("__handlers");
+      if (k === "style") bump("__styles");
+    }
+  };
+  const proxy = Object.create(React);
+  proxy.createElement = (type, props, ...children) => {
+    bump(typeof type === "string" ? type : String(type));
+    tally(props);
+    return React.createElement(type, props, ...children);
+  };
+  proxy.cloneElement = (el, extra, ...children) => {
+    bump("__clone");
+    return React.cloneElement(el, extra, ...children);
+  };
+  return proxy;
+}
+
 // ── 元素树遍历（两种形态都要认：真 React 元素 / 记账桩的仿制品）───────────────
 function flat(c) {
   if (c == null || c === false) return [];
@@ -324,6 +382,11 @@ function hasText(el, needle) {
     if (flat(node.props && node.props.children).some((k) => typeof k === "string" && k.includes(needle))) return true;
   }
   return false;
+}
+/** 从表头文本里取 `tick`（dom 档用它**自证这一帧真的落地了**）。 */
+function tickOf(s) {
+  const m = /tick=(\d+)/.exec(s || "");
+  return m ? parseInt(m[1], 10) : -1;
 }
 /** 在元素树里找**驱动按钮**：子树含 `DRIVER_TEXT`，且带一个函数型 prop。 */
 function findDriver(el) {
@@ -393,10 +456,25 @@ async function main() {
     : { react: `记账桩（未装真 React；node_modules 里有 ${pkgVersion("react")} 但本档不用）` };
   if (args.mode === "dom") setupJsdom(require);
 
+  // ── dom 档的量纲**取决于 React 是哪份构建**（实测，见 PERF.md §6.1）────────────
+  //
+  // `NODE_ENV=production` ⇒ `require("react")` 走 `react.production.js`，而
+  // **`act` 只在 development 构建里导出** ⇒ `React.act === undefined`
+  // （`react-dom/test-utils` 那个 `act` 只是转发 `React.act`，production 下同样不可用）。
+  // ⇒ "dom 档怎么计时"必须分两路，而且**读数必须自报是哪一路**：
+  //   同一个仓库、同一份产物，两个 shell 的 `NODE_ENV` 不同就会跑出不同的量纲。
+  const reactAct = args.mode === "dom" && typeof React.act === "function" ? React.act : null;
+  const reactBuild = args.mode !== "dom"
+    ? "(translate 档不加载 React)"
+    : reactAct ? "development（导出 act）" : "production（不导出 act）";
+
   const core = await import(pathToFileURL(path.join(args.deps, "node_modules", "moobile-host", "core.js")).href);
 
   // 负载规模：**在 `app()` 之前**注入（`initial()` 会读它）。
   globalThis.__MOBILE_BENCH_N__ = n;
+  // 消融开关：行是否包 `@html.memo_by`（见 `perf-bench/app.mbt`）。
+  // ⚠️ 它**必须在 `app()` 之前**注入 —— 应用在模块初始化时读一次。
+  globalThis.__MOBILE_BENCH_MEMO__ = args.memo;
 
   const counts = {};
   const stub = makeStubReact(counts);
@@ -423,26 +501,40 @@ async function main() {
   let domCtx = null;
   if (args.mode === "dom") {
     const { createRoot } = require("react-dom/client");
-    const act = React.act ?? require("react").act;
+    const { flushSync } = require("react-dom");
     const Root = core.mountRoot(handles);
     const container = globalThis.document.createElement("div");
     globalThis.document.body.appendChild(container);
     const root = createRoot(container);
-    await act(async () => { root.render(React.createElement(Root)); });
+    // ⚠️ `root.render` 在 React 19 是**并发**的：不冲刷的话"挂载完"其实还没落地，
+    //    下面按文本找按钮会直接找不到（`act` 那条路把这个坑挡住了，production 档就暴露出来）。
+    if (reactAct) await reactAct(async () => { root.render(React.createElement(Root)); });
+    else flushSync(() => root.render(React.createElement(Root)));
     const btn = [...container.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === DRIVER_TEXT);
     if (!btn) { console.error(`jsdom 里找不到文本为 "${DRIVER_TEXT}" 的按钮 —— 负载或事件映射变了`); process.exit(1); }
-    domCtx = { act, btn, container, root };
+    // 表头 `span`（含 `perf-bench N=… tick=…`）：每帧用它**自证这一帧真的落地了**。
+    // 只读这一个 span（O(1)），不去读 `container.textContent`（那是 O(元素数)，会把计时搅乱）。
+    const header = [...container.querySelectorAll("span")].find((s) => /perf-bench N=/.test(s.textContent || ""));
+    if (!header) { console.error("jsdom 里找不到表头 span（负载或渲染变了）"); process.exit(1); }
+    domCtx = { btn, container, root, header, landed: 0, missed: 0, dropped: 0 };
   }
 
   // ── 找一个"驱动帧"的东西（两档的驱动方式不同）──
   let drive;
   if (args.mode === "dom") {
     // 真实那一路：往 DOM 上派发一次点击（React 的事件系统、diff、commit 全都要跑）。
-    drive = async () => {
-      await domCtx.act(async () => {
-        domCtx.btn.dispatchEvent(new globalThis.window.MouseEvent("click", { bubbles: true, cancelable: true, view: globalThis.window }));
-      });
-    };
+    const click = () => domCtx.btn.dispatchEvent(
+      new globalThis.window.MouseEvent("click", { bubbles: true, cancelable: true, view: globalThis.window }),
+    );
+    if (reactAct) {
+      // development 构建：用 `act` 冲刷（它自己的开销单独报成 `act_floor_ms`，读数要扣掉）。
+      drive = async () => { await reactAct(async () => { click(); }); };
+    } else {
+      // production 构建：**`dispatchEvent` 返回时 DOM 还是旧的**（实测：要等一个微任务才推进）
+      // ⇒ 一帧 = `dispatchEvent` + 一个微任务。微任务地板实测 ~1 µs，所以**没有"地板"要扣**
+      // （`act_floor_ms` 报 null 就是这个意思）。
+      drive = async () => { click(); await Promise.resolve(); };
+    }
   } else {
     const d = findDriver(handles.element());
     if (!d) { console.error(`元素树里找不到驱动按钮（文本 "${DRIVER_TEXT}"）—— 负载或事件映射改了？`); process.exit(1); }
@@ -455,7 +547,12 @@ async function main() {
   //
   // ⚠️ 必须 `reset()` 后只驱动一帧：桩在 translate 档是**全程挂着**的，
   // 从 `start()` 到预热到计时全都会记账 —— 不归零的话"每帧元素数"是个无意义的累加值。
-  if (args.mode === "dom") globalThis.MOBILE_HOST.react = stub;
+  //
+  // ⚠️ 两档用的**不是同一个东西**：translate 档换**桩**（那一档本来就不装 React），
+  //    dom 档换**计数代理**（`makeCountingReact`）—— 桩元素会把真 React 的树毒死，
+  //    症状是每帧 0.03 ms 却什么都没落地（见那个函数的注释与 `frames_dropped`）。
+  const counting = args.mode === "dom" ? makeCountingReact(React, counts) : stub;
+  if (args.mode === "dom") globalThis.MOBILE_HOST.react = counting;
   stub.reset();
   await drive();
   const elements = Object.entries(counts).filter(([k]) => !k.startsWith("__")).reduce((s, [, v]) => s + v, 0);
@@ -469,10 +566,47 @@ async function main() {
   // 每行：div + span + span + button = 4 作者元素，外加 3 个文本各包一层 = 7；
   // 表头 3 个作者元素 + 2 个文本 = 5；再加上根 div 与列表 div = 2。⇒ 7N + 7。
   // 这个式子是**口径**：改 `app.mbt` 的视图就必须改它，否则 `shape_ok` 会红。
-  const theoretical = 7 * n + 7;
+  //
+  // ★ `--memo` 打开时**预期的形状本来就不同**：行被记忆化之后，每帧只重建"固定那 7 个"
+  //   （根 div + 表头 div + span + Text + button + Text + 列表 div）。所以这里不是放宽断言，
+  //   而是**换一个同样精确的预期值** —— 而如果 memo 没生效（比如哈希被翻译层丢了），
+  //   实测会是 7N+7 而预期是 7 ⇒ `shape_ok` 照样红，这正是要它红的地方。
+  const theoreticalUnmemo = 7 * n + 7;
+  const theoretical = args.memo ? 7 : theoreticalUnmemo;
+
+  // ── 每帧自证落地（只 dom 档）────────────────────────────────────────────────
+  //
+  // 为什么必须有：production 档的帧靠**一个微任务**才落地 —— 那条路要是没走通，
+  // 量到的就是"什么都没发生"（一个漂亮且毫无意义的数字）。所以每帧比对表头的 `tick` 是否推进：
+  // 没推进就用**计时区外**的一个宏任务补一次并记账（`missed` = 补过一次；`dropped` = 补了也没动）。
+  //
+  // ⚠️ 元素计数那一帧走的是**计数代理**（产物是真的 React 元素），所以 DOM 没有落后模型；
+  //   这里只是把那次更新冲干净，再记 tick 基线，之后每帧才好逐帧比对。
+  let expectedTick = null;
+  if (domCtx) {
+    await new Promise((r) => setImmediate(r));
+    expectedTick = tickOf(domCtx.header.textContent);
+  }
+  /** 驱动一帧，并返回**计时区**里的耗时（补冲刷的开销一律留在计时区外）。 */
+  const driveOnce = async () => {
+    const t0 = performance.now();
+    await drive();
+    const dt = performance.now() - t0;
+    if (domCtx) {
+      const want = expectedTick + 1;
+      if (tickOf(domCtx.header.textContent) === want) { domCtx.landed += 1; expectedTick = want; }
+      else {
+        domCtx.missed += 1;
+        await new Promise((r) => setImmediate(r));
+        if (tickOf(domCtx.header.textContent) === want) expectedTick = want;
+        else domCtx.dropped += 1;
+      }
+    }
+    return dt;
+  };
 
   // ── 预热（JIT）──
-  for (let i = 0; i < args.warmup; i++) await drive();
+  for (let i = 0; i < args.warmup; i++) await driveOnce();
 
   // ── 计时 ──
   // 哨兵（量之前）—— 顺便它也是 JIT 的预热。
@@ -485,13 +619,20 @@ async function main() {
   // ⚠️ 它**不是**"干净与否"的判据：V8 的 JIT/GC 后台线程让这个比值常态就在 1.7~1.9（>1）。
   //    它的用处是**跨次比较** —— 同一配置的几次里，某一次明显偏低，就说明那一次条件不同。
   //    真正可读的是**校准哨兵**（见 `calibrate()`）。
+  // memo 诊断计数（库侧的 `memo_hit_count` / `memo_miss_count`，经句柄表暴露）。
+  // 为什么要它：这一层的失败模式是"**看起来包了 memo、其实没有**"（上游 0.16 的 memo
+  // 在我们这条通道上曾经整段空转）⇒ 让每次读数**自报**命中率，而不是靠读代码相信。
+  const memoNow = () => ({
+    hits: typeof handles.memo_hits === "function" ? handles.memo_hits() : null,
+    misses: typeof handles.memo_misses === "function" ? handles.memo_misses() : null,
+  });
+  const memo0 = memoNow();
   const cpu0 = process.cpuUsage();
   const wall0 = performance.now();
   for (let i = 0; i < args.frames; i++) {
-    const t0 = performance.now();
-    await drive();
-    per.push(performance.now() - t0);
+    per.push(await driveOnce());
   }
+  const memo1 = memoNow();
   const wallMs = performance.now() - wall0;
   const cpu = process.cpuUsage(cpu0);
   const cpuRatio = (cpu.user + cpu.system) / 1000 / wallMs;
@@ -500,16 +641,28 @@ async function main() {
   let retained = null;
   if (typeof globalThis.gc === "function") { globalThis.gc(); retained = heapMb() - heap0; }
 
-  // ── dom 档附带：`act()` 自身的开销（不扣掉它就会把差距算到 React 头上）──
+  // ── dom 档附带：**冲刷本身的地板**（不扣掉它就会把差距算到 React 头上）──
   let actFloor = null;
+  let flushFloor = null;
   if (args.mode === "dom") {
-    const floors = [];
-    for (let i = 0; i < 50; i++) {
-      const t0 = performance.now();
-      await domCtx.act(async () => {});
-      floors.push(performance.now() - t0);
+    if (reactAct) {
+      const floors = [];
+      for (let i = 0; i < 50; i++) {
+        const t0 = performance.now();
+        await reactAct(async () => {});
+        floors.push(performance.now() - t0);
+      }
+      actFloor = med(floors);
+    } else {
+      // production 档的"地板"就是那一个微任务 —— 实测 ~1 µs，量出来是为了**能看见它有多小**。
+      const floors = [];
+      for (let i = 0; i < 200; i++) {
+        const t0 = performance.now();
+        await Promise.resolve();
+        floors.push(performance.now() - t0);
+      }
+      flushFloor = med(floors);
     }
-    actFloor = med(floors);
   }
 
   const half = Math.floor(per.length / 2);
@@ -524,15 +677,28 @@ async function main() {
     env: {
       node: process.version, platform: `${process.platform}-${process.arch}`,
       cpu: (os.cpus()[0] && os.cpus()[0].model) || "?", cores: os.cpus().length, mem_gb: r3(os.totalmem() / 1073741824),
+      node_env: process.env.NODE_ENV ?? "(未设)", react_build: reactBuild,
+      dom_flush: args.mode !== "dom" ? null : reactAct ? "act" : "微任务",
       ...depsVersions,
     },
-    load: { ...perFrame, theoretical_elements: theoretical, shape_ok: elements === theoretical },
+    load: {
+      ...perFrame, memo: args.memo,
+      theoretical_elements: theoretical,
+      theoretical_unmemo_elements: theoreticalUnmemo,
+      shape_ok: elements === theoretical,
+    },
     metrics: {
       frame_ms_median: r3(med(per)), frame_ms_p95: r3(p95(per)), frame_ms_mean: r3(mean(per)),
       frame_ms_min: r3(sorted(per)[0]),
       ms_per_row: r3(med(per) / n),
       half_drift: r3(med(per.slice(half)) / med(per.slice(0, half))),
       act_floor_ms: actFloor === null ? null : r3(actFloor),
+      flush_floor_ms: flushFloor === null ? null : r3(flushFloor),
+      frames_landed: domCtx ? domCtx.landed : null,
+      frames_missed: domCtx ? domCtx.missed : null,
+      frames_dropped: domCtx ? domCtx.dropped : null,
+      memo_hits_per_frame: memo1.hits === null ? null : r3((memo1.hits - memo0.hits) / args.frames),
+      memo_misses_per_frame: memo1.misses === null ? null : r3((memo1.misses - memo0.misses) / args.frames),
       cpu_ratio: r3(cpuRatio),
       canary_before_ms: r3(canaryBefore),
       canary_after_ms: r3(canaryAfter),
@@ -557,9 +723,18 @@ function printBlock(o) {
   console.log(`\n── ${o.label ? o.label + " · " : ""}${o.mode} · N=${o.n} ─────────────────────────────`);
   console.log(`  产物      ${o.artifact.path}  sha256:${o.artifact.sha256}  ${(o.artifact.bytes / 1024).toFixed(0)} KB  ${o.artifact.mtime}`);
   console.log(`  环境      node ${o.env.node} · ${o.env.cpu} (${o.env.cores} 核) · react ${o.env.react}${o.env["react-dom"] ? " · react-dom " + o.env["react-dom"] : ""}`);
-  console.log(`  负载      ${o.load.elements} 元素（理论 ${o.load.theoretical_elements}${o.load.shape_ok ? " ✓" : " ✗ 形状不符"}） · ${o.load.handlers} handler · ${o.load.styles} style 对象 · ${o.load.clones} cloneElement`);
+  console.log(`            构建 ${o.env.react_build} · NODE_ENV=${o.env.node_env}${o.env.dom_flush ? " · 冲刷 " + o.env.dom_flush : ""}`);
+  console.log(`  负载      ${o.load.elements} 元素（理论 ${o.load.theoretical_elements}${o.load.shape_ok ? " ✓" : " ✗ 形状不符"}） · ${o.load.handlers} handler · ${o.load.styles} style 对象 · ${o.load.clones} cloneElement${o.load.memo ? " · ★ memo 开" : ""}`);
   console.log(`  每帧      median ${m.frame_ms_median} ms  p95 ${m.frame_ms_p95} ms  mean ${m.frame_ms_mean} ms  (min ${m.frame_ms_min})`);
-  console.log(`            ${m.ms_per_row} ms/行 · 后半/前半 ${m.half_drift}${m.half_drift > 1.15 ? "  ⚠️ 漂移" : ""}${m.act_floor_ms !== null ? ` · act() 地板 ${m.act_floor_ms} ms` : ""}`);
+  console.log(`            ${m.ms_per_row} ms/行 · 后半/前半 ${m.half_drift}${m.half_drift > 1.15 ? "  ⚠️ 漂移" : ""}${m.act_floor_ms !== null ? ` · act() 地板 ${m.act_floor_ms} ms` : ""}${m.flush_floor_ms !== null ? ` · 微任务地板 ${m.flush_floor_ms} ms` : ""}`);
+  if (m.memo_hits_per_frame !== null) {
+    console.log(`  memo      命中 ${m.memo_hits_per_frame}/帧 · 未命中 ${m.memo_misses_per_frame}/帧`
+      + (o.load.memo ? (m.memo_hits_per_frame > 0 ? "  ✓ 生效" : "  ❌ **开了 memo 却一次都没命中**") : ""));
+  }
+  if (m.frames_landed !== null) {
+    const total = m.frames_landed + m.frames_missed + m.frames_dropped;
+    console.log(`  落地      ${m.frames_landed}/${total} 帧自证推进过 tick${m.frames_missed ? ` · ${m.frames_missed} 帧靠计时区外的宏任务补上` : ""}${m.frames_dropped ? ` · ❌ ${m.frames_dropped} 帧**根本没落地**（这一次的读数不可用）` : ""}`);
+  }
   console.log(`  内存      heap 增量 ${m.heap_delta_mb} MB${m.heap_retained_mb === null ? "（无 --expose-gc）" : ` · gc 后残留 ${m.heap_retained_mb} MB`}`);
   console.log(`  诊断      unmapped=${m.unmapped} unsupported=${m.unsupported}`);
 }
@@ -592,12 +767,28 @@ function printSummary(byN, a) {
     if (hi / lo > 1.25) console.log(`\n⚠️ **条件不稳**：校准哨兵在 ${lo}~${hi} ms 之间浮动（${(hi / lo).toFixed(2)}×）——`);
     if (hi / lo > 1.25) console.log(`   这台机器在测量期间并不安静，跨配置的对比要打折看。`);
   }
+  // ★ `--memo` 档的**接线判据**：开了记忆化却零命中 = 这一档什么都没量到（就是空转那个 bug 的样子）
+  const memoRuns = [...byN.values()].flat().filter((o) => o.load.memo);
+  if (memoRuns.length && memoRuns.every((o) => (o.metrics.memo_hits_per_frame ?? 0) === 0)) {
+    console.log(`
+❌ **这一批开了 --memo，但命中数全是 0** ⇒ memo 没生效（翻译层把 thunk 哈希丢了？见 PERF.md §11.2）。`);
+    console.log(`   这一批的"memo 档"数字**不能引用**。`);
+  }
   const hashes = [...new Set([...byN.values()].flat().map((o) => o.artifact.sha256))];
   console.log(`\n产物      ${hashes.length === 1 ? hashes[0] + `（${byN.size} 档同一份产物 ✓）` : hashes.join(" / ") + "  ⚠️ 不是同一份产物，曲线不可比"}`);
   console.log(`          ${[...byN.values()][0][0].artifact.path}`);
   console.log(`宿主副本  ${[...byN.values()].flat().every((o) => o.host_copy_fresh) ? "与源码一致 ✓" : "⚠️ 有陈旧副本"}`);
   const bad = [...byN.values()].flat().filter((o) => !o.load.shape_ok);
-  if (bad.length) console.log(`⚠️ 负载形状与理论值不符：${bad.map((o) => "N=" + o.n).join(", ")}（改过 app.mbt？同步改本文件与 PERF.md 的口径）`);
+  if (bad.length) {
+    console.log(`⚠️ 负载形状与理论值不符：${bad.map((o) => "N=" + o.n).join(", ")}（改过 app.mbt？同步改本文件与 PERF.md 的口径）`);
+    // `--memo` 档不符 = **memo 没生效**（翻译层把哈希丢了）。这条要给一句能直接读懂的话，
+    // 否则读的人会以为"负载改了" —— 而这个区分的代价，2026-10-03 刚付过一次。
+    const memoBad = bad.filter((o) => o.load.memo);
+    if (memoBad.length) {
+      console.log(`   ★ 其中 ${memoBad.length} 档是 \`--memo\`：实测 ${memoBad[0].load.elements} 元素、预期 ${memoBad[0].load.theoretical_elements}`
+        + `（未记忆化时是 ${memoBad[0].load.theoretical_unmemo_elements}）⇒ **memo 没生效**，不是负载变了。`);
+    }
+  }
 }
 
 await main();

@@ -17,15 +17,24 @@
 ///             └ button("·") on_click=emit(Bump(id))
 /// ```
 ///
-/// 于是 **每个 row = 4 个元素 + 1 个 handler**、**N 行 = 4N+5 个元素左右**
-/// （harness 会把实测的元素数报出来自证）。行内既有文本、又有样式、又有 handler ——
+/// 于是 **每个 row = 4 个作者元素 + 3 个文本包层 = 7 个元素 + 1 个 handler**、
+/// **N 行 + 固定 7 个 = `7N+7` 个元素**（harness 会把实测的元素数报出来自证；
+/// 那个式子是**口径**，改这张图就必须同步改 `tools/perf_bench.mjs` 与 `docs/PERF.md`）。
+/// ⚠️ 这里以前写的是 `4N+5` —— 那是**漏算了 `VNode::Text` 给每个文本节点多包的那层 `Text`**
+/// （RN 的硬约束：裸字符串不能当 `View` 的子节点）。仪器那边一直是对的，是这段注释错了。
+/// 行内既有文本、又有样式、又有 handler ——
 /// `PLAN.md` §4.2 的三个嫌疑点（`map_tag` 查表、`styles_to_js` 分配、handler 闭包）
 /// 各自都被这个负载覆盖到。
 ///
-/// ## N 从哪来
+/// ## 两个宿主注入的开关
 ///
-/// **宿主在 `app()` 之前注入** `globalThis.__MOBILE_BENCH_N__`。
-/// 这样"改前 / 改后"量的是**同一份产物**（见 `app.mbt` 里 `bench_n()` 的注释）。
+/// | 键 | 作用 |
+/// |---|---|
+/// | `globalThis.__MOBILE_BENCH_N__` | 行数 N（默认 100） |
+/// | `globalThis.__MOBILE_BENCH_MEMO__` | **消融开关**：每行是否包一层 `@html.memo_by`（默认关） |
+///
+/// 两个都**在 `app()` 之前注入**，于是"改前 / 改后"量的是**同一份产物** ——
+/// 连"编译差异"这一项都被消掉了（见 `bench_n()` / `bench_memo()` 的注释）。
 
 ///|
 /// 行数 N。宿主没注入时退到 100（不是 0 —— 空负载会让"每帧成本"看起来漂亮得可疑）。
@@ -37,6 +46,24 @@ extern "js" fn bench_n() -> Int =
   #|   const v = globalThis.__MOBILE_BENCH_N__;
   #|   return typeof v === 'number' && v > 0 ? (v | 0) : 100;
   #| }
+
+///|
+/// **消融开关**（宿主在 `app()` 之前注入，默认关）：每一行是否包一层 `@html.memo_by`。
+///
+/// 为什么把开关做进负载、而不是另建一个应用：**"改前 / 改后"必须是同一份产物**
+/// （这是 `--artifact` 那套 A/B 的前提）。同一个哈希、只换宿主注入的那个布尔值，
+/// 就没有"两次编译差异混进读数"这件事。
+///
+/// 键的取值：`id * 2 + hot`。契约要求"键相同 ⇒ HTML 与 handler 等价"——
+/// 本负载里行的 HTML 只依赖 `id` / `text` / `hot`，而 `text` 由 `id` 决定
+/// （`row_text(i)`），所以这个键是**完备**的。
+extern "js" fn bench_memo() -> Bool =
+  #| () => globalThis.__MOBILE_BENCH_MEMO__ === true
+
+///|
+/// 模块初始化时读一次（**不是每行每帧读**）：读一次的话两种变体的负载形状一致，
+/// 差别只在"包没包 memo"这一件事上。
+let g_memo : Bool = bench_memo()
 
 ///|
 /// 一行。`hot` 用来让"点某一行"这件事真的改变那一行的外观（否则 React 会被
@@ -168,6 +195,25 @@ fn row_html(r : Row, emit : @cmd.Emit[Msg]) -> @html.Html {
 }
 
 ///|
+/// 一行的**外壳**：`g_memo` 打开时包一层 `@html.memo_by`，否则就是原来那个 `row_html`。
+///
+/// 键 = `id * 2 + hot`：本负载里行的 HTML 完全由这两个字段决定，所以"键相同 ⇒ 内容与
+/// handler 等价"这条契约成立（`text` 由 `id` 推出来）。
+fn rows_html(model : Model, emit : @cmd.Emit[Msg]) -> Array[@html.Html] {
+  if g_memo {
+    // ★ 走**公开的一行式入口**（`@moobile.memo_list`）—— 这样基准量到的就是
+    // "应用照文档写会走的那条路"，而不是这里手搓的另一条。键 = `id*2+hot`。
+    @moobile.memo_list(
+      model.rows,
+      by=r => r.id * 2 + (if r.hot { 1 } else { 0 }),
+      f=r => row_html(r, emit),
+    )
+  } else {
+    model.rows.map(r => row_html(r, emit))
+  }
+}
+
+///|
 fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   @html.div(
     attrs=attrs(
@@ -212,7 +258,7 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
       @html.div(
         attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Column)),
-        model.rows.map(r => row_html(r, emit)),
+        rows_html(model, emit),
       ),
     ],
   )

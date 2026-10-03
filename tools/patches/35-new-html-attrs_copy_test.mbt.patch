@@ -1,0 +1,45 @@
+--- a/html/attrs_copy_test.mbt
++++ b/html/attrs_copy_test.mbt
+@@ -33,3 +33,42 @@
+   debug_inspect(vnode_attr(omitted, "autocomplete"), content="None")
+   debug_inspect(vnode_attr(explicit, "autocomplete"), content="Some(\"off\")")
+ }
++
++///|
++/// 取某元素上**结构化样式表**里的一个键（`Props::styles_map()` 是公开读法）。
++fn vnode_has_style(html : @html.Html, key : String) -> Bool {
++  match html.to_virtual_dom() {
++    Elem(_, props, _, namespace_uri=None) => props.styles_map().contains(key)
++    _ => false
++  }
++}
++
++///|
++/// ★ **2026-10-03 补**：`Attrs::copy` 的隔离**也要覆盖样式表**。
++///
++/// 为什么补这条：`Props::copy` 曾经把四张表**连句柄一起共享**（而句柄是可变的）⇒
++/// 往副本里写会**漏回原件** —— 上面那条 `attrs` 的测试抓到了它。
++/// 而样式表同属那四张表之一，且在 2026-10-03 又被改成**扁平数组**（`Styles`）
++/// ⇒ "共享数组、但永不原地改"这条不变式必须**有测试守着**（它正是刚栽过的那类坑）。
++test "Attrs::copy isolates styles too" {
++  let original = @html.Attrs::build().styles(@style.Style::new().flex(1.0))
++  let copied = original.copy().styles(@style.Style::new().color("#fff"))
++  let original_html = @html.div(attrs=original, @html.nothing)
++  let copied_html = @html.div(attrs=copied, @html.nothing)
++  assert_true(vnode_has_style(original_html, "flex"))
++  // ← 这一条就是"副本的 color 不许漏回原件"
++  assert_false(vnode_has_style(original_html, "color"))
++  // 副本仍然继承原件那一份
++  assert_true(vnode_has_style(copied_html, "flex"))
++  assert_true(vnode_has_style(copied_html, "color"))
++}
++
++///|
++/// 存进表里的必须是**快照**：调用方之后接着改自己那份 `Style`，不许影响已经建好的元素。
++test "styles stores a snapshot, not the caller's Style" {
++  let s = @style.Style::new().flex(1.0)
++  let html = @html.div(attrs=@html.Attrs::build().styles(s), @html.nothing)
++  ignore(s.color("#f00"))
++  assert_true(vnode_has_style(html, "flex"))
++  assert_false(vnode_has_style(html, "color"))
++}

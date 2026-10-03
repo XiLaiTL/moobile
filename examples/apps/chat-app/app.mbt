@@ -389,6 +389,32 @@ fn pill(label : String, bg : String, on_click : @cmd.Cmd) -> @html.Html {
 }
 
 ///|
+///|
+/// **这一行的记忆化键** —— 必须把 `bubble_row` 用到的**每一个**会变的东西都装进去：
+///
+/// | 装进去的东西 | 少了它的症状 |
+/// |---|---|
+/// | `b.role` | 「你」/「AI」的标签与配色**停在旧值上** |
+/// | `b.text` | 流式长出来的字**画不出来** |
+/// | `streaming_tail` | 生成中的光标**不会出现 / 不会消失** |
+///
+/// 用的是"各位拼一个 Int"（`*4` 给 role、`*2` 给光标），**不是**字符串拼接 ——
+/// 键每帧每行都要算一次，拼字符串是白白的分配。
+fn bubble_key(b : Bubble, streaming_tail : Bool) -> Int {
+  let role_bit = if b.role == User {
+    0
+  } else {
+    1
+  }
+  let tail_bit = if streaming_tail {
+    1
+  } else {
+    0
+  }
+  b.text.hash() * 4 + role_bit * 2 + tail_bit
+}
+
+///|
 fn bubble_row(b : Bubble, streaming_tail : Bool) -> @html.Html {
   let mine = b.role == User
   @html.div(
@@ -499,7 +525,13 @@ fn chat_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.node(
         "scroll",
         attrs(@style.Style::new().flex(1.0).margin_vertical(@style.px(10.0))),
-        model.bubbles.mapi((i, b) => bubble_row(b, sending && i == n - 1)),
+        // ★ 消息列表走**记忆化**：流式时每来一段只有"最后那条"要重算，
+        //   其余每一条都命中缓存（判据在 `verify.mjs` 里用库自报的 `memo_hits/memo_misses` 断言）。
+        @moobile.memo_list_i(
+          model.bubbles,
+          by=(i, b) => bubble_key(b, sending && i == n - 1),
+          f=(i, b) => bubble_row(b, sending && i == n - 1),
+        ),
       ),
       @html.div(
         attrs=attrs(@style.Style::new().margin_bottom(@style.px(6.0))),

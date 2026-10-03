@@ -97,9 +97,9 @@
 +/// 2. 它**零调用点** —— 唯一真实应用 `interest/yi` 从未用过结构化样式
 +///    （136 处 `class=` / 0 处 `style=`），所以删掉不破坏任何代码。
 +pub fn Attrs::styles(self : Attrs, s : @style.Style) -> Attrs {
-+  for entry in s.entries() {
-+    self.0.styles[entry.0] = entry.1
-+  }
++  // ★ 2026-10-03：样式表改成**扁平数组**（`Styles::apply`）——
++  // 原来这里逐条插进不可变 HAMT，而这是每元素每帧最贵的一件事（`PERF.md` §12.3）。
++  self.0.styles.apply(s)
    self
  }
  

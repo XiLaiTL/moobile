@@ -215,6 +215,16 @@ function textOf(node, out = []) {
   return out;
 }
 
+/** 深度优先收集**所有**满足条件的元素（`find` 只给第一个，这条剧本要数行数）。 */
+function findAll(node, pred, out = []) {
+  if (!node || typeof node !== "object" || !node.props) return out;
+  const text = textOf(node).join("");
+  if (pred(node, text)) out.push({ element: node, text });
+  const kids = node.props.children;
+  for (const c of Array.isArray(kids) ? kids : [kids]) findAll(c, pred, out);
+  return out;
+}
+
 /** 深度优先找**第一个**满足条件的元素（返回 {element, text}）。 */
 function find(node, pred) {
   if (!node || typeof node !== "object" || !node.props) return null;
@@ -290,6 +300,89 @@ const del = must(
 del.element.props.onPress();
 await settle();
 check(`删除后条目消失（界面上不再有「${DRAFT}」）`, !TREE_TEXT().includes(DRAFT), TREE_TEXT().slice(0, 160));
+
+// ── 8b) ★ **专抓"memo 键里少了 `id`"** 的剧本 ──────────────────────────────────
+//
+// 为什么单独来一条：`memo` 的缓存是**按位置**存的。删掉第一条之后，位置 0 换成了
+// **同文案、同勾选状态**的另一条 —— 如果键里没有 `id`，两个键**完全相同** ⇒ 命中缓存
+// ⇒ 复用**上一次那份元素** ⇒ 它里面的 handler 还是 `emit(Toggle(已删的 id))`
+// ⇒ 点下去**什么都不发生**（而界面看起来一切正常）。
+//
+// ⚠️ 这条在"只加一条 / 只勾一次 / 只删一条"的剧本里**看不出来**（那些动作下位置与键同时变），
+//    所以必须单独摆出来 —— 这也正是 `examples/apps/template/app.mbt` 的 `item_key`
+//    把 `id` 也放进键里的理由。
+if (typeof handles.memo_hits === "function") {
+  const SAME = "同名待办";
+  const addOne = async (text) => {
+    findInput().element.props.onChangeText(text);
+    await settle();
+    must(
+      `按钮「${LABEL_ADD}」`,
+      (el, txt) => typeof el.props.onPress === "function" && txt.includes(LABEL_ADD),
+    ).element.props.onPress();
+    await settle();
+  };
+  const toggles = () =>
+    findAll(
+      handles.element(),
+      (el, txt) => typeof el.props.onPress === "function" && (txt === "" || txt === "✓"),
+    );
+  const dels = () =>
+    findAll(
+      handles.element(),
+      (el, txt) => typeof el.props.onPress === "function" && txt.includes(LABEL_DEL),
+    );
+
+  await addOne(SAME);
+  await addOne(SAME);
+  const twoRows = toggles().length === 2 && dels().length === 2;
+  if (!twoRows) {
+    console.log(`SKIP  「同名两条」的记忆化剧本（这个应用的行的形状不同：勾选 ${toggles().length} · 删除 ${dels().length}）`);
+  } else {
+    // 删掉**第一条** ⇒ 位置 0 现在是另一条**同文案同状态**的待办
+    dels()[0].element.props.onPress();
+    await settle();
+    const oneLeft = toggles().length === 1 && TREE_TEXT().includes(SAME);
+    check("同名两条 → 删掉第一条之后还剩一条", oneLeft, `勾选按钮 ${toggles().length} 个`);
+
+    // 勾**剩下的这一条**：它必须勾的是**它自己**
+    const t = toggles()[0];
+    check("剩下那条此刻**未**完成（否则下面那条是假通过）", t.text === "", `text=${JSON.stringify(t.text)}`);
+    t.element.props.onPress();
+    await settle();
+    const after = toggles()[0];
+    check(
+      "★ 勾剩下那条：勾上的是**它自己**（键里少了 `id` 的话，这里会点不动 —— 缓存命中了旧元素、handler 还指向已删的 id）",
+      after.text === "✓",
+      `点过之后 text=${JSON.stringify(after.text)}`,
+    );
+    // 收尾：删掉它，别把后面的步骤搅乱
+    dels()[0]?.element.props.onPress();
+    await settle();
+  }
+} else {
+  console.log("SKIP  「同名两条」的记忆化剧本（宿主没有暴露 memo 计数 ⇒ 判据不成立就不假装验过）");
+}
+
+// ── 8c) 诊断（**信息项，不判红**）：这个应用用了 memo 没有 ──────────────────────
+//
+// 为什么打这一行：`memo` 的失败模式是"看起来包了、其实没有"，而**"哪些列表该包"只有应用知道** ——
+// 判据是**库自报的两个计数**（`docs/PERF-RECIPES.md` 里给应用作者的写法就是这个）。
+// 于是**任何应用**无头跑一遍，就能看见自己有没有在用：命中为 0 = 一个列表都没包。
+//
+// ⚠️ 刻意**不判红**：不是每个应用都该包（行数少、每帧全变的列表包了也白搭）。
+//    这条是"点名"，不是"及格线"。
+if (typeof handles.memo_hits === "function") {
+  const h = handles.memo_hits();
+  const m = handles.memo_misses();
+  console.log(
+    `
+备忘录（诊断，不判红）：memo 命中 ${h} · 未命中 ${m}` +
+      (h === 0
+        ? "  ← 一次都没命中：这个应用的列表还没包 memo（配方见 docs/PERF-RECIPES.md）"
+        : `  ← 命中率 ${((h / (h + m)) * 100).toFixed(0)}%`),
+  );
+}
 
 // ── 9) 断言：订阅（运行时推消息，不由交互产生）—— 默认不跑（要等 5 秒）────────
 if (SLOW) {

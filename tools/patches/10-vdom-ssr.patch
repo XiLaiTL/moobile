@@ -7,7 +7,7 @@
 -  attrs : Map[String, String],
 -  styles : Map[String, String],
 +  attrs : PropsTable[String],
-+  styles : PropsTable[@style.StyleValue],
++  styles : Styles,
  ) -> Unit {
    if !attrs.contains("style") && styles.is_empty() {
      return

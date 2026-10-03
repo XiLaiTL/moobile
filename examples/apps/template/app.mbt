@@ -113,6 +113,28 @@ fn attrs(s : @style.Style) -> @html.Attrs {
 }
 
 ///|
+/// **这一行的记忆化键**（给 `@moobile.memo_list` 用）。
+///
+/// `memo` 的契约是：**键相同必须蕴含"这一行的 HTML 与 handler 等价"**。所以这里把
+/// `item_row` 用到的**每一个**会变的东西都装进去：
+///
+/// | 字段 | 少了它的症状 |
+/// |---|---|
+/// | `text` | 改文案**画不出来** |
+/// | `done` | 勾选状态、颜色、对钩**停在旧值** |
+/// | `id` | **最隐蔽的一个**：行里的 `emit(Toggle(t.id))` 是**被复用**的那份闭包 —— 列表重排/插入之后，同一位置换成另一条同文案同状态的待办，点下去会**切换错的那一条** |
+///
+/// 用"哈希 + 位"拼成一个 `Int`（不是字符串拼接）：键**每帧每行**都要算。
+fn item_key(t : Todo) -> Int {
+  let done_bit = if t.done {
+    1
+  } else {
+    0
+  }
+  (t.text.hash() * 31 + t.id) * 2 + done_bit
+}
+
+///|
 fn item_row(t : Todo, emit : @cmd.Emit[Msg]) -> @html.Html {
   @html.div(
     attrs=attrs(
@@ -275,7 +297,14 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ],
       ),
       input_row(model, emit),
-      @html.div(attrs=attrs(@style.Style::new()), model.items.map(t => item_row(t, emit))),
+      // ★ 列表走 `memo_list`（一行包对）：键没变的那几行**整棵子树都不重建**，
+      //   React 拿到的是同一个元素引用 ⇒ 整片跳过。列表越长越划算；**键必须完备**
+      //   （见 `item_key` 的注释 —— 少一个字段就有一个看得见的坏症状）。
+      //   配方与自查判据：`docs/PERF-RECIPES.md`。
+      @html.div(
+        attrs=attrs(@style.Style::new()),
+        @moobile.memo_list(model.items, by=item_key, f=t => item_row(t, emit)),
+      ),
       @html.span(
         attrs=attrs(@style.Style::new().font_size(12.0).color(c_ink3)),
         "本次会话 \{model.ticks * 5} 秒（`subscriptions` 那半条 TEA 的样本，不用就直接删）",

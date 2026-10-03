@@ -41,7 +41,7 @@
        slots[event] = slot
      }
    }
-@@ -658,16 +659,16 @@
+@@ -662,16 +663,16 @@
    }
    for key, _ in old.props.styles {
      if !new.styles.contains(key) {

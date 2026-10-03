@@ -1,6 +1,6 @@
 --- a/internal/vdom/vdom.mbt
 +++ b/internal/vdom/vdom.mbt
-@@ -108,46 +108,209 @@
+@@ -111,46 +111,408 @@
  }
  
  ///|
@@ -18,13 +18,17 @@
 +
 +///|
 +/// `@dom.Event` → `Event`。DOM 后端在监听器边界处使用。
-+#cfg(target="js")
+ #cfg(target="js")
+-type Event = @dom.Event
+-
+-///|
+-#cfg(not(target="js"))
+-type Event = Unit
 +fn dom_event(value : @dom.Event) -> Event = "%identity"
 +
 +///|
 +/// `Event` → `@dom.Event`。DOM 侧的辅助函数（从事件里取值）使用。
- #cfg(target="js")
--type Event = @dom.Event
++#cfg(target="js")
 +pub fn as_dom_event(value : Event) -> @dom.Event = "%identity"
 +
 +///|
@@ -46,14 +50,25 @@
 +/// 换字段类型的代价是编译器**强制**的（漏一处就编译不过），比手工改写入点安全得多。
 +pub struct PropsTable[V] {
 +  mut entries : @hashmap.HashMap[String, V]
++  /// ★ **moobile 追加（2026-10-03）：让"空不空"变成 O(1)。**
++  ///
++  /// 为什么需要：core 的 `immut/hashmap` 把 `HashMap::length()` **明确标成 O(N)**
++  /// （`HAMT.mbt` 的文档原话：`WARNING: this operation is O(N) in map size`，实现是递归数节点 + 一个闭包）。
++  /// 而"这张表空不空"在**每个元素每帧**都要问一次 —— `render.mbt` 的 `render_props` 靠它决定
++  /// **要不要写 `style` 键**（空样式表不写，那是给第三方组件库的契约）。
++  /// 实测这一项占翻译层 **3.0%**（`PERF.md` §12）。
++  ///
++  /// 为什么是"保守非空位"而不是缓存精确长度：`set` 走的是 `HashMap::add`、**不查旧值**
++  /// （要查就得多一趟哈希，反而更贵），所以精确长度算不出来；而调用点要的**只是"空不空"**。
++  /// `remove` 是罕见路径（只有 `html.mbt` 剥 `innerHTML` 那两处）⇒ 在那里重算一次，
++  /// 语义仍然**精确**，不是近似。
++  mut nonempty : Bool
 +}
- 
- ///|
--#cfg(not(target="js"))
--type Event = Unit
++
++///|
 +/// 空表。
 +pub fn[V] PropsTable::new() -> PropsTable[V] {
-+  { entries: @hashmap.HashMap::new() }
++  { entries: @hashmap.HashMap::new(), nonempty: false }
 +}
 +
 +///|
@@ -61,6 +76,26 @@
 +#alias("_[_]=_")
 +pub fn[V] PropsTable::set(self : PropsTable[V], key : String, value : V) -> Unit {
 +  self.entries = self.entries.add(key, value)
++  self.nonempty = true
++}
++
++///|
++/// **独立句柄** —— 一个新的 `PropsTable` 对象，**共享同一份不可变数据**。
++///
++/// ★ **为什么必须有它（2026-10-03 修的真 bug）**：`PropsTable` 是**可变对象**
++/// （`set` 原地改写 `entries` 那一格），而 P1 的第一版 `Props::copy()` 把那四张表**原样共享** ——
++/// 于是"复制"出来的 Props 与原件**是同一批表对象**，往副本里写会**漏回原件**。
++/// 这不是理论风险：它正是 `docs/PERF.md` §0 警告过的那类**静默污染**
++/// （同一个 `Attrs` 传给第二个元素，第二个元素就把自己的属性写进了第一个）。
++///
++/// 上游自带的回归测试 `vendor/rabbita/html/attrs_copy_test.mbt`
++/// （`"Attrs::copy isolates later mutations"`）**抓到了它** ——
++/// ⚠️ 而它**没在门里跑**（`tools/verify_all.sh` 不跑 `moon test`），所以一直没被发现。
++///
++/// 正确做法：**只共享不可变数据（HAMT 根），不共享那个可写的格子** ——
++/// 复制仍然是 **O(1)、不逐条重插**（这是 P1 的收益），但副本与原件从此互不可见。
++pub fn[V] PropsTable::share(self : PropsTable[V]) -> PropsTable[V] {
++  { entries: self.entries, nonempty: self.nonempty }
 +}
 +
 +///|
@@ -76,21 +111,171 @@
 +///|
 +pub fn[V] PropsTable::remove(self : PropsTable[V], key : String) -> Unit {
 +  self.entries = self.entries.remove(key)
++  // 罕见路径：只有在这里才需要重算（`length()` 是 O(N)）
++  self.nonempty = self.entries.length() > 0
 +}
 +
 +///|
++/// ⚠️ **仍然是 O(N)**（core 的不可变表没有 O(1) 的 size）—— 别把它放进"每元素每帧"的路径。
++/// 要问"空不空"请用 `is_empty()`。
 +pub fn[V] PropsTable::length(self : PropsTable[V]) -> Int {
 +  self.entries.length()
 +}
 +
 +///|
++/// **O(1)**（见 `nonempty` 字段的注释）。
 +pub fn[V] PropsTable::is_empty(self : PropsTable[V]) -> Bool {
-+  self.entries.length() == 0
++  !self.nonempty
 +}
 +
 +///|
 +pub fn[V] PropsTable::iter2(self : PropsTable[V]) -> Iter2[String, V] {
 +  self.entries.iter2()
++}
++
++///|
++/// **样式表：扁平数组**（moobile 改造，2026-10-03）。
++///
++/// ## 为什么不再用 `PropsTable`（不可变 HAMT）
++///
++/// 这条路**每个元素每帧**要插 4 条样式（N=1000 时 4005 次/帧），而 HAMT 的 `add` 每次都要
++/// **哈希 + 路径拷贝 + 分配**。消融探针（把"插入"做 3 遍、输出逐项不变）实测
++/// `min` **+61.4%（区间不重叠）** ⇒ 反推现存那一遍约 **1.8 ms/帧 ≈ 翻译层的 30%**（`PERF.md` §12.3）。
++/// ⚠️ 同一处的 profile 份额只报 3.2% —— **profile 估大小会低一个数量级**。
++///
++/// 换成数组之后：写入 = 一次数组拷贝（没有哈希），读取/迭代 = 顺序扫，`is_empty` = O(1)。
++/// 表的规模在这里天然很小（一条 `Style` 几条到十几条），所以线性扫描比哈希更快。
++///
++/// ## 三条不变式（`Props::copy` 的 O(1) 与"副本独立"全靠它们）
++///
++/// 1. **`entries` 指向的那个数组永不原地修改** —— 所有"改"都**换成新数组**。
++///    所以两个句柄可以安全共享同一个数组。
++///    ⚠️ 这条是**约定**，不是类型保证：曾试过用 `ArrayView` 把它变成类型保证，
++///    实测**更慢 8~15%**（§14.2）⇒ 留在约定这一侧，靠"不留可变别名的访问器"+ 测试守着。
++/// 2. **句柄本身是可变的**（`mut` 字段 ⇒ `Styles` 是引用类型），
++///    这样 `Props::styles()` 才能像原来那样"就地"把新样式写进这一格；
++///    而 `Props::copy()` 走 `share()` 给**新句柄** ⇒ 副本怎么改都碰不到原件。
++///    （⚠️ 这正是 `PropsTable` 第一版栽过的地方：句柄共享 + 原地改 = 串味。）
++/// 3. **存进来的数组是从调用方复制来的**：`@style.Style` 的构造器是**可变**的，
++///    调用方之后继续用那份 `Style`，不能影响这里已经存下的内容。
++pub struct Styles {
++  /// ⚠️ **裸 `Array`，不是 `ArrayView`** —— 试过后者（让"只读"由类型保证）：
++  /// 实测 `translate` **+10~15%**、`dom` **+8~9.5%**（六个统计量方向一致，堆增量 dom +86%）
++  /// ⇒ **回退**。见 `docs/PERF.md` §14.2。
++  /// 换来的安全收益用另一条路拿：**不给任何会漏出这个可变数组的访问器**
++  /// （`Styles::entries()` 已删掉），不变式 + 下面的测试守着它。
++  mut entries : Array[(String, @style.StyleValue)]
++}
++
++///|
++/// 空样式表。
++pub fn Styles::empty() -> Styles {
++  { entries: [] }
++}
++
++///|
++/// 从应用给的 `Style` 复制一份（不变式 3）。
++pub fn Styles::from_style(s : @style.Style) -> Styles {
++  { entries: s.entries().copy() }
++}
++
++///|
++/// **新句柄、同一个数组** —— `Props::copy()` 用它。
++///
++/// 之所以安全：写入一律**换新数组**（不变式 1），所以两个句柄永远不会互相看见对方的改动。
++pub fn Styles::share(self : Styles) -> Styles {
++  { entries: self.entries }
++}
++
++///|
++/// 就地合并一份样式（**后来的赢**，与原来的 HAMT 覆盖语义一致）。
++///
++/// 只改**本句柄**那一格；那个数组本身不动（不变式 1）。
++pub fn Styles::apply(self : Styles, s : @style.Style) -> Unit {
++  let incoming = s.entries()
++  if incoming.length() == 0 {
++    return
++  }
++  // ★ 快路径：表本来就是空的（**新建元素时就是这种情况**）⇒ 直接拿 incoming 的副本，不必走通用路径。
++  if self.entries.length() == 0 {
++    self.entries = incoming.copy()
++    return
++  }
++  // 通用路径：先把自己这份拷成**新数组**（`out` 是局部量，函数返回后没人持有这个旧数组的别名），
++  // 再把 incoming 合进去（同键**后来的赢**，与原来 HAMT 覆盖的语义一致），最后整体换上去。
++  let out : Array[(String, @style.StyleValue)] = self.entries.copy()
++  for entry in incoming {
++    let mut replaced = false
++    for i = 0; i < out.length(); i = i + 1 {
++      if out[i].0 == entry.0 {
++        out[i] = entry
++        replaced = true
++        break
++      }
++    }
++    if !replaced {
++      out.push(entry)
++    }
++  }
++  self.entries = out
++}
++
++///|
++/// **O(1)**（数组长度）。
++pub fn Styles::is_empty(self : Styles) -> Bool {
++  self.entries.length() == 0
++}
++
++///|
++pub fn Styles::length(self : Styles) -> Int {
++  self.entries.length()
++}
++
++///|
++/// 线性扫描：表很小（≤ 十几条），比哈希更快。
++pub fn Styles::get(self : Styles, key : String) -> @style.StyleValue? {
++  for entry in self.entries {
++    if entry.0 == key {
++      return Some(entry.1)
++    }
++  }
++  None
++}
++
++///|
++pub fn Styles::contains(self : Styles, key : String) -> Bool {
++  for entry in self.entries {
++    if entry.0 == key {
++      return true
++    }
++  }
++  false
++}
++
++///|
++/// **热路径用的按序号取**（`styles_to_js` 每帧要遍历 4005 条）。
++///
++/// 为什么不直接用 `for k, v in styles`（`iter2`）：那一条走的是**闭包迭代器**
++/// —— 每个元素都要一次间接调用 + 一个 `Option[(K,V)]`。含时归因（`PERF.md` §14.5）里
++/// `Iter2::next` 在 `styles_to_js` 下就占 1.3~2.4%，而这条按序号循环是纯索引。
++/// （仍然只读：`at` 返回的是值，拿不到那个数组。）
++pub fn Styles::at(self : Styles, i : Int) -> (String, @style.StyleValue) {
++  self.entries[i]
++}
++
++///|
++pub fn Styles::iter2(self : Styles) -> Iter2[String, @style.StyleValue] {
++  let mut i = 0
++  let n = self.entries.length()
++  Iter2::new(
++    () => {
++      guard i < n else { None }
++      let entry = self.entries[i]
++      i += 1
++      Some((entry.0, entry.1))
++    },
++    size_hint=n,
++  ).iter2()
 +}
  
  ///|
@@ -104,7 +289,8 @@
 +  props : PropsTable[@variant.Variant]
 +  // ★ moobile 改造：样式值从一开始就是**类型化**的，不再是"待解析的字符串"。
 +  // 旧的 `Map[String, String]` 通道已删除 —— 实测零调用点。
-+  styles : PropsTable[@style.StyleValue]
++  // ★ 2026-10-03：再改成**扁平数组**（`Styles`）—— 见 `Styles` 的注释（插入是这笔开销的大头）。
++  styles : Styles
  }
  
  ///|
@@ -115,7 +301,7 @@
 -  handlers : Map[String, (Event, &Scheduler) -> Unit],
 +  attrs : PropsTable[String],
 +  props : PropsTable[@variant.Variant],
-+  styles : PropsTable[@style.StyleValue],
++  styles : Styles,
 +  handlers : PropsTable[(Event, &Scheduler) -> Unit],
  ) -> Props {
    { handlers, attrs, styles, props, }
@@ -126,20 +312,35 @@
 -  let dst : Map[K, V] = Map([])
 -  for k, v in src {
 -    dst[k] = v
-+/// **独立副本** —— 语义与上游逐条重插**完全等价**，但这里是 **O(1) 指针拷贝、零分配**：
-+/// 四张表都是不可变的，共享它们不会让"副本"与"原件"互相看见对方的改动。
+-  }
+-  dst
+-}
+-
+-///|
++/// **独立副本** —— 语义与上游逐条重插**等价**，但**不逐条重插**：
++/// 四张表的**不可变数据**（HAMT 根）共享，四张表的**句柄**各自新建
++/// （`PropsTable::share`）⇒ `O(1)`、与元素数无关，而"副本与原件互不可见"这条语义是真的。
++///
++/// ⚠️ **这里修正过一个真 bug**：第一版把四张表**原样共享**（连句柄也共享）——
++/// 因为 `PropsTable` 是可变的（`set` 原地改 `entries`），于是往副本里写会**漏回原件**，
++/// 上游的回归测试 `attrs_copy_test.mbt` 直接红（详见 `PropsTable::share` 的注释）。
 +///
 +/// 上游这一处曾用 `copy_map` 逐条重插（四张表 × 每元素每帧）—— 那是被替换掉的那笔开销。
-+pub fn Props::copy(self : Props) -> Props {
-+  {
-+    handlers: self.handlers,
-+    attrs: self.attrs,
-+    props: self.props,
-+    styles: self.styles,
-   }
--  dst
- }
- 
+ pub fn Props::copy(self : Props) -> Props {
+   {
+-    handlers: copy_map(self.handlers),
+-    attrs: copy_map(self.attrs),
+-    props: copy_map(self.props),
+-    styles: copy_map(self.styles),
+-  }
+-}
++    handlers: self.handlers.share(),
++    attrs: self.attrs.share(),
++    props: self.props.share(),
++    styles: self.styles.share(),
++  }
++}
++
 +// ============================================================================
 +// ★ moobile 扩展（fork 的一部分）
 +//
@@ -152,28 +353,22 @@
 +// 这正是 README 说的「fork 的第二档：改造 rabbita 的类型支持」。
 +// ============================================================================
 +
- ///|
--pub fn Props::copy(self : Props) -> Props {
++///|
 +/// 空属性集。
 +pub fn Props::empty() -> Props {
-   {
--    handlers: copy_map(self.handlers),
--    attrs: copy_map(self.attrs),
--    props: copy_map(self.props),
--    styles: copy_map(self.styles),
++  {
 +    handlers: PropsTable::new(),
 +    attrs: PropsTable::new(),
 +    props: PropsTable::new(),
-+    styles: PropsTable::new(),
++    styles: Styles::empty(),
 +  }
 +}
 +
 +///|
 +/// 合并一份**类型化**样式。
 +pub fn Props::styles(self : Props, s : @style.Style) -> Props {
-+  for entry in s.entries() {
-+    self.styles[entry.0] = entry.1
-+  }
++  // 就地写进**本句柄**那一格（`Styles::apply` 里面是"换新数组"，不改共享的那个数组）
++  self.styles.apply(s)
 +  self
 +}
 +
@@ -204,7 +399,7 @@
 +
 +///|
 +/// 类型化样式表（只读）。
-+pub fn Props::styles_map(self : Props) -> PropsTable[@style.StyleValue] {
++pub fn Props::styles_map(self : Props) -> Styles {
 +  self.styles
 +}
 +
@@ -222,6 +417,17 @@
 +
 +///|
 +/// 把事件处理器包成"只吃一个 JS 值"的形式，供非 DOM 后端（React Native）调用。
++///|
++/// **有没有 handler**（O(1)）—— 给热路径用来"没 handler 就别建迭代器"。
++///
++/// 为什么值这一行：`each_handler` 里的 `for event, handler in self.handlers` 每次都要
++/// **先构造一个 HAMT 迭代器**；而绝大多数元素根本没有 handler
++/// （基准负载：7007 个元素里只有 1001 个有）。含时归因里 `each_handler` 占 4.9%（`PERF.md` §14.5）。
++pub fn Props::has_handlers(self : Props) -> Bool {
++  !self.handlers.is_empty()
++}
++
++///|
 +pub fn Props::each_handler(
 +  self : Props,
 +  scheduler : &Scheduler,
@@ -229,5 +435,5 @@
 +) -> Unit {
 +  for event, handler in self.handlers {
 +    f(event, (v) => handler(v, scheduler))
-   }
- }
++  }
++}

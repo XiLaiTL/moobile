@@ -23,6 +23,7 @@
 |---|---|
 | [`../README.md`](../README.md) | 这是什么、最小接入（MoonBit 一行 + 宿主四行）、能力边界 |
 | [`../npm/moobile-host/README.md`](../npm/moobile-host/README.md) | 宿主包：`MOBILE_HOST` 契约、能力注册表 `regen`、版本兼容表 |
+| [`PERF-RECIPES.md`](PERF-RECIPES.md) | **性能配方**（给写应用的人）：长列表怎么包 `memo`（含「键给错会画出旧内容」的契约）、怎么用 `memo_hits`/`memo_misses` **自查**、虚拟化与 `update` 的边界、出问题先量什么 |
 | [`../DEV.md`](../DEV.md) | 环境变量、跑起来、跑真机、排错、**禁区** |
 
 最小可跑的例子就是本仓库的 [`../examples/apps/todo-app/`](../examples/apps/todo-app/)：
@@ -34,7 +35,7 @@
 |---|---|
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | 改完必须跑什么、写文档的规矩（负面清单为主）、怎么发版 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 分层（L0 宿主 … L6 应用）、宿主契约、发布形态、已知瑕疵 |
-| [`PERF.md`](PERF.md) | **性能基线**（轨道 D 的 D1/D2 离线那一半）：每帧成本、**消融探针量出来的 CPU 归因**（谁值多少毫秒）、**噪声纪律**、已落地的两刀（D3 标签表 −10%、P1 属性表 −32%~−29%）、下一刀排在哪 |
+| [`PERF.md`](PERF.md) | **性能基线**（轨道 D 的 D1/D2 离线那一半）：每帧成本、**消融探针量出来的 CPU 归因**（谁值多少毫秒）、**噪声纪律**、已落地的几刀（D3 标签表 −10% · P1 属性表 −32% · **memo 接通 −97%** · **P1b 样式表 −48%/−29%**）、每刀的边界与「没测到的部分」 |
 | [`../FORK.md`](../FORK.md) | 我们 fork 了 rabbita 的什么、为什么、14 个 patch 各改了什么、怎么升级 |
 | [`../DEV.md`](../DEV.md) | 构建、验证脚本清单、第三方 fork 怎么重建 |
 
