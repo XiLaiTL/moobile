@@ -1,0 +1,30 @@
+import {
+  "zhouyi-reader/styles" @styles,
+  "XiLaiTL/moobile" @moobile,
+  // 迁移时手写的两处用了 `@style.Style::new()`（手势包装层的内联样式）
+  "XiLaiTL/moobile/style",
+  "zhouyi-reader/shared",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/http" @rhttp,
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/sub" @sub,
+  // ★ 两条通道：画布（`@canvas.canvas` / `OpCtx`）与手势（`@gesture.attrs`）
+  "XiLaiTL/moobile/canvas" @canvas,
+  "XiLaiTL/moobile/gesture" @gesture,
+  // `@dom` / `@js` 已经**不需要**了：原来用它们直连浏览器画布与鼠标事件，
+  // 现在换成上面两条通道（留着它们才是坑：编得过、跑起来是空的）。
+  "moonbitlang/core/math",
+}
+
+supported_targets = "+js"
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)

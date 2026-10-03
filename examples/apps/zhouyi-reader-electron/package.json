@@ -1,0 +1,23 @@
+{
+  "name": "zhouyi-reader-electron",
+  "version": "1.0.0",
+  "private": true,
+  "description": "第四个宿主：**Electron 桌面窗口** —— 复用静态 Web 那份产物，起一个真窗口（本机没有 VS 工具链也能验桌面端）",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "npm run build && electron .",
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "electron": "^44.0.0",
+    "esbuild": "^0.28.2",
+    "moobile-host": "file:../../../npm/moobile-host",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native-web": "^0.21.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

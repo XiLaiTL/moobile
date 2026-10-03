@@ -1,0 +1,21 @@
+{
+  "name": "zhouyi-reader-webview",
+  "version": "1.0.0",
+  "private": true,
+  "description": "第三个宿主：**零 Expo、零 Metro** 的静态 Web 外壳（PWA / Tauri / Electron 那一类），跑的是同一份 MoonBit 产物",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node serve.mjs",
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "moobile-host": "file:../../../npm/moobile-host",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native-web": "^0.21.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

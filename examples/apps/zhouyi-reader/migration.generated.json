@@ -1,0 +1,2402 @@
+{
+  "tool": "moobile-host create --from-rabbita",
+  "from": "../yi/zhouyi_reader",
+  "to": "examples/apps/zhouyi-reader",
+  "rnProfile": "0.83",
+  "packages": [
+    "frontend",
+    "shared"
+  ],
+  "excluded": [
+    {
+      "rel": "backend/main.mbt",
+      "why": "不含 `@html` 用法（多半是服务端 / 脚本 / 纯数据包）"
+    }
+  ],
+  "scan": {
+    "root": "../yi/zhouyi_reader",
+    "files": 6,
+    "lines": 3139,
+    "table": {
+      "mapped": 44,
+      "excluded": 12
+    },
+    "findings": [
+      {
+        "id": "style.class",
+        "auto": "半自动",
+        "count": 122,
+        "why": "CSS 类名在 moobile 里没有对应物：样式是**类型化**的 `Attrs::styles(Style)`，属性集封闭。",
+        "next": "F2 样式层半自动（CSS → Style 调用）；`:hover`/媒体查询那部分见各自那条。",
+        "hits": [
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 377,
+            "text": "class=if ring.level == x.0 { \"bagua-mode on\" } else { \"bagua-mode\" },"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 396,
+            "text": "class=if ring.order4 == x.0 {"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 406,
+            "text": "div(class=\"ring-row\", b)"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 414,
+            "text": "class=if ring.order8 == x.0 {"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 424,
+            "text": "div(class=\"ring-row\", b)"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 427,
+            "text": "div(class=\"ring-ctrls\", [div(class=\"ring-row\", lv), ord])"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 434,
+            "text": "div(class=\"ring-legend\", ["
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 435,
+            "text": "span(class=\"lg\", [span(class=\"sw yang\", empty), span(\"阳爻 · 白\")]),"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 436,
+            "text": "span(class=\"lg\", [span(class=\"sw yin\", empty), span(\"阴爻 · 黑\")]),"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 437,
+            "text": "span(class=\"lg\", [span(class=\"sw grid\", empty), span(\"经纬线\")]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 427,
+            "text": "p(class=\"ann\", [span(class=\"a-label benyi\", \"本义\"), span(t)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 434,
+            "text": "p(class=\"ann\", [span(class=\"a-label cheng\", \"程传\"), span(t)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 440,
+            "text": "items.push(p(class=\"ann\", [span(class=\"a-label an\", \"案\"), span(t)]))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 445,
+            "text": "items.push(p(class=\"ann\", [span(class=\"a-label\", \"总论\"), span(t)]))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 458,
+            "text": "p(class=\"ann jishuo-item\", [span(class=\"who\", head), span(cite.文)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 482,
+            "text": "class=\"m-click-txt\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 486,
+            "text": "span(class=\"m-fold\", if open { \"▾\" } else { \"▸\" }),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 487,
+            "text": "span(class=\"m-jtext\", b.文),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 492,
+            "text": "kids.push(div(class=\"m-ann-body\", [commentary_view(c)]))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 495,
+            "text": "None => kids.push(p(class=\"m-jtext\", b.文))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 498,
+            "text": "div(class=\"m-sec\", [h2(title), div(kids)])"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1164,
+            "text": "div(class=\"bagua-wrap\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1166,
+            "text": "class=\"hex-index-title\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1173,
+            "text": "div(class=\"bagua-modes\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1175,
+            "text": "class=if mode == Fuxi { \"bagua-mode on\" } else { \"bagua-mode\" },"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1180,
+            "text": "class=if mode == GuaQi { \"bagua-mode on\" } else { \"bagua-mode\" },"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1185,
+            "text": "class=if mode == JingFang { \"bagua-mode on\" } else { \"bagua-mode\" },"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1190,
+            "text": "class=if mode == ColorRing { \"bagua-mode on\" } else { \"bagua-mode\" },"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1200,
+            "text": "div(class=\"bagua-canvas-box\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1238,
+            "text": "div(class=\"bagua-sim\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1240,
+            "text": "class=if sim { \"bagua-mode on\" } else { \"bagua-mode\" },"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1269,
+            "text": "let card = div(class=\"hex-card\", on_click=emit(Open(h.序号)), ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1270,
+            "text": "span(class=\"idx\", \"\\{h.序号}\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1271,
+            "text": "span(class=\"name\", \"\\{gua_symbol(h.序号)} \\{h.卦名}\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1272,
+            "text": "span(class=\"xiang\", h.象名),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1280,
+            "text": "div(class=\"hex-index\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1281,
+            "text": "h2(class=\"hex-index-title\", \"六十四卦速查\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1283,
+            "text": "class=\"hex-index-hint\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1286,
+            "text": "div(class=\"hex-index-section\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1287,
+            "text": "div(class=\"hex-index-section-label\", \"上经 · 第 1–30 卦\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1288,
+            "text": "div(class=\"hex-index-grid\", shang),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1290,
+            "text": "div(class=\"hex-index-section\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1291,
+            "text": "div(class=\"hex-index-section-label\", \"下经 · 第 31–64 卦\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1292,
+            "text": "div(class=\"hex-index-grid\", xia),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1301,
+            "text": "None => div(class=\"loading\", \"載入中…\")"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1321,
+            "text": "texts.push(p(class=\"m-txt\", b.文))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1328,
+            "text": "div(class=\"m-group\", [div(class=\"m-group-name\", name), div(texts)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1367,
+            "text": "line_kids.push(span(class=\"m-mark\", if yang { \"○\" } else { \"×\" }))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1370,
+            "text": "class=line_cls,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1392,
+            "text": "head_kids.push(span(class=\"m-fold\", if is_open { \"▾\" } else { \"▸\" }))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1394,
+            "text": "head_kids.push(span(class=\"m-yao-title\", y.爻题))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1395,
+            "text": "head_kids.push(span(class=\"m-yao-ci\", y.爻辞))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1398,
+            "text": "class=\"m-yao-txt\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1401,
+            "text": "[div(class=\"m-yao-head\", head_kids)],"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1404,
+            "text": "div(class=\"m-yao-txt\", [div(class=\"m-yao-head\", head_kids)])"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1416,
+            "text": "let wbox : Array[Html] = [p(class=\"m-weny\", w.文)]"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1421,
+            "text": "body.push(div(class=\"m-weny-box\", wbox))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1442,
+            "text": "div(class=\"m-cite\", [span(class=\"c-src\", \"\\{c.来源} \"), span(txt)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1461,
+            "text": "class=\"m-yao-xiang click\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1465,
+            "text": "span(class=\"m-fold\", if xiao_open { \"▾\" } else { \"▸\" }),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1466,
+            "text": "span(class=\"xlab\", \"小象\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1475,
+            "text": "body.push(div(class=\"m-ann-body\", [commentary_view(c)]))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1483,
+            "text": "p(class=\"m-yao-xiang\", [span(class=\"xlab\", \"小象\"), span(x.文)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1490,
+            "text": "div(class=\"m-yao\", [line, div(class=\"m-yao-txt-wrap\", body)])"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1554,
+            "text": "button(class=\"rel-link self\", disabled=true, ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1555,
+            "text": "span(class=\"rl-label\", label),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1556,
+            "text": "span(class=\"rl-name\", \"\\{g.卦名} \\{g.象名}\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1562,
+            "text": "div(class=\"rel-wrap\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1564,
+            "text": "class=if selected { \"rel-link sel\" } else { \"rel-link\" },"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1572,
+            "text": "span(class=\"rl-label\", label),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1574,
+            "text": "class=\"rl-name\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1581,
+            "text": "class=\"rel-x\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1608,
+            "text": "class=\"rel-link bian\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1612,
+            "text": "span(class=\"rl-label\", \"变卦\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1614,
+            "text": "class=\"rl-name\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1627,
+            "text": "class=\"rel-hint\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1633,
+            "text": "div(class=\"hex-rels\", links)"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1643,
+            "text": "chips.push(span(class=\"chip\", t))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1657,
+            "text": "Some(true) => chips.push(span(class=\"chip\", label))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1665,
+            "text": "div(class=\"chips\", chips)"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1689,
+            "text": "let wbox : Array[Html] = [p(class=\"m-txt\", w.文)]"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1694,
+            "text": "body.push(div(class=\"m-weny-box\", wbox))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1697,
+            "text": "details(class=\"m-more\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1699,
+            "text": "div(class=\"m-more-body\", body),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1708,
+            "text": "details(class=\"m-more\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1710,
+            "text": "div(class=\"m-more-body\", [relations_view(rel)]),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1722,
+            "text": "meta.push(p(class=\"m-txt\", \"卦主：\" + txt.join(\"　\")))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1727,
+            "text": "Some(t) => meta.push(p(class=\"m-txt\", t))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1736,
+            "text": "meta.push(p(class=\"m-txt\", \"\\{title}：\\{b.文}\"))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1747,
+            "text": "div(class=\"m-meta\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1748,
+            "text": "div(class=\"m-group-name\", \"义例归类\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1756,
+            "text": "details(class=\"m-more\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1758,
+            "text": "div(class=\"m-more-body\", meta),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1762,
+            "text": "div(class=\"m-bottom\", kids)"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1779,
+            "text": "div(class=\"m-gua-name\", h.卦名),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1781,
+            "text": "class=\"m-gua-sub\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1784,
+            "text": "div(class=\"m-tags\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1785,
+            "text": "span(class=\"m-tag\", tri_txt),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1786,
+            "text": "span(class=\"m-tag\", h.卦画),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1787,
+            "text": "span(class=\"m-tag\", h.卷),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1802,
+            "text": "aside(class=\"m-side\", kids)"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1844,
+            "text": "div(class=\"m-detail\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1845,
+            "text": "div(class=\"m-top\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1846,
+            "text": "button(class=\"m-nav\", on_click=emit(Back), \"‹ 六十四卦\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1847,
+            "text": "div(class=\"m-crumb\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1850,
+            "text": "class=\"m-crumb-sub\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1854,
+            "text": "button(class=\"m-nav\", on_click=emit(Prev), \"‹ 上一卦\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1855,
+            "text": "button(class=\"m-nav\", on_click=emit(Next), \"下一卦 ›\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1857,
+            "text": "div(class=\"m-layout\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1859,
+            "text": "div(class=\"m-lines\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1861,
+            "text": "class=\"m-hint\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1864,
+            "text": "div(class=\"m-yaos\", rows),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1866,
+            "text": "class=\"m-rels\","
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1879,
+            "text": "Some(e) => div(class=\"error\", \"加载失败：\\{e}\")"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1889,
+            "text": "None => div(class=\"loading\", \"載入中…\")"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1893,
+            "text": "div(class=\"topnav\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1894,
+            "text": "button(class=\"brand\", on_click=emit(Back), \"御纂周易折中\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1895,
+            "text": "div(class=\"sub\", \"康熙御定 · 折中程朱\"),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1896,
+            "text": "div(class=\"search\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1905,
+            "text": "div(class=\"container\", content),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1906,
+            "text": "div(class=\"footer\", ["
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1907,
+            "text": "div(class=\"seal\", \"誠正貞\"),"
+          }
+        ]
+      },
+      {
+        "id": "style.inline",
+        "auto": "半自动",
+        "count": 0,
+        "why": "`Attrs::style(String)` 这个字符串通道**已被删除**（实测零调用点），结构化样式只能走 `Style`。",
+        "next": "F2：把字符串样式改写成 `@style.Style::new()…`；数值/颜色可直接搬。",
+        "hits": []
+      },
+      {
+        "id": "css.hover",
+        "auto": "人决定",
+        "count": 16,
+        "why": "RN 没有伪类。`:hover` 在触屏上本来也不存在（没有 hover 状态）。",
+        "next": "F3 指南：改成「由状态驱动的条件样式」（把 hover 的那组属性在 Model 里表达）。",
+        "hits": [
+          {
+            "file": "backend/index.html",
+            "line": 77,
+            "text": ".hex-card:hover { border-color: var(--vermilion-0); transform: translateY(-1px); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 120,
+            "text": ".rel-link:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 122,
+            "text": ".rel-link.self:hover { border-color: var(--xjt-border); color: var(--ink-1); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 127,
+            "text": ".rel-link.sel:hover { color: var(--paper-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 138,
+            "text": ".rel-x:hover { background: var(--vermilion-0); color: var(--paper-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 171,
+            "text": ".bagua-mode:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 273,
+            "text": ".back-btn:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 279,
+            "text": ".nav-adj button:hover { border-color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 300,
+            "text": ".m-nav:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 331,
+            "text": ".m-click-txt:hover .m-jtext { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 345,
+            "text": ".m-ann > summary:hover { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 369,
+            "text": ".m-yao-line:hover { box-shadow: 0 0 0 3px rgba(138,37,24,.22); transform: translateY(-1px); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 388,
+            "text": ".m-yao-txt:hover .m-yao-head { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 404,
+            "text": ".m-yao-xiang.click:hover { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 433,
+            "text": ".m-bian-goto:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 455,
+            "text": ".m-more details > summary:hover { color: var(--vermilion-0); }"
+          }
+        ]
+      },
+      {
+        "id": "css.media",
+        "auto": "半自动",
+        "count": 2,
+        "why": "RN 没有媒体查询；响应式靠 `Dimensions` / `useWindowDimensions` 在 JS 里算。",
+        "next": "F2/F3：断点转成「按尺寸选样式」的函数（宿主侧已能拿到窗口尺寸，见 N5b 的 `geometry`）。",
+        "hits": [
+          {
+            "file": "backend/index.html",
+            "line": 464,
+            "text": "@media (max-width: 760px) {"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 476,
+            "text": "@media (max-width: 640px) {"
+          }
+        ]
+      },
+      {
+        "id": "css.grid",
+        "auto": "半自动",
+        "count": 5,
+        "why": "RN 没有 grid 布局，只有 flex。",
+        "next": "F3 指南：`display:grid` → flex 容器 + 显式换行（`flexWrap`）。",
+        "hits": [
+          {
+            "file": "backend/index.html",
+            "line": 65,
+            "text": "display: grid;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 249,
+            "text": "display: grid; grid-template-columns: 72px 1fr;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 309,
+            "text": ".m-layout { display: grid; grid-template-columns: 250px 1fr; gap: 44px; align-items: start; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 355,
+            "text": "display: grid; grid-template-columns: 160px 1fr; gap: 26px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 434,
+            "text": ".m-mini-hex { display: grid; grid-template-rows: repeat(6, 3px); gap: 1.5px; width: 18px; }"
+          }
+        ]
+      },
+      {
+        "id": "css.sticky",
+        "auto": "人决定",
+        "count": 2,
+        "why": "RN 没有 `position: sticky`。",
+        "next": "三方补齐（`nandorojo/sticky` 一类的库）或改成固定头 + 滚动容器。",
+        "hits": [
+          {
+            "file": "backend/index.html",
+            "line": 32,
+            "text": "position: sticky; top: 0; z-index: 10;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 310,
+            "text": ".m-side { position: sticky; top: 70px; }"
+          }
+        ]
+      },
+      {
+        "id": "css.var",
+        "auto": "自动",
+        "count": 166,
+        "why": "CSS 自定义属性（`var(--x)`）在类型化样式里没有对应物。",
+        "next": "F2：在迁移时**展开成字面量**（值从 `:root` 块里读）。",
+        "hits": [
+          {
+            "file": "backend/index.html",
+            "line": 13,
+            "text": "--bg: var(--paper-1); --bg-elev: var(--paper-0); --bg-sunk: var(--paper-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 14,
+            "text": "--xjt-border: var(--paper-3); --fg: var(--ink-1); --fg-muted: var(--ink-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 15,
+            "text": "--accent: var(--vermilion-1);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 19,
+            "text": "background: var(--bg);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 20,
+            "text": "color: var(--fg);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 30,
+            "text": "background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 31,
+            "text": "border-bottom: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 34,
+            "text": ".topnav .brand { font-weight: 700; letter-spacing: 0.18em; color: var(--vermilion-0); cursor: pointer; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 35,
+            "text": ".topnav .sub { font-family: \"Kaiti TC\", \"STKaiti\", \"LXGW WenKai\", serif; font-size: 12px; color: var(--fg-muted); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 40,
+            "text": "background: var(--bg-sunk); color: var(--fg);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 41,
+            "text": "border: 1px solid var(--xjt-border); border-radius: 4px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 43,
+            "text": ".topnav input:focus { outline: none; border-color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 46,
+            "text": "background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 47,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 48,
+            "text": "border-top: 3px solid var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 53,
+            "text": "letter-spacing: 0.32em; color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 57,
+            "text": "font-size: 12px; letter-spacing: 0.18em; color: var(--fg-muted);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 62,
+            "text": "letter-spacing: 0.3em; color: var(--ink-2); margin-bottom: 10px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 72,
+            "text": "background: var(--bg-sunk);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 73,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 77,
+            "text": ".hex-card:hover { border-color: var(--vermilion-0); transform: translateY(-1px); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 78,
+            "text": ".hex-card .idx { font-family: \"Kaiti TC\", \"STKaiti\", serif; font-size: 11px; color: var(--fg-muted); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 79,
+            "text": ".hex-card .name { font-size: 15px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 80,
+            "text": ".hex-card .xiang { font-size: 12px; color: var(--ink-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 83,
+            "text": "background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 84,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 85,
+            "text": "border-left: 3px solid var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 88,
+            "text": ".detail-head .crumb { font-size: 13px; color: var(--fg-muted); margin-bottom: 8px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 89,
+            "text": ".detail-head .crumb a { color: var(--accent); text-decoration: none; cursor: pointer; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 91,
+            "text": ".detail-title h1 { margin: 0; font-size: 30px; color: var(--ink-0); letter-spacing: 0.1em; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 92,
+            "text": ".detail-title .xiangming { font-size: 18px; color: var(--ink-2); font-family: \"Kaiti TC\", serif; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 93,
+            "text": ".detail-title .idx { font-size: 14px; color: var(--fg-muted); font-family: \"Kaiti TC\", serif; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 96,
+            "text": "padding: 4px 10px; background: var(--bg-sunk); border: 1px solid var(--xjt-border); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 98,
+            "text": ".tri .t-xiang { font-size: 11px; color: var(--fg-muted); font-family: \"Kaiti TC\", serif; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 104,
+            "text": "padding: 12px 16px; background: var(--bg-sunk);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 105,
+            "text": "border: 1px solid var(--xjt-border); border-right: 3px solid var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 107,
+            "text": ".hex-line { width: 92px; height: 7px; background: var(--ink-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 110,
+            "text": "var(--ink-0) 0 40px, transparent 40px 52px, var(--ink-0) 52px 92px);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 115,
+            "text": "padding: 5px 12px; background: var(--bg-sunk);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 116,
+            "text": "border: 1px solid var(--xjt-border); cursor: pointer;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 117,
+            "text": "font-family: inherit; color: var(--ink-1); font-size: 13px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 120,
+            "text": ".rel-link:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 122,
+            "text": ".rel-link.self:hover { border-color: var(--xjt-border); color: var(--ink-1); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 124,
+            "text": "background: var(--vermilion-0); color: var(--paper-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 125,
+            "text": "border-color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 127,
+            "text": ".rel-link.sel:hover { color: var(--paper-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 128,
+            "text": ".rel-link.bian { border-color: var(--gold-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 129,
+            "text": ".rel-link.bian .rl-label { color: var(--gold-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 134,
+            "text": "border-radius: 50%; border: 1px solid var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 135,
+            "text": "background: var(--paper-0); color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 138,
+            "text": ".rel-x:hover { background: var(--vermilion-0); color: var(--paper-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 140,
+            "text": "align-self: center; font-size: 11.5px; color: var(--ink-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 144,
+            "text": ".rel-link .rl-label { font-family: \"Kaiti TC\", \"STKaiti\", serif; font-size: 12px; color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 145,
+            "text": ".rel-link.sel .rl-label { color: var(--paper-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 149,
+            "text": "padding: 3px 10px; font-size: 12px; color: var(--ink-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 150,
+            "text": "background: var(--bg-sunk); border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 162,
+            "text": "background: var(--bg-sunk);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 163,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 164,
+            "text": "color: var(--ink-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 171,
+            "text": ".bagua-mode:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 173,
+            "text": "background: var(--vermilion-0); color: var(--paper-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 174,
+            "text": "border-color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 194,
+            "text": "font-size: 12px; letter-spacing: .12em; color: var(--fg-muted);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 199,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 202,
+            "text": ".ring-legend .sw.yin { background: var(--ink-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 203,
+            "text": ".ring-legend .sw.grid { background: transparent; border: 2px solid var(--gold-1); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 206,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 208,
+            "text": "background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 218,
+            "text": "background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 219,
+            "text": "border-left: 2px solid var(--vermilion-1);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 220,
+            "text": "border-top: 1px dashed var(--paper-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 222,
+            "text": ".weny-text { font-size: 13.5px; color: var(--ink-1); margin: 2px 0; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 223,
+            "text": ".weny-text .x-label { font-family: \"Kaiti TC\", serif; font-size: 12px; color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 224,
+            "text": ".gua-zhu { margin-top: 10px; font-size: 13px; color: var(--ink-2); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 225,
+            "text": ".gua-zhu b { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 227,
+            "text": "background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 228,
+            "text": "border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 229,
+            "text": "border-left: 3px solid var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 234,
+            "text": "letter-spacing: 0.22em; color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 236,
+            "text": ".jtext { font-size: 16px; color: var(--ink-0); margin-bottom: 8px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 237,
+            "text": ".ann { margin: 6px 0 6px 14px; font-size: 13.5px; color: var(--ink-2); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 241,
+            "text": "color: var(--vermilion-0); letter-spacing: 0.1em;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 243,
+            "text": ".ann .a-label.benyi { color: var(--vermilion-1); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 244,
+            "text": ".ann .a-label.cheng { color: var(--ink-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 245,
+            "text": ".ann .a-label.an { color: var(--gold-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 247,
+            "text": ".jishuo-item .who { font-family: \"Kaiti TC\", serif; font-size: 12.5px; color: var(--ink-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 250,
+            "text": "gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--paper-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 254,
+            "text": ".yao-title .t { font-weight: 700; color: var(--ink-0); font-size: 15px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 255,
+            "text": ".yao-title .x { font-family: \"Kaiti TC\", serif; font-size: 11px; color: var(--fg-muted); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 256,
+            "text": ".yao-body .ci { font-size: 15.5px; color: var(--ink-0); margin-bottom: 6px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 257,
+            "text": ".yao-body .xiang { font-size: 13.5px; color: var(--ink-2); margin: 4px 0; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 258,
+            "text": ".yao-body .xiang .x-label { font-family: \"Kaiti TC\", serif; font-size: 12px; color: var(--ink-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 261,
+            "text": "background: var(--bg-sunk); border-left: 2px solid var(--gold-1);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 262,
+            "text": "font-size: 13px; color: var(--ink-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 264,
+            "text": ".cite-box .c-src { font-family: \"Kaiti TC\", serif; font-size: 11.5px; color: var(--fg-muted); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 266,
+            "text": ".rel-group .r-name { font-family: \"Kaiti TC\", serif; font-size: 12.5px; color: var(--vermilion-0); letter-spacing: 0.15e…"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 267,
+            "text": ".rel-group .r-text { font-size: 13.5px; color: var(--ink-2); margin: 3px 0; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 270,
+            "text": "background: var(--bg-sunk); border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 271,
+            "text": "color: var(--ink-1); cursor: pointer; font-family: inherit; font-size: 14px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 273,
+            "text": ".back-btn:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 276,
+            "text": "padding: 8px 18px; background: var(--bg-elev); border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 277,
+            "text": "color: var(--ink-1); cursor: pointer; font-family: inherit; font-size: 14px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 279,
+            "text": ".nav-adj button:hover { border-color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 280,
+            "text": ".loading, .error { padding: 60px 0; text-align: center; color: var(--ink-3); font-size: 15px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 281,
+            "text": ".error { color: var(--vermilion-2); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 283,
+            "text": "text-align: center; padding: 24px; color: var(--ink-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 285,
+            "text": "border-top: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 289,
+            "text": "background: var(--vermilion-0); color: var(--paper-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 291,
+            "text": "box-shadow: inset 0 0 0 2px var(--vermilion-0), inset 0 0 0 4px var(--paper-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 296,
+            "text": "padding: 6px 14px; background: var(--bg-sunk); border: 1px solid var(--xjt-border);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 297,
+            "text": "color: var(--ink-1); cursor: pointer; font-family: inherit; font-size: 13.5px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 300,
+            "text": ".m-nav:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 302,
+            "text": "flex: 1; text-align: center; font-size: 17px; letter-spacing: .14em; color: var(--ink-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 306,
+            "text": "font-size: 12.5px; color: var(--fg-muted); letter-spacing: .2em;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 313,
+            "text": "letter-spacing: .04em; color: var(--ink-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 316,
+            "text": "margin-top: 8px; font-size: 14px; letter-spacing: .26em; color: var(--fg-muted);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 321,
+            "text": "font-size: 12px; color: var(--ink-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 322,
+            "text": "border: 1px solid var(--xjt-border); border-radius: 99px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 327,
+            "text": "font-size: 12px; font-weight: 700; color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 331,
+            "text": ".m-click-txt:hover .m-jtext { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 333,
+            "text": "display: inline; margin: 0; font-size: 15.5px; color: var(--ink-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 339,
+            "text": "font-size: 12px; color: var(--ink-3); letter-spacing: .14em;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 340,
+            "text": "padding: 4px 0; border-top: 1px dashed var(--paper-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 343,
+            "text": ".m-ann > summary::before { content: \"▸ \"; color: var(--vermilion-1); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 345,
+            "text": ".m-ann > summary:hover { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 351,
+            "text": "font-size: 12px; color: var(--ink-3); letter-spacing: .14em;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 357,
+            "text": "border-bottom: 1px dashed var(--paper-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 359,
+            "text": ".m-yao:first-child { border-top: 1px dashed var(--paper-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 364,
+            "text": ".m-yao-line.yang { background: var(--ink-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 367,
+            "text": "var(--ink-0) 0 42%, transparent 42% 58%, var(--ink-0) 58% 100%);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 371,
+            "text": ".m-yao-line.hl { background: var(--gold-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 374,
+            "text": "var(--gold-0) 0 42%, transparent 42% 58%, var(--gold-0) 58% 100%);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 376,
+            "text": ".m-yao-line.bian { background: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 379,
+            "text": "var(--vermilion-0) 0 42%, transparent 42% 58%, var(--vermilion-0) 58% 100%);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 383,
+            "text": "width: 18px; text-align: center; color: var(--vermilion-0);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 388,
+            "text": ".m-yao-txt:hover .m-yao-head { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 391,
+            "text": "font-size: 11px; color: var(--vermilion-1); letter-spacing: 0;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 394,
+            "text": ".m-yao-title { font-size: 16.5px; font-weight: 700; color: var(--vermilion-0); letter-spacing: .1em; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 395,
+            "text": ".m-yao-ci { font-size: 16px; letter-spacing: .05em; color: var(--ink-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 397,
+            "text": "font-size: 13.5px; color: var(--ink-2); margin: 4px 0 0; letter-spacing: .04em;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 400,
+            "text": "color: var(--vermilion-1); margin-right: 7px; font-size: 12px; letter-spacing: .2em;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 404,
+            "text": ".m-yao-xiang.click:hover { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 407,
+            "text": "background: var(--bg-elev); border-left: 2px solid var(--vermilion-1);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 408,
+            "text": "border-top: 1px dashed var(--paper-3);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 410,
+            "text": ".m-weny { font-size: 13.5px; color: var(--ink-1); margin: 2px 0; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 413,
+            "text": "background: var(--bg-sunk); border-left: 2px solid var(--gold-1);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 414,
+            "text": "font-size: 13px; color: var(--ink-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 416,
+            "text": ".m-cite .c-src { font-family: \"Kaiti TC\", \"STKaiti\", serif; font-size: 11.5px; color: var(--fg-muted); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 421,
+            "text": "background: var(--bg-sunk); border: 1px solid var(--xjt-border); border-radius: 4px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 424,
+            "text": ".m-bian-t { letter-spacing: .2em; color: var(--fg-muted); font-size: 12.5px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 425,
+            "text": ".m-bian-marks { color: var(--vermilion-0); letter-spacing: .06em; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 426,
+            "text": ".m-bian-arrow { color: var(--ink-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 429,
+            "text": "border: 1px solid var(--xjt-border); background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 431,
+            "text": "color: var(--ink-1); font-family: inherit; font-size: 14.5px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 433,
+            "text": ".m-bian-goto:hover { border-color: var(--vermilion-0); color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 436,
+            "text": ".m-mini.y { background: var(--ink-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 437,
+            "text": ".m-mini.n { background: transparent; border-top: 1px solid var(--ink-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 441,
+            "text": ".m-bottom .m-ann-body { border-bottom: 1px dashed var(--paper-3); margin-bottom: 6px; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 445,
+            "text": "border: 1px solid var(--xjt-border); border-radius: 4px;"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 446,
+            "text": "margin-bottom: 10px; background: var(--bg-elev);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 450,
+            "text": "padding: 12px 18px; font-size: 14.5px; letter-spacing: .2em; color: var(--ink-2);"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 453,
+            "text": ".m-more details > summary::before { content: \"▸ \"; color: var(--vermilion-1); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 455,
+            "text": ".m-more details > summary:hover { color: var(--vermilion-0); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 456,
+            "text": ".m-more-body { padding: 4px 22px 18px; border-top: 1px dashed var(--paper-3); }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 457,
+            "text": ".m-txt { font-size: 14.5px; color: var(--ink-1); margin: 4px 0; letter-spacing: .04em; }"
+          },
+          {
+            "file": "backend/index.html",
+            "line": 461,
+            "text": "color: var(--vermilion-0); letter-spacing: .15em; margin-top: 10px;"
+          }
+        ]
+      },
+      {
+        "id": "dom.direct",
+        "auto": "半自动",
+        "count": 15,
+        "why": "`@dom.*` 是浏览器 API 直连；RN 上 `document` 根本不存在（`window` 存在但里面是空的）。",
+        "next": "N 轨道能力包（`MOBILE_HOST` 注册表）；canvas 那部分已有一条现成通道，见 `canvas.api`。",
+        "hits": [
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 192,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 227,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 271,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 640,
+            "text": "fn c_fill(ctx : @dom.CanvasRenderingContext2D, color : String) -> Unit {"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 646,
+            "text": "fn c_stroke(ctx : @dom.CanvasRenderingContext2D, color : String) -> Unit {"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 653,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 679,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 804,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 840,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 862,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 886,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1079,
+            "text": "extern \"js\" fn prepare_canvas(canvas : @dom.HTMLCanvasElement) -> Double = \"(c) => { const d = (window.devicePixelRatio …"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1130,
+            "text": "match @dom.document().get_element_by_id(\"bagua-canvas\").to_option() {"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1207,
+            "text": "let rect = @dom.document()"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1221,
+            "text": "let rect = @dom.document()"
+          }
+        ]
+      },
+      {
+        "id": "gesture.mouse",
+        "auto": "不自动",
+        "count": 4,
+        "why": "**读坐标的处理器在 RN 上拿到的是零值** —— 全库普查后整表换成 `passthrough_decoders()`，它的 `Mouse`/`Keyboard`/`Scroll` 三个载荷**无条件返回 0**（`vendor/rabbita/html/event_decoders.mbt` 明写「已知降级，不是等价替换」）。",
+        "next": "**手势通道已落地**（`@gesture.attrs(on_pan=…)` / `@gesture.pan(attrs, msg)`，宿主默认装载、零新依赖）：`on_mousedown/move/up` 换成**一个** `pan` 处理器，坐标从 `Gesture` 的 `x/y`（**元素内**）取。判据：web 40/40 + 真机 18/18。⚠️ 多指（pinch/rotate）真机未验。",
+        "hits": [
+          {
+            "file": "frontend/main.mbt",
+            "line": 1206,
+            "text": ".on_mousemove(m => {"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1217,
+            "text": ".on_mouseup(_ => emit(DragEnd))"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1218,
+            "text": ".on_mouseleave(_ => emit(DragEnd)),"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1219,
+            "text": "on_mousedown=m => {"
+          }
+        ]
+      },
+      {
+        "id": "gesture.coord",
+        "auto": "不自动",
+        "count": 0,
+        "why": "坐标换算依赖 DOM 的布局信息（`getBoundingClientRect` / `devicePixelRatio`），RN 上没有这些。",
+        "next": "量原点这件事**已经收进手势通道**了（`Gesture` 的 `x/y` 就是元素内坐标，真机验过 `深 起=130,50`）；剩下的是**画布侧**的 `devicePixelRatio` 换算（T3.5，未验）。",
+        "hits": []
+      },
+      {
+        "id": "gesture.dpr",
+        "auto": "半自动",
+        "count": 2,
+        "why": "`devicePixelRatio` 是浏览器概念；RN 用 `PixelRatio.get()`。",
+        "next": "T3.5：换算收进画布/手势通道内部，应用侧不用自己算。",
+        "hits": [
+          {
+            "file": "frontend/main.mbt",
+            "line": 1078,
+            "text": "/// 高分屏适配：按 devicePixelRatio 重设 canvas 位图尺寸并返回缩放比（避免文字发虚）"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1079,
+            "text": "extern \"js\" fn prepare_canvas(canvas : @dom.HTMLCanvasElement) -> Double = \"(c) => { const d = (window.devicePixelRatio …"
+          }
+        ]
+      },
+      {
+        "id": "input.controlled",
+        "auto": "半自动",
+        "count": 1,
+        "why": "受控输入的**事件载荷通道已落地**（I1：`Attrs::on_raw` + `Payload::text/json/num/bool/field`）。",
+        "next": "把 `on_input=emit.map(f)` 换成 `on_raw(\"change\", e => …)`，值从 `e.text()` 取。",
+        "hits": [
+          {
+            "file": "frontend/main.mbt",
+            "line": 1901,
+            "text": "on_input=t => emit(Search(t)),"
+          }
+        ]
+      },
+      {
+        "id": "net.http",
+        "auto": "半自动",
+        "count": 1,
+        "why": "rabita 的 `@rhttp` 依赖 DOM/浏览器的 fetch 语义；moobile 有 `XiLaiTL/moobile/http` 转发包。",
+        "next": "换成 `XiLaiTL/moobile/http`；⚠️ 它在 RN 上的传输层**未验过**（见 STATUS §4）。",
+        "hits": [
+          {
+            "file": "frontend/main.mbt",
+            "line": 94,
+            "text": "let cmd = @rhttp.get(\"/reader_data.json\").expect_text(result => {"
+          }
+        ]
+      },
+      {
+        "id": "canvas.api",
+        "auto": "半自动",
+        "count": 11,
+        "why": "canvas 在标签表里是**明确排除**的（RN 无 canvas）。",
+        "next": "**画布通道已落地**（`@canvas.OpCtx`，32 项判据）：方法名与 `CanvasRenderingContext2D` 逐字相同，迁移是换类型；真机也验过（`canvas-spike` 7/7、`canvas-demo` 12/12）。⚠️ 仍差**文字字形**（`makeFont`）与 **`devicePixelRatio` 换算**（T3.5）。",
+        "hits": [
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 192,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 227,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/colorring.mbt",
+            "line": 271,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 640,
+            "text": "fn c_fill(ctx : @dom.CanvasRenderingContext2D, color : String) -> Unit {"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 646,
+            "text": "fn c_stroke(ctx : @dom.CanvasRenderingContext2D, color : String) -> Unit {"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 653,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 679,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 804,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 840,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 862,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 886,
+            "text": "ctx : @dom.CanvasRenderingContext2D,"
+          }
+        ]
+      },
+      {
+        "id": "tag.excluded",
+        "auto": "人决定",
+        "count": 7,
+        "why": "这 12 个标签是**明确排除**的（`render.mbt` 的 `excluded_tags()`）：RN 没有对应物，所以不映射 —— 用它们等于「看起来能跑」。\n\n**命中的标签**（去重）：canvas、details、summary",
+        "next": "接第三方组件库（I 轨道）或改写成真实组件。**已有的替代物**：`canvas`（画布通道）。",
+        "hits": [
+          {
+            "file": "frontend/main.mbt",
+            "line": 1201,
+            "text": "canvas(   ← 标签 `canvas`"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1697,
+            "text": "details(class=\"m-more\", [   ← 标签 `details`"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1698,
+            "text": "summary(\"文言（卦）\"),   ← 标签 `summary`"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1708,
+            "text": "details(class=\"m-more\", [   ← 标签 `details`"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1709,
+            "text": "summary(\"传文关联 · 序卦 / 杂卦 / 说卦 / 系辞\"),   ← 标签 `summary`"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1756,
+            "text": "details(class=\"m-more\", [   ← 标签 `details`"
+          },
+          {
+            "file": "frontend/main.mbt",
+            "line": 1757,
+            "text": "summary(\"卦主 · 总论 · 用 · 义例归类\"),   ← 标签 `summary`"
+          }
+        ]
+      },
+      {
+        "id": "tag.outside",
+        "auto": "人决定",
+        "count": 0,
+        "why": "标签表之外的标签一律**回落 `View`** 并计进 `unmapped_tag_count`（迁移诊断的支点，但**运行时不会提醒你**）。",
+        "next": "人决定：改写成表内标签，或走组件通道（`库名:组件名`）。",
+        "hits": []
+      },
+      {
+        "id": "dep.rabbita",
+        "auto": "必须改",
+        "count": 1,
+        "why": "两个 rabbita 的 `Html` / `VNode` / `Attrs` 是**不同包的不同类型**，混用编不过；也不能同时 import 两个 `@html`（SCAFFOLD §3.7.2）。",
+        "next": "换成 `XiLaiTL/moobile`；判据：`moon.mod` 里只剩一条 rabbita 来源、`moon tree` 不出现 `moonbit-community/rabbita`。",
+        "hits": [
+          {
+            "file": "moon.mod",
+            "line": 19,
+            "text": "\"moonbit-community/rabbita@0.15.4\","
+          }
+        ]
+      },
+      {
+        "id": "target.build",
+        "auto": "自动",
+        "count": 2,
+        "why": "moobile 的库**只支持 js 目标**（传递性 js 锁）；既有项目常见 `wasm-gc` / `native`。",
+        "next": "改 `preferred_target` / `supported_targets`（机械改动，无风险）。",
+        "hits": [
+          {
+            "file": "moon.mod",
+            "line": 13,
+            "text": "preferred_target = \"native\""
+          },
+          {
+            "file": "moon.mod",
+            "line": 15,
+            "text": "supported_targets = \"+wasm+wasm-gc+js+native\""
+          }
+        ]
+      }
+    ]
+  },
+  "scanError": null,
+  "styles": {
+    "classes": 104,
+    "accounting": {
+      "decls": 510,
+      "emitted": 435,
+      "lost": 75
+    },
+    "unmatchedLost": 18,
+    "ruleLosses": {
+      "pseudo": 25,
+      "media": 13
+    },
+    "keys": [
+      "__page__",
+      "aside.m-side",
+      "button.bagua-mode",
+      "button.bagua-mode.on",
+      "button.bian.rel-link",
+      "button.bian.rel-link>span.rl-label",
+      "button.bian.rel-link>span.rl-name",
+      "button.rel-link.self",
+      "button.rel-link.self>span.rl-label",
+      "button.rel-link.self>span.rl-name",
+      "details.m-more",
+      "details.m-more>div.m-more-body",
+      "div.bagua-wrap",
+      "div.bagua-wrap>div.bagua-canvas-box",
+      "div.bagua-wrap>div.bagua-modes",
+      "div.bagua-wrap>div.bagua-modes>button.bagua-mode",
+      "div.bagua-wrap>div.bagua-modes>button.bagua-mode.on",
+      "div.bagua-wrap>div.bagua-sim",
+      "div.bagua-wrap>div.bagua-sim>button.bagua-mode",
+      "div.bagua-wrap>div.bagua-sim>button.bagua-mode.on",
+      "div.bagua-wrap>h2.hex-index-title",
+      "div.chips",
+      "div.click.m-yao-xiang",
+      "div.click.m-yao-xiang>span.m-fold",
+      "div.click.m-yao-xiang>span.xlab",
+      "div.error",
+      "div.hex-card",
+      "div.hex-card>span.idx",
+      "div.hex-card>span.name",
+      "div.hex-card>span.xiang",
+      "div.hex-index",
+      "div.hex-index>div.hex-index-section",
+      "div.hex-index>div.hex-index-section>div.hex-index-grid",
+      "div.hex-index>div.hex-index-section>div.hex-index-section-label",
+      "div.hex-index>h2.hex-index-title",
+      "div.hex-index>p.hex-index-hint",
+      "div.hex-rels",
+      "div.loading",
+      "div.m-ann-body",
+      "div.m-bottom",
+      "div.m-cite",
+      "div.m-cite>span.c-src",
+      "div.m-click-txt",
+      "div.m-click-txt>span.m-fold",
+      "div.m-click-txt>span.m-jtext",
+      "div.m-detail>div.m-layout",
+      "div.m-detail>div.m-layout>div.m-lines",
+      "div.m-detail>div.m-layout>div.m-lines>div.m-rels",
+      "div.m-detail>div.m-layout>div.m-lines>p.m-hint",
+      "div.m-detail>div.m-top",
+      "div.m-detail>div.m-top>button.m-nav",
+      "div.m-detail>div.m-top>div.m-crumb",
+      "div.m-detail>div.m-top>div.m-crumb>span.m-crumb-sub",
+      "div.m-group",
+      "div.m-group>div.m-group-name",
+      "div.m-gua-name",
+      "div.m-gua-sub",
+      "div.m-meta",
+      "div.m-meta>div.m-group-name",
+      "div.m-sec",
+      "div.m-tags",
+      "div.m-tags>span.m-tag",
+      "div.m-weny-box",
+      "div.m-yao",
+      "div.m-yao-txt",
+      "div.m-yao-txt>div.m-yao-head",
+      "div.m-yao>div.m-yao-txt-wrap",
+      "div.rel-wrap",
+      "div.rel-wrap>button.rel-link",
+      "div.rel-wrap>button.rel-link.sel",
+      "div.rel-wrap>button.rel-x",
+      "div.ring-ctrls",
+      "div.ring-ctrls>div.ring-row",
+      "div.ring-legend",
+      "div.ring-legend>span.lg",
+      "div.ring-legend>span.lg>span.grid.sw",
+      "div.ring-legend>span.lg>span.sw.yang",
+      "div.ring-legend>span.lg>span.sw.yin",
+      "div.ring-row",
+      "div>div.container",
+      "div>div.footer",
+      "div>div.footer>div.seal",
+      "div>div.topnav",
+      "div>div.topnav>button.brand",
+      "div>div.topnav>div.search",
+      "div>div.topnav>div.sub",
+      "p.ann",
+      "p.ann.jishuo-item",
+      "p.ann.jishuo-item>span.who",
+      "p.ann>span.a-label",
+      "p.ann>span.a-label.an",
+      "p.ann>span.a-label.benyi",
+      "p.ann>span.a-label.cheng",
+      "p.m-jtext",
+      "p.m-txt",
+      "p.m-weny",
+      "p.m-yao-xiang",
+      "p.m-yao-xiang>span.xlab",
+      "span.chip",
+      "span.m-fold",
+      "span.m-mark",
+      "span.m-yao-ci",
+      "span.m-yao-title",
+      "span.rel-hint"
+    ]
+  },
+  "classRewrite": {
+    "edits": 131,
+    "todos": [
+      {
+        "kind": "dynamic-class",
+        "file": "frontend/main.mbt",
+        "line": 1370,
+        "reason": "类名不是字面量（`class=line_cls`）—— 机械映射只能靠猜变量的赋值，不猜",
+        "snippet": "class=line_cls",
+        "next": "人工：把类名收敛成字面量（或在 Model 里表达状态），再决定样式"
+      },
+      {
+        "kind": "unstyled-class",
+        "file": "frontend/main.mbt",
+        "line": 1864,
+        "reason": "上下文键 `div.m-detail>div.m-layout>div.m-lines>div.m-yaos` 在 CSS 里没有匹配的规则（多半是状态标记），未改写",
+        "snippet": "class=\"m-yaos\"",
+        "next": "人工：确认这是状态标记还是有遗漏的规则"
+      },
+      {
+        "kind": "unstyled-class",
+        "file": "frontend/main.mbt",
+        "line": 1844,
+        "reason": "上下文键 `div.m-detail` 在 CSS 里没有匹配的规则（多半是状态标记），未改写",
+        "snippet": "class=\"m-detail\"",
+        "next": "人工：确认这是状态标记还是有遗漏的规则"
+      },
+      {
+        "kind": "unstyled-class",
+        "file": "frontend/main.mbt",
+        "line": 1574,
+        "reason": "上下文键 `div.rel-wrap>button>span.rl-name` 在 CSS 里没有匹配的规则（多半是状态标记），未改写",
+        "snippet": "class=\"rl-name\"",
+        "next": "人工：确认这是状态标记还是有遗漏的规则"
+      },
+      {
+        "kind": "unstyled-class",
+        "file": "frontend/main.mbt",
+        "line": 1572,
+        "reason": "上下文键 `div.rel-wrap>button>span.rl-label` 在 CSS 里没有匹配的规则（多半是状态标记），未改写",
+        "snippet": "class=\"rl-label\"",
+        "next": "人工：确认这是状态标记还是有遗漏的规则"
+      },
+      {
+        "line": 1119,
+        "name": "draw_bagua_cmd",
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "stub",
+        "reason": "`draw_bagua_cmd` 的实现迁不过去（`@dom` 是浏览器 API 直连；RN 上没有 `document`）",
+        "snippet": "draw_bagua_cmd",
+        "next": "人工：用 moobile 的对应通道重写实现 —— canvas 走 `@canvas.OpCtx`、读坐标的手势走 `@gesture.pan`、`details/summary` 改成受控组件（见 SCAFFOLD §3.7.3）"
+      },
+      {
+        "line": 1152,
+        "name": "bagua_view",
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "stub",
+        "reason": "`bagua_view` 的实现迁不过去（`@dom` 是浏览器 API 直连；RN 上没有 `document`）",
+        "snippet": "bagua_view",
+        "next": "人工：用 moobile 的对应通道重写实现 —— canvas 走 `@canvas.OpCtx`、读坐标的手势走 `@gesture.pan`、`details/summary` 改成受控组件（见 SCAFFOLD §3.7.3）"
+      },
+      {
+        "line": 1669,
+        "name": "more_view",
+        "why": "标签表外的标签（RN 无对应物）",
+        "file": "frontend/main.mbt",
+        "kind": "stub",
+        "reason": "`more_view` 的实现迁不过去（标签表外的标签（RN 无对应物））",
+        "snippet": "more_view",
+        "next": "人工：用 moobile 的对应通道重写实现 —— canvas 走 `@canvas.OpCtx`、读坐标的手势走 `@gesture.pan`、`details/summary` 改成受控组件（见 SCAFFOLD §3.7.3）"
+      },
+      {
+        "line": 189,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/colorring.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 224,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/colorring.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 268,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/colorring.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 638,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 644,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 650,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 672,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 801,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 837,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 859,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 881,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 1077,
+        "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      },
+      {
+        "line": 1081,
+        "why": "内联 JS FFI 是按浏览器语义写的（`window` / `devicePixelRatio`）",
+        "file": "frontend/main.mbt",
+        "kind": "blocked",
+        "reason": "内联 JS FFI 是按浏览器语义写的（`window` / `devicePixelRatio`）",
+        "snippet": "",
+        "next": "人工：整块重写（签名也迁不过去）—— 同上"
+      }
+    ]
+  },
+  "blocked": [
+    {
+      "line": 189,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/colorring.mbt"
+    },
+    {
+      "line": 224,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/colorring.mbt"
+    },
+    {
+      "line": 268,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/colorring.mbt"
+    },
+    {
+      "line": 638,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 644,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 650,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 672,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 801,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 837,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 859,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 881,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 1077,
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 1081,
+      "why": "内联 JS FFI 是按浏览器语义写的（`window` / `devicePixelRatio`）",
+      "file": "frontend/main.mbt"
+    }
+  ],
+  "stubbed": [
+    {
+      "line": 1119,
+      "name": "draw_bagua_cmd",
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 1152,
+      "name": "bagua_view",
+      "why": "`@dom` 是浏览器 API 直连；RN 上没有 `document`",
+      "file": "frontend/main.mbt"
+    },
+    {
+      "line": 1669,
+      "name": "more_view",
+      "why": "标签表外的标签（RN 无对应物）",
+      "file": "frontend/main.mbt"
+    }
+  ],
+  "notes": [
+    {
+      "kind": "entry-manual",
+      "reason": "没有找到 `fn app() -> Val[Html]` 这个形状的入口 —— 入口要手工改",
+      "next": "自动完成，无需动作"
+    },
+    {
+      "kind": "using",
+      "reason": "`using @rabbita {…}` 改成 `using @html {…}`（Html 由 html 包提供；`Val` 是 rabbita 根包的东西，随入口一起没了）",
+      "next": "自动完成，无需动作"
+    },
+    {
+      "kind": "entry",
+      "reason": "入口改写成单导出：`fn main { @rabbita.new(app).mount(\"app\") }` → `pub fn app() -> @moobile.JsValue`（handlers_with_init）",
+      "next": "自动完成，无需动作"
+    },
+    {
+      "kind": "entry",
+      "reason": "去掉 `fn main`（挂载由宿主负责，库侧不再自己 mount）",
+      "next": "自动完成，无需动作"
+    },
+    {
+      "kind": "import-dropped",
+      "reason": "import `moonbit-community/rabbita` 在 moobile 里没有对应物（它是 rabbita 的根包：`App`/`run` 那一套由宿主接管），已去掉",
+      "next": "自动完成，无需动作"
+    },
+    {
+      "kind": "entry-manual",
+      "reason": "没有找到 `fn app() -> Val[Html]` 这个形状的入口 —— 入口要手工改",
+      "next": "自动完成，无需动作"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+// 由 `moobile-host create --from-rabbita` 生成 —— **不要手改**。
+//
+// 两个依赖：样式层（`@style`）+ 视图属性（`att` 这个桥要把 `Style` 变成 `Attrs`）。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html" @html,
+}

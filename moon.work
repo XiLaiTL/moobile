@@ -37,4 +37,7 @@ members = [
   // 它吃本地源码的理由与上面几个试金石一样 —— 它量的就是**此刻工作区里的库**，
   // 拿已发布的旧库量出来的数字与本轮的改动无关（也正因如此它才必须进工作区）。
   "examples/apps/perf-bench",
+  // ★ 从 `interest/yi` 迁移过来的真实应用（由 `moobile-host create --from-rabbita` 生成）：
+  //   它是第一个"真实应用"样本，也是三端（web / 桌面 / app）宿主骨架的载体。
+  "examples/apps/zhouyi-reader",
 ]

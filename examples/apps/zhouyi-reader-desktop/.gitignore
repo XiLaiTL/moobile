@@ -1,0 +1,12 @@
+# 依赖
+node_modules/
+
+# 原生工程（由 `npx react-native init-windows` 生成，不入库 —— 见 README 的"前置"）
+/windows/
+
+# 打包产物
+/out/
+
+# 杂项
+.DS_Store
+*.log
