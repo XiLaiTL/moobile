@@ -29,7 +29,9 @@ const { locate, read } = require('../template.js');
 const { renderProject, writeProject } = require('../init.js');
 const styles = require('./style-emit.js');
 const classRewrite = require('./class-rewrite.js');
+const motionGap = require('./motion-gap.js');
 const { auditApp, formatFindings } = require('./app-audit.js');
+const { factBlock } = require('./facts.js');
 const { detectClickOnView } = require('./click-on-view.js');
 
 /**
@@ -637,7 +639,10 @@ pub fn sty(s : @style.Style) -> @html.Attrs {
 
 /** 渲染报告（人读）+ 机器可读形态。 */
 function renderReport(data) {
-  const { src, dir, scan, gen, rewriteStats, blocked, notes, profile, moobileDep } = data;
+  const { src, dir, scan, gen, rewriteStats, blocked, notes, profile, moobileDep, srcFiles } = data;
+  // 观感缺口：报告里现算（只扫 HTML / CSS）—— 它属于"这份报告要说什么"，
+  // 不是迁移管线的中间状态，所以不塞进 data 的语义字段里。
+  const gaps = motionGap.scanMotionGaps(srcFiles || []);
   const L = [];
   L.push(`# 迁移报告 —— \`${src}\` → \`${dir}\``);
   L.push('');
@@ -683,8 +688,32 @@ function renderReport(data) {
   L.push('');
   L.push('```');
   L.push(`声明总数 ${gen.accounting.decls} = 已映射 ${gen.accounting.emitted} + 有损 ${gen.accounting.lost}`);
+  // ★ 源侧账本（2026-10-23）：**这一份才是"源文件里有多少条声明、各去哪了"的账**。
+  //   ⚠️ 上面那行的口径是**条目侧、按属性去重**的，与源侧账本**不是一个单位**，别相加、
+  //      也别互相对账（三套口径的说明在 `style-emit.js` 的 `collect()` 里）。
+  //   为什么还要印出来：它是"无痕消失"的**唯一**可读证据 —— 只要 Σ桶 ≠ 源声明数，
+  //      或者哪条声明既没调用也没说明，就说明有一条声明**没有名字**。
+  if (gen.ledger) {
+    const b = gen.ledger.buckets;
+    L.push(`源侧账本（每条声明恰好一个桶）：规则 ${gen.ledger.rules} · 源声明 ${gen.ledger.sourceDecls}` +
+      `（自定义属性 ${gen.ledger.customProps}）= 命中 ${b.matched} + 根样式 ${b.pageRoot} + 按下态 ${b.pressHover}` +
+      ` + @media ${b.media} + 后代 hover ${b.hoverDescendant} + 同元素 hover（未接线）${b.hoverSameElementOff}` +
+      ` + 认不出 ${b.unparsable} + 上下文损失 ${b.unmatchedLost} + 用不上 ${b.unmatchedUnused}`);
+    L.push(`其中"落进产物"的应用次数（逐规则 × 命中数）= ${gen.ledger.applications}`);
+  }
   L.push('```');
   L.push('');
+  // ★ "算成已映射、却一条调用都没有、也一句说明都没有"的声明 —— 生成器的账本与事实打架，
+  //   必须印出来（判据：`tools/migrate_ledger_check.mjs` 断言真实应用上必须是 0）。
+  if (gen.silentEmpty && gen.silentEmpty.length) {
+    L.push(`⚠️ **${gen.silentEmpty.length} 条声明被算成"已映射"，却没有任何调用、也没有任何说明**` +
+      '（生成器的账本与事实打架，逐条如下）：');
+    L.push('');
+    for (const s2 of gen.silentEmpty) {
+      L.push(`- \`${s2.prop}: ${s2.value}\`（\`${s2.cls}\`，${s2.file}:${s2.line}）`);
+    }
+    L.push('');
+  }
   if (gen.unmatchedRules.filter((u) => u.lost).length) {
     L.push('### 2.1 祖先链对不上、样式**没有落到任何元素**的规则（真损失）');
     L.push('');
@@ -704,6 +733,19 @@ function renderReport(data) {
     L.push('> 逐条的位置写在 `styles/styles.mbt` 的函数头注释里（`TODO(migrate)`）。');
     L.push('');
   }
+  // 「认得出列宽、认不出子项」的网格容器：**要人看一眼**，所以单独成节。
+  // 实测就是 `interest/yi` 的六十四卦速查（子元素在循环里攒进容器）。
+  if (gen.gridItemsUnknown && gen.gridItemsUnknown.length) {
+    L.push(`### 2.2b 网格容器：列宽认出来了，但**子项认不出来**（${gen.gridItemsUnknown.length} 条，要人看一眼）`);
+    L.push('');
+    for (const g of gen.gridItemsUnknown) {
+      L.push(`- \`${g.key}\`（列宽 ${g.basis}px）`);
+      L.push(`  · 为什么：${g.reason}`);
+      L.push(`  · 怎么办：${g.next}`);
+    }
+    L.push('');
+  }
+
   if (gen.ruleLosses.length) {
     L.push(`### 2.3 整条规则没映射（${gen.ruleLosses.length} 条）`);
     L.push('');
@@ -712,6 +754,28 @@ function renderReport(data) {
     for (const [kind, list] of Object.entries(byKind)) {
       L.push(`- **${kind}** ×${list.length}：${list[0].reason}`);
     }
+    L.push('');
+  }
+
+  // ── 2.4 观感缺口：源 CSS 里"一眼看得出来的东西"，哪些迁移后必然没了 ──────────
+  //
+  // 为什么单列一节：报告里原来的四类都是**逐条声明的碎片**，而"这个应用迁移过来之后
+  // 看/用起来会差什么"要人自己聚合。实测（`interest/yi`）：`:hover` 16 处、`cursor` 18 处、
+  // `border-radius` 9 处散在几十行里，没有一处说"**迁移后没有 hover 反馈、没有过渡、圆角没了**"。
+  if (gaps.length) {
+    L.push(`### 2.4 观感缺口（${gaps.length} 类 —— 迁移后**看/用起来**会差什么）`);
+    L.push('');
+    L.push('| 影响 | 类别 | 命中 | 为什么 | 在 RN 里怎么补 |');
+    L.push('|---|---|---|---|---|');
+    for (const g of gaps) {
+      L.push(
+        `| ${g.level === 'must' ? '**must**' : 'info'} | \`${g.id}\` | ${g.hits} | ${g.why} | ${g.how} |`,
+      );
+    }
+    L.push('');
+    L.push('最先撞到的那一处（每类一处，供查证）：');
+    L.push('');
+    for (const g of gaps) L.push(`- \`${g.id}\` → \`${g.where[0].file}:${g.where[0].line}\``);
     L.push('');
   }
 
@@ -1062,6 +1126,7 @@ function main(argv = process.argv.slice(2)) {
   const notesWithNext = allNotes.map((n) => ({ ...n, next: NEXT_OF[n.kind] || '自动完成，无需动作' }));
 
   const reportData = {
+    srcFiles,
     src: (path.relative(process.cwd(), srcRoot) || '.').split(path.sep).join('/'),
     dir: (path.relative(process.cwd(), target) || '.').split(path.sep).join('/'),
     scan,
@@ -1095,12 +1160,27 @@ function main(argv = process.argv.slice(2)) {
       accounting: gen.accounting,
       unmatchedLost: gen.unmatchedRules.filter((u) => u.lost).length,
       ruleLosses: gen.ruleLossSummary,
+      gridItemsUnknown: (gen.gridItemsUnknown || []).map((g) => ({ key: g.key, basis: g.basis })),
+      motionGaps: motionGap.scanMotionGaps(srcFiles).map((g) => ({ id: g.id, level: g.level, hits: g.hits })),
       keys: gen.classes.map((c) => c.key),
     },
     classRewrite: { edits: editsTotal, todos: todoList },
     blocked: blockedAll,
     stubbed: stubbedAll,
     notes: notesWithNext,
+    // ── ★ `facts`：**当前事实**（2026-10-23 加）────────────────────────────────
+    //
+    // 上面那些顶层数字（`styles` / `scan`…）是**迁移当天**的记录；这一段是"从源重算一遍"
+    // 得到的**当前**数字，带时间戳。为什么要有两套、以及为什么只给这一段加门（另一份
+    // `MIGRATION.md` 里有**人手补记**，重新生成会把它冲掉）—— 见 `lib/migrate/facts.js` 的文件头。
+    //
+    // 判据：`tools/migrate_facts_check.mjs`（不一致就红；`--sync` 重写并刷新 `generatedAt`）。
+    facts: {
+      generatedAt: new Date().toISOString(),
+      tool: 'moobile-host create --from-rabbita',
+      note: '这一段是**当前事实**（读数字读这里，generatedAt 是算它的时间）；顶层同名的 styles / scan 是**迁移当天**的记录，保留作历史',
+      ...factBlock({ gen, scan }),
+    },
   };
 
   if (args.dryRun) {

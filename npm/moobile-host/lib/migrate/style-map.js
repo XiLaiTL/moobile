@@ -35,6 +35,24 @@ function q(s) {
   return '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
 
+/**
+ * 从 `grid-template-columns` 里认出**列宽（px）** —— 只认这一种写法：
+ *
+ *   `repeat(auto-fill, minmax(116px, 1fr))` / `repeat(auto-fit, minmax(96px, 1fr))`
+ *
+ * 认不出返回 `null`（调用方据此记有损）——**不做近似**，理由与 `dim()` 一样：
+ * 猜错的值会静默画歪，而报错不会。
+ */
+function gridCellBasis(v) {
+  const m = String(v)
+    .trim()
+    .match(/^repeat\(\s*(?:auto-fill|auto-fit)\s*,\s*minmax\(\s*(\d+(?:\.\d+)?)px\s*,\s*1fr\s*\)\s*\)$/i);
+  return m ? Number(m[1]) : null;
+}
+
+/** `press:` 前缀（与 `style/style.mbt` 的 `press_prefix` 同一个字符串）。 */
+const PRESS_PREFIX = 'press:';
+
 /** 单个数值字面量（不带单位）：`1`、`1.65`、`-1`。 */
 function num(v) {
   const s = String(v).trim();
@@ -207,6 +225,55 @@ function mapped(calls, notes = []) {
 }
 
 /**
+ * ★ **原生 RN 不认 / 只有 iOS 的样式键**（2026-10-23 实测，逐条在真 RN 的登记表上核过）——
+ * 把事实与"**对应物**"写进**生成的产物里**（函数头 + 报告），而不只是写在文档里。
+ *
+ * 为什么值得占一行注释：这类洞的形状是"**web 绿、真机红**" ——
+ * `react-native-web` 当 CSS 照单全收，原生 RN **静默不认**（不报错、不崩、判据全绿），
+ * 所以只有把话说到用户会看的地方（他产物里那一格），才有机会被发现。
+ * 真实测到的**影响面**：`examples/apps/zhouyi-reader` 的产物里 **11 处**
+ * （`border_*_style` 8 处来自 `border-top: 1px dashed …` 这类简写 + `white_space` 3 处），
+ * 而同一个应用在 web 上 103 条判据全过。
+ *
+ * ⚠️ 判据在 `tools/style_platform_check.mjs`：库能产出的每一个"原生不认"的键都必须在那张表里
+ * 登记（写清 why 与 instead），RN 哪天支持了它也会红（表过期）。
+ */
+const BORDER_SIDE_NOTE = (key) =>
+  `⚠️ 原生 RN 只有**四边共用**的 \`borderStyle\`，没有分边的 \`${key}\` ⇒ **真机上这一条不生效**` +
+  '（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的' +
+  '（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。' +
+  '判据：`tools/style_platform_check.mjs`';
+
+const NATIVE_GAP_NOTES = {
+  'white-space':
+    '⚠️ 原生 RN **没有** `whiteSpace` 这个键（`react-native-web` 有）⇒ **真机上这一条不生效**。' +
+    '对应物（部分有）：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`' +
+    '（语义**不完全相同**：那是截断、还会带省略号，不是"不折行"）；' +
+    '`pre-line` / `pre-wrap` 的语义**接近** RN `Text` 的默认行为（保留换行符），差距要真机才量得准。' +
+    '判据：`tools/style_platform_check.mjs`',
+  order:
+    '⚠️ 原生 RN **没有** `order`（Yoga 不支持 flexbox 的 order，RN 那边标 not_planned）⇒ **真机上不生效**。' +
+    '对应物：**样式层没有** —— 要在 **Model 里把顺序排好**（与 `@media` 同一档）。' +
+    '判据：`tools/style_platform_check.mjs`',
+  'border-top-style': BORDER_SIDE_NOTE('borderTopStyle'),
+  'border-right-style': BORDER_SIDE_NOTE('borderRightStyle'),
+  'border-bottom-style': BORDER_SIDE_NOTE('borderBottomStyle'),
+  'border-left-style': BORDER_SIDE_NOTE('borderLeftStyle'),
+  'text-decoration-style':
+    '⚠️ 这个键**只有 iOS** 实现（Android 上静默不生效）—— 它在 RN 的登记表里，但安卓侧没有对应物。' +
+    '判据：`tools/style_platform_check.mjs`',
+  'text-decoration-color':
+    '⚠️ 这个键**只有 iOS** 实现（Android 上静默不生效）；安卓的 `TextPaint` 没有"下划线颜色"这个概念，' +
+    '只能接受系统默认。判据：`tools/style_platform_check.mjs`',
+};
+
+/** 这条属性有没有"原生缺口"要写进产物；有就返回一条 note。 */
+function nativeGapNotes(prop) {
+  const n = NATIVE_GAP_NOTES[prop];
+  return n ? [n] : [];
+}
+
+/**
  * 把一条声明映射成 `@style` 调用串（或"有损"）。
  *
  * @param {string} prop 已小写化的属性名
@@ -216,6 +283,35 @@ function mapped(calls, notes = []) {
 function mapDeclaration(prop, value, ctx = {}) {
   const v = String(value).trim();
 
+  // ── 按下态（`press:` 前缀）────────────────────────────────────────────────────
+  //
+  // 生成器把源 CSS 的 `:hover` 规则改写成"同一个元素 + `press:` 前缀的键"
+  // （见 `style-emit.js` 的 hover hook）。这里把前缀剥掉、按普通声明映射，
+  // 再把结果包一层 `.press()` —— 于是**同一个映射表**同时服务常态与按下态，
+  // 不会出现"按下态支持哪些属性"这第二张表（那种表一定会漂）。
+  //
+  // 嵌套的 `press:` 直接拒绝：`.press()` 不该出现两次。
+  if (prop.startsWith(PRESS_PREFIX)) {
+    const inner = prop.slice(PRESS_PREFIX.length);
+    if (inner.startsWith(PRESS_PREFIX)) return loss(`${prop} —— press: 不能嵌套`);
+    const r = mapDeclaration(inner, value, ctx);
+    if (r.loss) {
+      return { calls: [], loss: `${prop}:${v} —— 按下态里的这一条没能映射：${r.loss}`, notes: [] };
+    }
+    // ⚠️ 这里只给调用串打一个**标记**（前导 `.press()`），标记"这一段属于按下态" ——
+    //    链里三段的先后由 `emitModule` **一处**排（`hover 在前 → .press() → 常态在后`），
+    //    本函数不管排布。为什么合并成一次 `.press()` 不在这一层做：排布是链路的事，
+    //    两处各排一次一定会漂 —— 而 `Style::press` 是给**它前面**的键加前缀，位置写错
+    //    就是常态与按下态**整体互换**（2026-10-23 实测踩到，见 `emitModule` 那段注释）。
+    //    第一版在这里逐条 wrap 却没让 `emitModule` 拆标记，产物成了
+    //    `.,.press(),border_color("#x")` —— 编都编不过。
+    return {
+      calls: ['.press()' + r.calls.join('')],
+      loss: null,
+      notes: [`${prop} ⇒ 按下态：${r.calls.join('')}`].concat(r.notes || []),
+    };
+  }
+
   // ── 枚举类：表里有就直接查 ──────────────────────────────────────────────────
   if (ENUMS[prop]) {
     let key = v.toLowerCase();
@@ -223,7 +319,7 @@ function mapDeclaration(prop, value, ctx = {}) {
     const expr = ENUMS[prop][key];
     if (expr) {
       const method = prop.replace(/-([a-z])/g, (_, c) => '_' + c).replace('_style', '_style');
-      return mapped([`.${method}(${expr})`]);
+      return mapped([`.${method}(${expr})`], nativeGapNotes(prop));
     }
   }
 
@@ -241,6 +337,20 @@ function mapDeclaration(prop, value, ctx = {}) {
         );
       }
       if (k === 'none') return mapped(['.display(@style.Display::Hidden)']);
+      if (k === 'grid') {
+        // 见 `grid-template-columns` 那一段的长注释：grid 在 RN 里没有对应物，
+        // 降级成"能换行的行 flex"。**列宽不在这里**（写在子项上，由 `mapClass` 补）。
+        return mapped(
+          [
+            '.display(@style.Display::Flex)',
+            '.flex_direction(@style.FlexDirection::Row)',
+            '.flex_wrap(@style.FlexWrap::Wrap)',
+          ],
+          [
+            'display:grid 降级成 flex(row) + flex_wrap(wrap)：RN 没有 grid；列宽由子项的 min_width + flex_grow 表达（见 mapClass 的 isGridCell）',
+          ],
+        );
+      }
       return loss(
         `display:${k} —— \`@style\` 只有 Flex / Hidden 两个取值（行内排版在 RN 上是怎么显示的问题，见 R1 判决）`,
       );
@@ -284,7 +394,7 @@ function mapDeclaration(prop, value, ctx = {}) {
     }
     case 'order': {
       const n = unitless(v);
-      return n === null ? loss(`order:${v}`) : mapped([`.order(${n})`]);
+      return n === null ? loss(`order:${v}`) : mapped([`.order(${n})`], nativeGapNotes('order'));
     }
 
     // ── 定位 ────────────────────────────────────────────────────────────────
@@ -390,7 +500,7 @@ function mapDeclaration(prop, value, ctx = {}) {
       // 这些是**简写的一部分**，单独出现时走同一张枚举表
       const expr = ENUMS['border-style'][v.toLowerCase()];
       if (!expr) return loss(`${prop}:${v}`);
-      return mapped([`.${prop.replace(/-/g, '_')}(${expr})`]);
+      return mapped([`.${prop.replace(/-/g, '_')}(${expr})`], nativeGapNotes(prop));
     }
     case 'border-radius':
     case 'border-top-left-radius':
@@ -444,7 +554,28 @@ function mapDeclaration(prop, value, ctx = {}) {
     }
     case 'line-height': {
       const n = unitless(v);
-      if (n !== null) return mapped([`.line_height(${n})`]);
+      if (n !== null) {
+        // ⚠️ **无单位行高在两边语义不同，这里必须换算，不能原样搬**（2026-10 实测）：
+        //   CSS 里 `line-height: 1.65` 是**倍数**；RN / RNW 里 `lineHeight: 1.65` 是
+        //   **点数** —— 实测计算值就是 `1.65px`，整页行距被压成一坨。
+        //   所以走 `line_height_em`：渲染时按同一样式的字号换算成点数（`1.65 × 16 = 26.4px`），
+        //   与 CSS 的观感一致，也不需要生成器知道继承来的字号。
+        //
+        // 边界：≥4 的无单位值在 CSS 里几乎一定是"手滑写了 px 的数"，而按倍数算会得到
+        // 巨大的行高。这种按**点数**处理，并在注释里点名。
+        if (Number(n) >= 4) {
+          return mapped(
+            [`.line_height(${n})`],
+            [`line-height:${v} —— 无单位且 ≥4，按**点数**处理（CSS 语义是倍数；这一档更可能是漏写单位）`],
+          );
+        }
+        return mapped(
+          [`.line_height_em(${n})`],
+          [
+            `line-height:${v} 无单位 —— 按**倍数**换算（CSS 语义）。RN 的 lineHeight 是点数，原样搬会变成 ${v}px`,
+          ],
+        );
+      }
       const em = emRatio(v);
       if (em !== null) {
         return mapped(
@@ -471,7 +602,20 @@ function mapDeclaration(prop, value, ctx = {}) {
       }
       const m = String(v).match(/^(-?(?:\d+\.?\d*|\.\d+))px$/);
       if (m) return mapped([`.letter_spacing(${d(Number(m[1]))})`]);
-      if (/^normal$/i.test(v)) return mapped([]);
+      if (/^normal$/i.test(v)) {
+        // `normal` 是 CSS 的**初始值**（不额外加字距），而 RN 的 `letterSpacing` 默认就是 `0`
+        // ⇒ 如实发 0（语义等价，且不改变观感）。
+        //
+        // ⚠️★ 2026-10-23 实测：这一条以前是 `mapped([])` —— **零调用、零 note，却计入「已映射」**。
+        //    它是本文件里**唯一**一处 `mapped([])`，也就是"声称映射了、其实什么都没发"这一类
+        //    （第十八轮审计点名的那个"恒等式守不住"的现网实例）。
+        //    修法不是"补一张名单"，而是**别让这个形状存在**：要么给调用，要么给理由。
+        //    判据在 `tools/migrate_ledger_check.mjs`（"声称已映射 ⇒ 至少一条调用"）。
+        return mapped(
+          ['.letter_spacing(0.0)'],
+          ['letter-spacing: normal ⇒ 0（CSS 的初始值；RN 的 letterSpacing 默认就是 0）'],
+        );
+      }
       return loss(`letter-spacing:${v}`);
     }
     case 'text-decoration':
@@ -492,18 +636,42 @@ function mapDeclaration(prop, value, ctx = {}) {
     }
     case 'text-decoration-color': {
       const c = color(v);
-      return c ? mapped([`.text_decoration_color(${c})`]) : loss(`text-decoration-color:${v}`);
+      return c
+        ? mapped([`.text_decoration_color(${c})`], nativeGapNotes('text-decoration-color'))
+        : loss(`text-decoration-color:${v}`);
     }
 
-    // ── 明确不表达的东西（逐条给理由，别只说"不支持"）────────────────────────
+    // ── `display:grid` 的**降级策略**（2026-10-23 落地；见 `mapClass` 的 `isGridCell`）──
+    //
+    // 以前这里是"如实记为有损"，理由写的是"降级成 flex 需要人来决定列宽策略"。
+    // 实测的后果（`interest/yi` 的六十四卦速查）：`display:grid` 丢了、`grid-template-columns`
+    // 丢了，而**容器上什么都没补** ⇒ 64 张卦卡在迁移版里是**单列**（旧版是多列网格）。
+    // 现在把那个"人的决定"写下来、并且是可判据的：
+    //
+    //   CSS：`display:grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr))`
+    //   RN ：容器 `flex_direction(row) + flex_wrap(wrap)`，**子项** `min_width(116) + flex_grow(1)`
+    //
+    // 为什么列宽写在**子项**上而不是容器上：flex 的容器没有"列宽"这个概念 ——
+    // 换行后的每一行各自分配宽度。子项给"最小宽度 + 会长大"就等价于
+    // "每列至少 116px、有富余时各列平分"，与 `auto-fill + minmax(x, 1fr)` 的形状一致。
     case 'grid-template-columns':
     case 'grid-template-rows':
     case 'grid-template-areas':
     case 'grid-column':
-    case 'grid-row':
+    case 'grid-row': {
+      const basis = prop === 'grid-template-columns' ? gridCellBasis(v) : null;
+      if (basis !== null) {
+        return mapped(
+          [],
+          [
+            `${prop}:${v} 未映射到容器 —— **列宽改写在子项上**：\`.min_width(@style.px(${basis}))\` + \`.flex_grow(1.0)\`（见 mapClass 的 isGridCell）`,
+          ],
+        );
+      }
       return loss(
-        `${prop}:${v} —— RN 没有 grid 布局（\`@style\` 只有 flex）。降级成 flex 需要**人来决定**列宽策略`,
+        `${prop}:${v} —— RN 没有 grid 布局（\`@style\` 只有 flex）。这一条认不出列宽（只支持 repeat(auto-fill|auto-fit, minmax(<N>px, 1fr))），降级策略要人定`,
       );
+    }
     case 'transform':
       return loss(`transform:${v} —— RN 要结构化数组，而 \`Style\` 的条目是扁平 (key, StyleValue)，装不下`);
     case 'transition':
@@ -598,6 +766,14 @@ function mapBorderShorthand(prop, v) {
     notes.push(`border 简写里有认不出的部分：\`${p}\``);
   }
   if (!calls.length) return loss(`${prop}:${v} —— 简写里没有一项能识别`);
+  // ⚠️★ 分边的 style 在原生 RN 上没有对应物（登记表里没有 `borderTopStyle` 这些）——
+  //    而**简写这条路不经过** `mapDeclaration` 的 `border-*-style` 分支，所以那句说明得在这里补上。
+  //    2026-10-23 实测踩到：第一版只改了 `mapDeclaration`，于是同步产物时**一条相关说明都没有**
+  //    （`white_space` 的 3 条进去了，`border_*_style` 的 8 条没有）—— 差一点就把
+  //    "我们已经把话说到用户会看的地方"当成做完了。
+  if (prop !== 'border' && /\.border_[a-z]+_style\(/.test(calls.join(''))) {
+    notes.push(NATIVE_GAP_NOTES[`${prop}-style`]);
+  }
   return { calls, loss: null, notes };
 }
 
@@ -639,6 +815,7 @@ module.exports = {
   emRatio,
   color,
   fontWeight,
+  gridCellBasis,
   d,
   q,
   ENUMS,

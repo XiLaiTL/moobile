@@ -156,12 +156,96 @@ function collectStyles(rules, vars, sites) {
     for (const s of sites) ensure(s.key);
   }
 
+  // ── grid 容器的列宽（`grid-template-columns` 认得出才记）────────────────────
+  //
+  // 为什么要在这里先扫一遍：`display:grid` 的降级是**两半** —— 容器上加 `flex_wrap`，
+  // **子项**上加 `min_width + flex_grow`。而"谁是子项"这件事只有**祖先链**知道
+  // （`sites[].chain`），单条声明里没有。所以先把"类名 → 列宽"攒出来，再让
+  // `mapClass` 按祖先链判断某个用法是不是 grid 格。
+  // 同时收集"`display:grid` 的类组合"（判"父元素是网格"用）。
+  const gridBases = new Map();
+  for (const rule of rules) {
+    // ⚠️ **`@media` 里的规则不算**（实测踩到）：源 CSS 在窄屏把列宽从 116px 改成 96px，
+    //    收进来的话会让桌面宽度也变成 96（实测：生成物里出现 `min_width(96.0)`）。
+    //    RN 没有媒体查询（本来就要在 Model 里按窗口宽度表达），窄屏那条仍进 `ruleLosses`。
+    if (rule.media) continue;
+    const decl = rule.decls.find((d) => d.prop === 'grid-template-columns');
+    if (!decl) continue;
+    const basis = map.gridCellBasis(css.substituteVars(decl.value, vars));
+    if (basis === null) continue;
+    for (const cls of rule.selector.split(',')) {
+      const m = cls.trim().match(/\.([A-Za-z_][\w-]*)\s*$/);
+      if (m) gridBases.set(m[1], basis);
+    }
+  }
+  const gridContainers = new Set();
+  for (const [key, e] of sets) {
+    const d = e.decls.get('display');
+    if (d && String(d.value).trim().toLowerCase() === 'grid') gridContainers.add(key);
+  }
+
   const ruleLosses = [];
   const unmatchedRules = [];
   const pageRules = [];
+  /** `:hover` 的规则（转成按下态用；见下面的 hook） */
+  const pressRules = [];
+
+  // ── ★ 源侧账本（2026-10-23 新）───────────────────────────────────────────────
+  //
+  // **为什么需要它**：第十八轮做过一次人工清点（源 `<style>` 的 656 条声明逐条对账，
+  // 结论"无痕消失 0"）—— 但那次清点是**只读的、没变成判据**，所以"下次动生成器会不会又漏"
+  // 没人知道。这个账本把那一次清点变成**每次生成都算一遍**的东西：
+  // **每一条源声明都必须落进一个有名字的桶**（桶里的条目各自带 `file:line`，见
+  // `ruleLosses` / `unmatchedRules`）。
+  //
+  // ⚠️ 三条口径，写清楚免得下一个人对着数字打架：
+  //   ① **`sourceDecls` 只数"非自定义属性"**（`--x` 那些是给 `var()` 展开用的，不是样式本身）。
+  //      被跳过的自定义属性另记在 `customProps`，所以 `sourceDecls + customProps` = 源文件里的声明总数。
+  //   ② **桶划分的是"源声明"（每条一次）**；"逐规则 × 命中数"另记在 `applications`，
+  //      而 `accounting.decls` 是**条目侧、按属性去重**的 —— 这三个是**三种不同单位**，
+  //      **互不相等、也别互相对账**（级联覆盖、一规则多命中都会让它们分开）。
+  //   ③ 这个"Σ 桶 = 源总数"**不是判据**（它就是同一次遍历里加的，自己跟自己闭合 ——
+  //      正是第十八轮批评过的"计数闭合不是对账"那个形状）。**真判据在门那一侧**：
+  //      `tools/migrate_ledger_check.mjs` 会**自己**从源 CSS 数一遍再来比。
+  //      所以这里**不 throw**：账本歪了的时候，数字本身是最有用的现场，抛掉就看不见了。
+  const ledger = {
+    rules: 0,
+    sourceDecls: 0,
+    customProps: 0,
+    /**
+     * ⚠️★ **这一组桶是对"源声明"的划分：每条声明恰好进一个桶、只算一次。**
+     * 所以 `Σ buckets === sourceDecls` 才有意义。
+     * （2026-10-23 实测踩到：第一版把"逐规则 × 命中数"也混进了 `applied`，
+     *  于是真实应用上 Σ桶 = 1026 而源声明只有 660 —— 两个**不同的单位**被加在了一起。
+     *  那一次读数是 `applied 726` vs `matched 360`（后面这个才是源侧口径）。）
+     */
+    buckets: {
+      /** 命中至少一个源码用法（源侧算一次；"命中几次"见 `applications`） */
+      matched: 0,
+      pageRoot: 0,
+      pressHover: 0,
+      media: 0,
+      hoverDescendant: 0,
+      hoverSameElementOff: 0,
+      unparsable: 0,
+      unmatchedLost: 0,
+      unmatchedUnused: 0,
+    },
+    /**
+     * **应用次数**（逐规则 × 命中数）—— 与上面那组桶**不是一个单位**，别相加、别互相对账。
+     * 它回答的是"一共往产物里写了多少次声明"（同一格被多轮级联覆盖时会被算多次）。
+     */
+    applications: 0,
+  };
+  /** 这条规则里"算样式"的声明有几条（`--x` 不算）。 */
+  const styleDecls = (r) => r.decls.filter((d) => !d.prop.startsWith('--')).length;
 
   for (const rule of rules) {
+    ledger.rules++;
+    ledger.sourceDecls += styleDecls(rule);
+    ledger.customProps += rule.decls.length - styleDecls(rule);
     if (rule.media) {
+      ledger.buckets.media += styleDecls(rule);
       ruleLosses.push({
         kind: 'media',
         reason: `@media ${rule.media} 里的 \`${rule.selector}\` —— RN 没有媒体查询，断点要在 Model 里按窗口宽度表达`,
@@ -172,12 +256,74 @@ function collectStyles(rules, vars, sites) {
       continue;
     }
     if (css.classifySelector(rule.selector).kind === 'root') {
+      ledger.buckets.pageRoot += styleDecls(rule);
       pageRules.push(rule);
+      continue;
+    }
+    // ── `:hover` ⇒ **按下态**（2026-10-23 落地）────────────────────────────────
+    //
+    // 以前这一类整个进 `ruleLosses`（"RN 没有伪类，`:hover` 在触屏上本来也不存在"）。
+    // 后果实测：源项目的 16 处 `:hover` **全部消失**，卡片/按钮/链接点了没有任何反馈。
+    // 现在降级成 `Pressable` 的按下态（`Style::press()`，键加 `press:` 前缀）：
+    // 触屏按下即生效，web 上鼠标按下同样算（`react-native-web` 遵守同一套契约）。
+    //
+    // ⚠️ 只认"**hover 打在同一个元素上**"的写法（`.card:hover` / `.a.b:hover`）。
+    //    后代写法（`.card:hover .child`）改的是**子元素**，按下态表达不了 —— 那种如实点名。
+    // ⚠️★ 默认**关闭**（2026-10-23 决定）：按下态的生成已经做完了、也验过（10 个函数生成
+    //    `.press()` 块），但**库侧的消费通道还没接对**（`Pressable` 包裹 + 函数式 style
+    //    那一套改了六轮没稳）。而 `Style::press()` 产出的是 `press:` 前缀键 ——
+    //    库不拆就会原样进 `style`，让 RN 收到非法样式名。
+    //    所以：**先不生成**，把这条能力留在代码里等库侧就绪；开关是下面这个环境变量
+    //    （门与所有应用都按"关闭"跑，判定标准仍是"生成物与生成器逐字一致"）。
+    const pressEnabled = process.env.DSH_PRESS_FROM_HOVER === '1';
+    // "hover 打在**同一个元素**上"（`.card:hover` / `.a.b:hover`）—— 与"hover 打在后代上"
+    // （`.card:hover .child`）是**两件不同的事**，理由必须分开写（见下面那个 if 里的实测）。
+    const sameElementHover = rule.selector.match(/^((?:\.[A-Za-z_][\w-]*)+):hover$/);
+    const hoverMatch = pressEnabled ? sameElementHover : null;
+    if (hoverMatch && !rule.media) {
+      pressRules.push({ own: hoverMatch[1].split('.').filter(Boolean), rule });
+      continue;
+    }
+    if (/:hover/.test(rule.selector)) {
+      // ⚠️★ 2026-10-23 实测：这一段原来**只有一条理由**（"hover 打在后代上"），而在
+      //    按下态默认关闭的配置下，16 条同元素 `:hover` 里有 **14** 条落到这里
+      //    ⇒ **理由说反了**（真后代只有 2 条）。
+      //    理由写反比不写更贵：下一个人会照着它去找"后代表达不了"的解法，而真正的原因是
+      //    "已经实现了、只是还没接线"。
+      if (sameElementHover) {
+        ledger.buckets.hoverSameElementOff += styleDecls(rule);
+        ruleLosses.push({
+          kind: 'hover-same-element',
+          reason:
+            '`' +
+            rule.selector +
+            '` —— hover 打在**同一个元素**上：按下态这条链**已经实现**（`Style::press()` + 生成器都会产），' +
+            '但生成器**默认不产出**它（`DSH_PRESS_FROM_HOVER=1` 才开）—— 库侧的消费通道' +
+            '（`Pressable` + 函数式 `style`）还没接稳，产出会让 RN 收到非法的 `press:` 样式名。' +
+            '**这不是"表达不了"，是"还没接线"。**',
+          file: rule.file,
+          line: rule.line,
+          decls: rule.decls.length,
+        });
+        continue;
+      }
+      ledger.buckets.hoverDescendant += styleDecls(rule);
+      ruleLosses.push({
+        kind: 'hover-descendant',
+        reason:
+          '`' +
+          rule.selector +
+          '` —— hover 打在**后代**上，按下态表达不了"父元素被按住时的子元素颜色"；要么改成条件状态（进 Model），要么放弃这一处的反馈',
+        file: rule.file,
+        line: rule.line,
+        decls: rule.decls.length,
+      });
       continue;
     }
     const parsed = css.parseSelectorParts(rule.selector);
     if (!parsed) {
       const cls = css.classifySelector(rule.selector);
+      ledger.buckets.unparsable += styleDecls(rule);
       ruleLosses.push({
         kind: cls.kind,
         reason: `${cls.reason}（\`${rule.selector}\`）`,
@@ -191,6 +337,8 @@ function collectStyles(rules, vars, sites) {
     if (!useSites) {
       // 退化成"每条规则的最后一个类"的单类函数（不依赖源码）
       const last = parsed.parts[parsed.parts.length - 1];
+      ledger.buckets.matched += styleDecls(rule);
+      ledger.applications += styleDecls(rule) * last.classes.length;
       for (const c of last.classes) {
         const e = ensure(c);
         applyDecls(e, rule, vars);
@@ -200,31 +348,61 @@ function collectStyles(rules, vars, sites) {
     }
 
     let matchedAny = false;
+    let hits = 0;
     for (const site of sites) {
       if (selectorMatchesSite(parsed, site)) {
         const e = sets.get(site.key);
         applyDecls(e, rule, vars);
         e.sources.push(`${rule.file}:${rule.line}`);
         matchedAny = true;
+        hits++;
       }
     }
     if (!matchedAny) {
       // 这条规则没匹配上任何用法。两种情形要分开报：
-      //   ① 它要的类源码里根本没用到 → 规则用不上，不是损失；
-      //   ② 类用到了、但**祖先链对不上** → 那组样式在这个元素上**静默丢了**，必须点名。
+      //   ① 它要的类/标签源码里根本没用到 → 规则用不上，不是损失；
+      //   ② 它要的那个元素**存在**，只是**上下文（祖先链 / 标签）对不上** → 那组样式
+      //      在这个元素上**静默丢了**，必须点名。
+      //
+      // ⚠️★ 2026-10-23 实测（这条以前是错的）：`lost` 原来只按**祖先链长度**判
+      //    （`parsed.parts.length > 1`），于是"**单段 + 带标签**"的选择器
+      //    （`button.primary`）+ 源码里写的是 `div.primary` 时：
+      //      · 理由文字走的是"上下文不一致 —— 这一组样式没有落到任何元素上"（**承认是损失**），
+      //      · 而 `lost` 是 `false` ⇒ 报告 §2.1 **只印 `lost` 的条目** ⇒ 它哪都不出现。
+      //    即**标志与理由打架**（比两者都错更难发现）。现在 `lost` 也认标签。
+      //
+      // ⚠️ 另一处（同一次实测）：`usedOwn` 原来用 `last.classes.every(...)` —— 空数组的
+      //    `every` **恒真**，于是**纯标签**选择器（`input {}`）的 `usedOwn` 永远是 `true`。
+      //    现在空类集时改看标签。
       const last = parsed.parts[parsed.parts.length - 1];
-      const usedOwn = sites.some((site) => last.classes.every((c) => (site.own.classes || []).includes(c)));
+      const hasClasses = last.classes.length > 0;
+      const classUsed =
+        hasClasses && sites.some((site) => last.classes.every((c) => (site.own.classes || []).includes(c)));
+      const tagUsed = last.tag ? sites.some((site) => (site.own.tag || '') === last.tag) : false;
+      const usedOwn = hasClasses ? classUsed : tagUsed;
+      /** 选择器要的那个元素**逐字**存在吗（标签与类都对得上）。 */
+      const targetExists = sites.some(
+        (site) =>
+          (!last.tag || (site.own.tag || '') === last.tag) &&
+          last.classes.every((c) => (site.own.classes || []).includes(c)),
+      );
+      const lost = usedOwn && !targetExists;
+      ledger.buckets[lost ? 'unmatchedLost' : 'unmatchedUnused'] += styleDecls(rule);
       unmatchedRules.push({
         selector: rule.selector,
         file: rule.file,
         line: rule.line,
         decls: rule.decls.length,
-        // ② 这一类才是"损失"：同一个类在源码里出现过，只是上下文与选择器要求的不一样
-        lost: usedOwn && parsed.parts.length > 1,
+        // ② 这一类才是"损失"：它要的元素在源码里出现过（同类或同标签），
+        //    只是上下文（祖先链 / 标签）与选择器要求的不一样
+        lost,
         reason: usedOwn
-          ? `源码里用了 \`${last.classes.length ? last.classes.join(' ') : last.tag}\`，但**祖先链与该选择器要求的上下文不一致**（\`${rule.selector}\`）——这一组样式没有落到任何元素上`
+          ? `源码里用了 \`${last.classes.length ? last.classes.join(' ') : last.tag}\`，但**祖先链/标签与该选择器要求的上下文不一致**（\`${rule.selector}\`）——这一组样式没有落到任何元素上`
           : `\`${rule.selector}\` 里的类/标签在源码里没被用到（规则用不上，不是损失）`,
       });
+    } else {
+      ledger.buckets.matched += styleDecls(rule);
+      ledger.applications += styleDecls(rule) * hits;
     }
   }
 
@@ -234,7 +412,89 @@ function collectStyles(rules, vars, sites) {
     page.sources.push(`${r.file}:${r.line}`);
   }
 
-  return { sets, ruleLosses, unmatchedRules };
+  // ── grid 子项：链认不出来时的兜底（2026-10-23 实测定型）──────────────────────
+  //
+  // 判据两条同时成立：**循环体里生成 + 源码里祖先链为空**。
+  //   · "循环体里" —— 源 CSS 里 `display:grid` 的子元素常常是循环里攒进容器的
+  //     （`let card = div(...)` + `shang.push(card)`）；`class-rewrite` 现在认得出这一位
+  //     （`sites[].inLoop`）。实测：127 条用法里 7 条在循环体里。
+  //   · "祖先链为空" —— 把"在循环里、但内联嵌在某个祖先里"的那些排掉。实测：那 7 条里
+  //     只有 `div.hex-card` 是空链，另外 6 条本来靠链就判对了。
+  //
+  // 之前两条更宽的规则都有实测反例（留档，别重犯）：
+  //   ① "凡与网格容器同名的类组合都算子项" → 把**容器自己**也补上 `min_width`，
+  //      容器被挤成 116px、64 张卡塞成一列（比修之前更窄）；
+  //   ② "凡祖先链为空的用法都算" → 空链有 8 条，只有 1 条该算（精度 1/8）。
+  {
+    const containersWithBasis = [...gridBases.keys()].filter((cls) =>
+      [...sets.values()].some((e) => e.classes.includes(cls)),
+    );
+    let hit = 0;
+    for (const s2 of sites) {
+      if (!s2.inLoop) continue;
+      if (s2.chain && s2.chain.length) continue;
+      const e = sets.get(s2.key);
+      if (!e || e.gridBasis !== undefined) continue;
+      const d = e.decls.get('display');
+      if (d && String(d.value).trim() === 'grid') continue;
+      const basis = Math.max(...containersWithBasis.map((c) => gridBases.get(c)));
+      if (!Number.isFinite(basis)) continue;
+      e.gridBasis = basis;
+      e.gridBasisFromFallback = true;
+      hit++;
+    }
+    // 一条都没兜到 ⇒ 认不出子项：点名（交给 MIGRATION.md 与生成后自查），**不猜**
+    if (!hit) {
+      for (const cls of containersWithBasis) {
+        const entry = [...sets.values()].find((e) => e.classes.includes(cls) && e.key.split('>').pop().endsWith('.' + cls));
+        if (entry) {
+          entry.gridItemsUnknown = true;
+          entry.gridCellBasis = gridBases.get(cls);
+        }
+      }
+    }
+  }
+
+  // ── 按下态：把 `:hover` 的声明写到"命中它的那些类组合"上 ────────────────────
+  //
+  // 用与普通规则**同一套** `selectorMatchesSite` 的判据精神：这里只要求"自己的类完全一致"
+  // （`.a.b:hover` 命中 `class="a b"` 的用法）。写进去的键统一加 `press:` 前缀。
+  for (const pr of pressRules) {
+    const want = pr.own;
+    let hit = 0;
+    for (const s2 of sites) {
+      const self = (s2.own && s2.own.classes) || [];
+      if (want.length !== self.length || !want.every((c) => self.includes(c))) continue;
+      const e = sets.get(s2.key);
+      if (!e) continue;
+      for (const d of pr.rule.decls) {
+        if (d.prop.startsWith('--')) continue;
+        const key = 'press:' + d.prop;
+        if (!e.decls.has(key)) e.order.push(key);
+        e.decls.set(key, {
+          value: css.substituteVars(d.value, vars),
+          line: d.line,
+          file: pr.rule.file,
+        });
+      }
+      hit++;
+    }
+    if (!hit) {
+      ledger.buckets.unmatchedUnused += styleDecls(pr.rule);
+      ruleLosses.push({
+        kind: 'hover-unmatched',
+        reason: '`' + pr.rule.selector + '` —— 这个 :hover 的宿主类在源码里没找到用法',
+        file: pr.rule.file,
+        line: pr.rule.line,
+        decls: pr.rule.decls.length,
+      });
+    } else {
+      ledger.buckets.pressHover += styleDecls(pr.rule);
+      ledger.applications += styleDecls(pr.rule) * hit;
+    }
+  }
+
+  return { sets, ruleLosses, unmatchedRules, ledger };
 }
 
 /** 把一条规则的声明并进某个类组合的声明表（后写覆盖先写 —— CSS 的级联）。 */
@@ -257,6 +517,8 @@ function mapClass(entry) {
   const calls = [];
   const losses = [];
   const notes = [];
+  /** ★ "算成已映射、却一条调用都没有"的声明（见下面那个 `silentEmpty.push`）。 */
+  const silentEmpty = [];
   const props = new Set(entry.decls.keys());
   // `display:flex` 要不要补 `flex_direction(Row)`，取决于这一条里**有没有**显式写方向
   const hasExplicitDirection = props.has('flex-direction');
@@ -290,10 +552,56 @@ function mapClass(entry) {
     } else {
       calls.push(...r.calls);
     }
-    notes.push(...r.notes);
+    // ── ★ "声称已映射，却一条调用都没发、也一句说明都没有"（2026-10-23 新增）──────
+    //
+    // 这是"静默丢键"的**同一个形状**，只是发生在声明层：`emitted++` 与"真的产出了调用"
+    // 是**两件独立的事**，而以前没有任何东西把它们绑在一起。
+    // 现网实例（第十八轮审计点名、本轮实测复现）：`letter-spacing: normal` 走
+    // `mapped([])` ⇒ 零调用、零 note，却计入"已映射"（`style-map.js` 里已修）。
+    //
+    // ⚠️ 判据是"零调用 **且零说明**"，不是"零调用" —— 因为**有些声明本来就该零调用**，
+    //    只要它说清了自己去哪了。实测例子：`grid-template-columns` 在网格**容器**上
+    //    就是把列宽**交给子项**（子项上补 `min_width` + `flex_grow`），容器自身没有调用
+    //    —— 那是设计，不是丢失。所以下面这种情形要**给一句说明**（`propExplained`）。
+    //
+    // ⚠️ 为什么这也**不 throw**：抛掉就看不见是哪几条了。这里只把它记进账本，
+    //    由 `tools/migrate_ledger_check.mjs` 断言"真实应用上必须是 0"，
+    //    并让报告把它印出来（`create.js` 的 §2）。
+    const propNotes = [...(r.notes || [])];
+    if (
+      prop === 'grid-template-columns' &&
+      (entry.gridBasis !== undefined || entry.gridCellBasis !== undefined)
+    ) {
+      propNotes.push(
+        '`grid-template-columns` ⇒ **列宽已经提取给子项**（子项上补 `min_width` + `flex_grow`，见本函数末尾），' +
+          '容器自身没有对应调用 —— 这不是丢失',
+      );
+    }
+    if ((r.calls || []).length === 0 && propNotes.length === 0) {
+      silentEmpty.push({ prop, value, file, line });
+    }
+    notes.push(...propNotes);
   }
 
-  return { calls, losses, notes, emitted, lost };
+  // ── grid 格的降级：列宽写在**子项**上 ──────────────────────────────────────
+  //
+  // `display:grid` 那一半由 `mapDeclaration` 负责（容器 → flex(row) + wrap）。
+  // 这一半是"子项至少多宽、富余怎么分"：`min_width(列宽)` + `flex_grow(1)`。
+  // 为什么列宽只能写在子项上：flex 的容器**没有"列宽"这个概念** —— 换行之后每一行
+  // 各自分配宽度，所以"每列至少 116px、有富余时各列平分"只能用子项的
+  // `min_width + flex_grow` 表达。
+  //
+  // 判据（实测）：`interest/yi` 的六十四卦速查 —— 修前容器塌成 331px、卡片 54px、
+  // 一行 5 张；修后容器撑满、一行 10~11 张（旧版 `auto-fill` 网格的形状）。
+  if (entry.gridBasis) {
+    const basis = entry.gridBasis % 1 === 0 ? `${entry.gridBasis}.0` : String(entry.gridBasis);
+    calls.push(`.min_width(@style.px(${basis}))`, '.flex_grow(1.0)');
+    notes.push(
+      `grid 子项：补 min_width(${basis}) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档`,
+    );
+  }
+
+  return { calls, losses, notes, emitted, lost, silentEmpty };
 }
 
 /** 生成 `styles.mbt` 的源码文本。 */
@@ -301,6 +609,8 @@ function emitModule(collected, meta) {
   const classes = [];
   const usedNames = new Map();
   const accounting = { decls: 0, emitted: 0, lost: 0 };
+  /** ★ "算成已映射、却一条调用都没有"的声明（逐条带 `file:line`；判据在 `tools/migrate_ledger_check.mjs`）。 */
+  const silentEmpty = [];
   const unstyled = [];
 
   for (const entry of collected.sets.values()) {
@@ -308,6 +618,7 @@ function emitModule(collected, meta) {
     accounting.decls += entry.decls.size;
     accounting.emitted += m.emitted;
     accounting.lost += m.lost;
+    for (const s of m.silentEmpty || []) silentEmpty.push({ ...s, cls: entry.key });
     if (!entry.decls.size && entry.key !== '__page__') {
       unstyled.push(entry.key);
       continue; // 一条规则都没匹配上：不生成空函数（调用点会由 class-rewrite 记为 TODO）
@@ -367,7 +678,39 @@ function emitModule(collected, meta) {
     }
     L.push(`pub fn ${c.fnName}() -> @style.Style {`);
     L.push('  @style.Style::new()');
-    for (const call of c.calls) L.push(`    ${call}`);
+    // ── 按下态（`press:` 前缀）的调用：**hover 在前 → `.press()` → 常态在后** ──────
+    //
+    // `Style::press` 的语义是"把**它前面**的键都加上 `press:` 前缀"（见 `style/style.mbt`）。
+    // 所以要让"常态是常态、hover 是按下态"，链的形状只能是：
+    //
+    //     .hover 的那些键      ← 落在 `.press()` 之前 ⇒ 被加前缀 ⇒ 变成按下态 ✅
+    //     .press()
+    //     .常态的那些键        ← 落在 `.press()` 之后 ⇒ 不加前缀 ⇒ 仍是常态 ✅
+    //
+    // ⚠️ **2026-10-23 实测：这里原先正好写反了**（常态在前、hover 在 `.press()` 之后），
+    //    于是两边**整体互换**：常态拿到源 CSS 的 `:hover` 值、按下态拿到常态值。
+    //    后果不止"颜色反了" —— grid 子项的 `min_width` / `flex_grow` 是**常态调用**，
+    //    被标成按下态之后"网格只在按住时才是网格"（`button_bagua_mode` 的常态更只剩
+    //    两条：没内边距、没底色、没边框、没字号，按住才变成一个按钮）。
+    //    当时那句注释 `// ↓ 以下仅在按下时生效` 也**说的是反的**（它标的是常态那一串）。
+    //    复现与判据见 `tools/regen_styles_check.mjs` 的"按下态组装顺序"那一节。
+    //
+    // 逐条各调一次 `.press()` 不是错的（键不冲突），但会把写在它后面的常态键也标成按下态，
+    // 而且产物会变成一长串 `.press().x().press().y()`。这里仍然**只调一次**。
+    const plainCalls = [];
+    const pressCalls = [];
+    for (const call of c.calls) {
+      if (call === '@style.Style::new()') continue;
+      if (call.startsWith('.press()')) pressCalls.push(call.slice('.press()'.length));
+      else plainCalls.push(call);
+    }
+    if (pressCalls.length) {
+      L.push('    // ↓ 以下在 `.press()` **之前**：仅**按下时**生效（源 CSS 的 `:hover`；触屏按下 / web 鼠标按下同一套）');
+      for (const call of pressCalls) L.push(`    ${call}`);
+      L.push('    .press()');
+      L.push('    // ↓ 以下在 `.press()` **之后**：常态（含 grid 子项的 min_width / flex_grow）');
+    }
+    for (const call of plainCalls) L.push(`    ${call}`);
     if (!c.calls.length && c.losses.length) {
       L.push(`  // ↑ 这个类有 ${c.losses.length} 条声明没有对应物，逐条列在上面（别当它已经迁好了）`);
     }
@@ -377,7 +720,7 @@ function emitModule(collected, meta) {
 
   while (L.length && L[L.length - 1] === '') L.pop();
   const out = L.join('\n') + '\n';
-  return { source: out, classes, accounting, unstyled };
+  return { source: out, classes, accounting, unstyled, silentEmpty };
 }
 
 /** 生成 `styles/moon.pkg`。 */
@@ -422,7 +765,7 @@ function generate(files, opts = {}) {
     cssLines: sheets.reduce((n, s) => n + s.text.split('\n').length, 0),
     cssRules: rules.length,
   };
-  const { source, classes, accounting, unstyled } = emitModule(collected, meta);
+  const { source, classes, accounting, unstyled, silentEmpty } = emitModule(collected, meta);
 
   // ── 对账：不留第三种结果 ────────────────────────────────────────────────────
   if (accounting.decls !== accounting.emitted + accounting.lost) {
@@ -443,11 +786,24 @@ function generate(files, opts = {}) {
     vars: resolved.vars,
     unresolvedVars: resolved.unresolved,
     accounting,
+    /**
+     * ★ **算成"已映射"、却一条调用都没有**的声明（逐条带 `file:line`）。
+     * 这是"静默丢键"在**声明层**的同一个形状（现网实例：`letter-spacing: normal`，已修）。
+     * 判据：`tools/migrate_ledger_check.mjs` 断言真实应用上必须是 0。
+     */
+    silentEmpty,
+    /**
+     * ★ **源侧账本**（2026-10-23 新）：每一条源声明落进哪个桶、各多少条。
+     * ⚠️ 口径与"别拿它跟 `accounting` 互相对账"的说明写在 `collect()` 里那段注释上。
+     */
+    ledger: collected.ledger,
     /** 规则级的有损（整条规则都没映射：伪类 / @media / 认不出的写法） */
     ruleLosses: collected.ruleLosses,
     /** 规则存在、但没落到任何源码用法上（其中 `lost: true` 的那些是真损失） */
     unmatchedRules: collected.unmatchedRules,
     ruleLossSummary,
+    /** 认得出列宽、认不出子项的网格容器（要人看一眼） */
+    gridItemsUnknown: collected.gridItemsUnknown || [],
     /** 源码用过、但 CSS 里没有对应规则的类组合（多半是状态标记，例如单独的 `on`） */
     unstyledClasses: unstyled,
     parseLosses: [...sheetLosses, ...parseLosses],
