@@ -170,6 +170,25 @@ adb shell monkey -p com.anonymous.host -c android.intent.category.LAUNCHER 1
 重新 `./tools/build.sh` 后它在 Metro 上拉新 bundle 即可（app 内摇一摇 → Reload，
 或 `adb shell input keyevent 82` 打开 dev 菜单）。
 
+> ⚠️★ **2026-10-23 实测踩到的四条**（都记在 `docs/FINDINGS.md` 第二十二轮）：
+>
+> 1. **`adb` 不在 PATH 上**，而 `device_check.mjs` 用的是 `spawnSync('adb', …)` ⇒ 直接
+>    `SKIP adb 不可用：spawnSync adb ENOENT`（看着像"设备没连上"）。加 PATH 时**别用
+>    `$LOCALAPPDATA`** —— 在 MSYS bash 里它是 `C:\Users\…` 这种 Windows 形式，拼进 PATH **不生效**：
+>    ```bash
+>    export PATH="/c/Users/XiLaiTL/AppData/Local/Android/Sdk/platform-tools:$PATH"
+>    ```
+> 2. ★★ **后端 8787 也落在 Windows 的保留段里**（这台机器是 **8764-8863**）⇒ 服务端一起来就报
+>    `An attempt was made to access a socket in a way forbidden by its access permissions.`；
+>    没有管理员权限清不掉（`net stop winnat` → `Access is denied`）。绕法：服务端支持
+>    **`MOBILE_TODO_PORT`**，**设备侧照旧连 8787**，靠 `adb reverse tcp:8787 tcp:<实际端口>` 转过去
+>    （`verify_android.py` 读同一个环境变量）。**同一个坑**还吃掉过三个 CDP 端口，见 `tools/cdp_port.js`。
+> 3. **换应用时要先确认 8081 真的空了**：`npx expo start` 在非交互模式（`CI=1`）下发现端口被占
+>    会**直接退出**（不会自己换端口）。先 `netstat -ano | grep :8081` 找 PID 再 `taskkill`，
+>    **别**一把梭杀 node（DSH 宿主也是 node）。
+> 4. **搬运产物一律走 `./tools/build.sh`**（它 `cd host/` 再 `moobile-host build`）。在应用根
+>    直接跑同一条命令会写到**别的地方**（第一版就这样在应用根多出一份没人读的 `moobile.js`）。
+
 ### 3.4 屏幕尺寸
 
 AVD 的 `config.ini` 里已经设好真机尺寸（`hw.lcd.width=1080 / height=2340 / density=440`

@@ -15,13 +15,15 @@
 //   B. **产物面**：服务端那一份 `artifact.json` 的 sha256 与磁盘上 `../zhouyi-reader/moobile.js`
 //      **逐字节一致**，而且 bundle 里真的嵌了这个指纹。
 //      ⇒ 浏览器吃的就是**这一次**编的产物（本仓库踩过"两次跑出来一模一样"）。
-//   C. **界面面**：把**应用自己那 99 条判据**（`../zhouyi-reader/verify.mjs`）**原样**指向
+//   C. **界面面**：把**应用自己那 103 条判据**（`../zhouyi-reader/verify.mjs`）**原样**指向
 //      这个静态服务的 URL 跑一遍 —— 首屏 / 罗盘画像素 / 拖拽重绘 / 轻点进卦 / 搜索 → 网格 /
 //      点卦卡进详情 / 折叠 21 条 / 无 console 错误。
 //      ⇒ 换宿主之后**界面行为一样**，而不是"能渲染出一个壳"。
 //
 // ⚠️ C 是这条门的重点：**从头写一套断言 = 又一份会漂的实现**。这里是 `spawnSync` 那个脚本，
-//    并且**要求它的汇总行是 `通过 45 失败 0`** —— 少一条都算红（不然它悄悄变成 12 条也能过）。
+//    并且**要求它的汇总行是 `通过 103 失败 0`** —— 少一条都算红（不然它悄悄变成 12 条也能过）。
+//    ⚠️ 这个数字**每次都跑一遍再抄**：它长期停在 99 而应用已长到 103，于是这条门一直是红的
+//       （见下面 `EXPECT_APP_ASSERTIONS` 的注释）。
 //
 // 不进 `verify_all.sh`：要 Chrome + 本目录的 `node_modules`（esbuild / react-native-web），
 // 与 `host-swap-spike` 同一档（需要本机资源，手动跑）。
@@ -31,6 +33,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.resolve(HERE, '..', 'zhouyi-reader');
@@ -38,7 +41,11 @@ const DIST = path.join(HERE, 'dist');
 const APP_VERIFY = path.join(APP, 'verify.mjs');
 // ⚠️ 这个数字跟着应用那份判据走：`../zhouyi-reader/verify.mjs` 涨到多少，这里就写多少
 //    （少了它，"换宿主之后判据条数变少"也会被当成通过 —— 十轮把它从 45 更新到 81）。
-const EXPECT_APP_ASSERTIONS = 99;
+//    **2026-10-23 实测更新到 103**：这一格长期停在 99，而应用那边已经长到 103 ⇒
+//    这条门**一直是红的**（而且红的原因看起来像"换宿主把界面弄坏了"，其实不是）。
+//    更新数字时请**跑一遍**再抄（`node verify.mjs` 的汇总行会打"通过 N 失败 M"），
+//    别照着文档里的旧数字改 —— 本仓库的"数字抄一份就漂一份"就是这么来的。
+const EXPECT_APP_ASSERTIONS = 103;
 
 const results = [];
 function check(name, ok, detail) {
@@ -126,7 +133,7 @@ try {
   check('静态服务能响应', false, String(e.message));
 }
 
-// ── 4) 界面判据：**原样**跑应用自己那 99 条 ──────────────────────────────────
+// ── 4) 界面判据：**原样**跑应用自己那 103 条 ─────────────────────────────────
 console.log('\n── 界面判据：`../zhouyi-reader/verify.mjs` 指向这个宿主 ──');
 // ⚠️★ **必须用异步的 `spawn`，不能用 `spawnSync`** —— 这一条是本轮的真教训：
 //    静态服务就**跑在这个进程里**，而 `spawnSync` **阻塞事件循环** ⇒ 服务无法响应
@@ -136,22 +143,18 @@ console.log('\n── 界面判据：`../zhouyi-reader/verify.mjs` 指向这个�
 //
 // 另外两件防御（不是这次的病因，但都是真坑）：
 //  ① CDP 端口可能被**上一轮残留的 Chrome** 占着（它还指着上一轮的地址，早关了），
-//     于是子进程连上去一直等 —— 所以先探一个没人应答的端口；
+//     于是子进程连上去一直等 —— 所以端口要先挑一个能用的（挑法见下）；
 //  ② 子进程要有硬超时（没有上限的等待比红更难查）。
-async function freeCdpPort(from = 9246, to = 9270) {
-  for (let p = from; p <= to; p++) {
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 300);
-      await fetch(`http://127.0.0.1:${p}/json/version`, { signal: ctl.signal });
-      clearTimeout(timer);
-      // 有人应答 —— 那是**别人的** Chrome（多半是上一轮的残留），换一个
-    } catch {
-      return p;
-    }
-  }
-  return from;
-}
+// ⚠️ CDP 端口**不能只看"有没有人应答"**（2026-10-23 实测）：原来是从 9246 起往上找第一个
+//    "没人应答"的端口 —— 而"没人应答"≠"绑得上"。这台机器的 9198-9297 整段被 Windows 保留
+//    （Hyper-V / WSL 那类；`netsh int ipv4 show excludedportrange protocol=tcp`），
+//    于是 Chrome 绑不上、起不来 devtools 的 http 服务，子进程报"连不上 CDP"。
+//    症状完全不像端口问题（12 项全过、只有界面那 3 项红，报的是"没有汇总行"）。
+//    现在改成"**绑一下**试试"：判据与那段实测写在 `tools/cdp_port.js` 的文件头。
+//    ⚠️ 这几个验界面的脚本都在本仓库里用（不是发给使用者的产物），所以直接引仓库的 tools/。
+const { freeCdpPort } = createRequire(import.meta.url)(
+  path.join(HERE, '..', '..', '..', 'tools', 'cdp_port.js'),
+);
 const CDP_PORT = Number(process.env.PROBE_CDP_PORT || (await freeCdpPort()));
 console.log(`      （CDP 端口 ${CDP_PORT}；子进程用异步 spawn 跑，父进程的服务才不会被堵住）`);
 

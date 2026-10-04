@@ -243,13 +243,34 @@ async fn load(store : Store) -> Unit {
 }
 
 ///|
+///|
+/// 监听地址：默认 `127.0.0.1:8787`，端口可用环境变量 **`MOBILE_TODO_PORT`** 覆盖。
+///
+/// ⚠️★ 为什么端口要做成可配（2026-10-23 实测）：这台机器上 Windows 把 **8764-8863** 整段
+/// **保留**了（Hyper-V / WSL 那类动态保留段；`netsh int ipv4 show excludedportrange protocol=tcp`），
+/// 8787 正落在里面 ⇒ 起服务时直接报
+/// `An attempt was made to access a socket in a way forbidden by its access permissions.`
+/// —— 而**没有管理员权限就清不掉**那段保留（实测 `net stop winnat` → `Access is denied`）。
+///
+/// 所以这里只把**服务端**的端口做成可配；**模拟器侧仍然连 8787**（应用的默认值一个字没改），
+/// 靠 `adb reverse tcp:8787 tcp:<实际端口>` 转过去 —— 端口之争不该污染应用与文档。
+/// 与第十九轮那条是同一个坑：`tools/cdp_port.js` 那边也是"Windows 保留段把端口吃掉"
+/// （见 `docs/FINDINGS.md` 第十九轮与第二十一轮）。
+fn listen_addr() -> String {
+  let port = match @env.get_env_var("MOBILE_TODO_PORT") {
+    Some(p) => if p == "" { "8787" } else { p }
+    None => "8787"
+  }
+  "127.0.0.1:" + port
+}
+
+///|
 async fn main {
   let store : Store = { todos: [], next_id: 1 }
   load(store)
-  let server = @http.Server(@socket.Addr::parse("127.0.0.1:8787"))
-  log(
-    "todo server on http://127.0.0.1:8787  (\{store.todos.length()} 条已载入，存储=\{data_path})",
-  )
+  let addr = listen_addr()
+  let server = @http.Server(@socket.Addr::parse(addr))
+  log("todo server on http://\{addr}  (\{store.todos.length()} 条已载入，存储=\{data_path})")
   server.run_forever() <| ((request, body, conn) => {
     let path = request.path.to_string()
     log("\{meth_name(request.meth)} \{path}")

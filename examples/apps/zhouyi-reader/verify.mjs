@@ -21,9 +21,21 @@ import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const URL_ = process.argv[2] || "http://localhost:8081/";
-const CDP_PORT = Number(process.env.PROBE_CDP_PORT || 9244);
+// ⚠️ CDP 端口**不能写死**（2026-10-23 实测）：原来是 9244，而这台机器的 9198-9297 整段被
+//    Windows 保留给 Hyper-V / WSL 那类东西（`netsh int ipv4 show excludedportrange protocol=tcp`）
+//    ⇒ 那个端口**任何进程都绑不上**，Chrome 起不来 devtools 的 http 服务，脚本连不上 CDP。
+//    症状完全不像端口问题：判据一条都跑不了、页面看着像空的。所以改成"**绑一下**试试"。
+//    （判据与那段实测写在 `tools/cdp_port.js` 的文件头；这里用的是同一份实现。）
+//    ⚠️ 这几个验界面的脚本都在本仓库里用（不是发给使用者的产物），所以这里直接引仓库的 tools/。
+const { freeCdpPort } = createRequire(import.meta.url)(
+  path.join(HERE, "..", "..", "..", "tools", "cdp_port.js"),
+);
+const CDP_PORT = Number(process.env.PROBE_CDP_PORT || (await freeCdpPort()));
 const OUT = process.env.PROBE_OUT || path.join(process.cwd(), "shot-zhouyi-reader.png");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -247,19 +259,32 @@ check(
   //    （`h2` 与按钮同一个字符串），第一版取"第一个匹配"就取到了标题 —— 标题没有背景色，
   //    于是"按钮没变成选中态"这条假红（真因是判据选错了元素）。
   //    判据改成：**在所有同名候选里，挑那个能解析出背景色的**（按钮才有）。
+  // ⚠️★ 2026-10-23：这条被判据自己坑过一次（真因值得留档）：修好"裸文本拿不到 page() 的
+  //    字体/颜色"之后，**文本节点自己也可能带上根底色**（`page()` 里有 background-color）。
+  //    而老逻辑是"往上找到**第一个**非透明底色" ⇒ 选中按钮与未选中按钮**双双返回根底色**，
+  //    两者相等 → 判据红。错的是判据：它要问的是"按钮的底色"。
+  //    现在：跨**所有同名候选**收集非透明底色，**跳过根底色**，取第一个剩下的；
+  //    一个都没有才退回第一个非透明（保底 —— 别把判据变成"必须有色"）。
+  //    跨候选收集这一条是必须的："卦爻色环"这个名字**标题也用**，而标题是 span
+  //    （自己带根底色）——按候选顺序提前返回就会拿标题的根底色去比。
   const buttonBg = (label) =>
     evaluate(`(() => {
+      const ROOT_BG = 'rgb(239, 229, 208)';
       const els = Array.from(document.querySelectorAll('*'))
         .filter(e => e.children.length === 0 && (e.textContent || '').trim() === ${JSON.stringify(label)});
+      const opaque = (bg) => bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent';
+      const cands = [];
       for (const el of els) {
         let n = el;
-        for (let i = 0; i < 3 && n; i++) {
+        for (let i = 0; i < 5 && n; i++) {
           const bg = getComputedStyle(n).backgroundColor;
-          if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+          if (opaque(bg)) cands.push(bg);
           n = n.parentElement;
         }
       }
-      return 'none';
+      if (!cands.length) return 'none';
+      const own = cands.find(bg => bg !== ROOT_BG);
+      return own || cands[0];
     })()`);
 
   // ⚠️ **默认模式是「后天文王 · 卦气」，不是伏羲先天** —— 这一条我一开始猜错了：
@@ -560,6 +585,109 @@ const cardCount = await evaluate(
 );
 check("网格里有卦卡（序号节点 ≥ 1）", (cardCount.value || 0) >= 1, `序号节点 ${cardCount.value}`);
 
+// ── ★ 「卦卡排成几列」的判据（2026-10-23 加）──────────────────────────────
+//
+// 为什么要有：源 CSS 是 `display:grid; grid-template-columns: repeat(auto-fill, minmax(116px,1fr))`，
+// 而迁移时 `display:grid` 一度被"如实记为有损"、容器上什么都不补 ⇒ 64 张卦卡挤成**单列**，
+// 而**当时没有任何判据会红**（判据只查"找不找得到卦卡"，不查"它们排成几列"）。
+//
+// ⚠️★ 口径踩过两次坑，记下来：
+//   ① 第一版去找 `min-width: 116px` 这个**实现细节** ⇒ 换了降级写法（flex-grow 按内容分配宽度）
+//      之后判据就假红。**判据要量结果，不量实现。**
+//   ② 第二版把"所有网格里的 x 坐标"混在一起数 ⇒ 上经/下经两个容器各是独立的行，
+//      混起来算列数没有意义。**判据要按容器分组。**
+//
+// 现在量的是结果：**每个网格容器里，最多有几张卡并排在同一行**。
+// 单列时这个数是 1（红），多列时 ≥2（绿）—— 与降级怎么实现无关。
+// ⚠️★ 口径改了三次，前两次都是**把判据写在了实现细节或错误的选择器上**（记下来）：
+//   ① 找 `min-width: 116px` —— 那是降级的**实现**，换写法就假红；
+//   ② 找"inline style 里有 flex-flow: wrap 的容器" —— 实测捞到的是**顶栏**（它也是 wrap + 有 gap），
+//      真正的网格反而没进候选；于是"多列"这条在一张卡上比，永远红。
+//   现在改成**纯几何**：把卦卡按 y 分行、数一行里最多几张。
+//   判据问的是"用户看到的是不是网格"，所以就该按**看到的几何**量。
+// ⚠️★ 第四个坑，也是最后一个：**这一条不能沿用上面那个搜索词**。
+//   上面的流程用的是 `乾`（第 1 卦，只命中 1 张卡）—— 在 1 张卡上量"排成几列"毫无意义，
+//    所以它永远红。量列数必须先搜一个**能出多张**的词（把输入框换成 `天`，命中 15 卦）。
+const broadened = await evaluate(`(() => {
+  const i = document.querySelector('input');
+  if (!i) return 'no-input';
+  i.focus();
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  setter.call(i, '天');
+  i.dispatchEvent(new Event('input', { bubbles: true }));
+  return 'ok';
+})()`);
+await sleep(900);
+const gridLayout = await evaluate(`(() => {
+  const all = Array.from(document.querySelectorAll('*'));
+  // 卦卡 = 尺寸在"卡片量级"、且里面有卦名的元素（取**最小的那个**，避免把容器也算进来）
+  const cand = all.filter(e => {
+    const b = e.getBoundingClientRect();
+    const t = (e.textContent || '').trim();
+    return b.width >= 60 && b.width <= 260 && b.height >= 40 && b.height <= 160 &&
+           t.length >= 3 && t.length <= 24 && getComputedStyle(e).cursor !== 'auto';
+  });
+  // 只留"没有同类后代"的那一层（最小的那些）
+  const cards = cand.filter(e => !cand.some(o => o !== e && e.contains(o)));
+  const rows = new Map();
+  for (const c of cards) {
+    const y = Math.round(c.getBoundingClientRect().y);
+    rows.set(y, (rows.get(y) || 0) + 1);
+  }
+  return {
+    cards: cards.length,
+    rowCount: rows.size,
+    maxPerRow: rows.size ? Math.max(...rows.values()) : 0,
+    rows: [...rows.values()].slice(0, 6),
+  };
+})()`);
+const gl = gridLayout.value || { cards: 0, rows: [], maxPerRow: 0 };
+check(
+  `换成「天」（命中 15 卦）后找得到卦卡 —— 量列数必须在多张卡上量（${broadened.value}）`,
+  (gl.cards || 0) >= 2,
+  JSON.stringify(gl),
+);
+const bestRow = gl.maxPerRow || 0;
+check(
+  '卦卡是**多列**的（不是单列堆叠）',
+  bestRow >= 2,
+  `一行里最多并排 ${bestRow} 张卡（共 ${gl.cards} 张 / ${gl.rowCount} 行）`,
+);
+
+// ── ★ 「字号按元素生效」的判据（2026-10-23 加）────────────────────────────
+//
+// 为什么要有：源 CSS 里字号是**分元素**给的（按钮 13px / 卦卡 12·15px / 提示 12px / 标题 16px），
+// 而迁移版一度**整页都是 14px**（RNW 的默认值）—— 层级被压平，看起来"不像那个设计"。
+// 真因是库里的文字上下文只做到"在不在 Text 里"这一层，`Text` 自己写的 `font-size`
+// **传不到**它里面的裸文本。
+//
+// ⚠️ 口径（这一条也踩过：判据要量**结果**）：
+//   不查"某个 style 函数里有没有 font_size"，而是查**页面上真的出现了多少种字号** ——
+//   整页一个字号 ⇒ 层级被压平（红）；多种字号 ⇒ 分层回来了（绿）。
+//   同时断言按钮那一档（13px 附近）真的出现过：那是源 CSS 里最典型的一档。
+const typeScale = await evaluate(`(() => {
+  const leaves = Array.from(document.querySelectorAll('*'))
+    .filter(e => e.children.length === 0 && (e.textContent || '').trim().length >= 2);
+  const sizes = new Map();
+  for (const e of leaves) {
+    const px = Math.round(parseFloat(getComputedStyle(e).fontSize) * 100) / 100;
+    sizes.set(px, (sizes.get(px) || 0) + 1);
+  }
+  const list = [...sizes.entries()].sort((a, b) => b[1] - a[1]);
+  return { distinct: list.length, list: list.map(([px, n]) => px + 'px×' + n) };
+})()`);
+const ts = typeScale.value || { distinct: 0, list: [] };
+check(
+  '字号是**分层的**（页面上不止一种字号）',
+  (ts.distinct || 0) >= 3,
+  JSON.stringify(ts),
+);
+check(
+  '出现了源 CSS 里那一档正文小字（13px）',
+  (ts.list || []).some((x) => x.indexOf('13px') === 0),
+  JSON.stringify(ts),
+);
+
 // ── C. 样式真的生效（迁移后 class= 全失效的话，这里会红）────────────────────
 const styled = await evaluate(`(() => {
   const all = Array.from(document.querySelectorAll('*'));
@@ -583,14 +711,30 @@ const styled2 = await evaluate(`(() => {
     const ls = getComputedStyle(e).letterSpacing;
     return ls && ls !== 'normal' && ls !== '0px';
   }).length;
-  const serif = all.some(e => /Charter|Georgia|Kaiti|Noto Serif/i.test(getComputedStyle(e).fontFamily));
-  return { bordered, spaced, serif };
+  // ⚠️★ 2026-10-23：这条原来是 all.some(...) —— **假绿**。它扫的是**所有元素**，
+  //    而祖先 View 上的 font-family: Charter 确实生效（计算样式里就有），
+  //    可**真正画字的那一层 Text 上并没有**（RNW 的 Text 自带一条 -apple-system 默认规则，
+  //    直接声明赢过继承）⇒ 整页文字是 sans，这条判据照样绿。
+  //    判据改成问**看得见的字**：文本叶子（有直接文本、没有元素子节点）里过半是衬线族。
+  //    实测：修复前 0/13（会红），修复后 10/13（绿）。
+  //
+  //    ⚠️ 这段注释在**模板字符串里**，所以一个反引号都不能用（同 FINDINGS 记的坑）。
+  const leafFonts = all
+    .filter(e => e.children.length === 0 && (e.textContent || '').trim().length >= 2)
+    .map(e => getComputedStyle(e).fontFamily);
+  const serifLeaf = leafFonts.filter(f => /Charter|Georgia|Kaiti|Noto Serif/i.test(f)).length;
+  const serif = leafFonts.length > 0 && serifLeaf >= Math.ceil(leafFonts.length / 2);
+  return { bordered, spaced, serif, serifLeaf, leafTotal: leafFonts.length };
 })()`);
 const s2 = styled2.value || {};
 // 判据取"这一页真的该有的样式"，不是随便挑一个属性：卡片有边框、标题有字距、正文是衬线体。
 check("卦卡带边框（迁移后的样式落了元素上）", (s2.bordered || 0) >= 1, JSON.stringify(s2));
 check("标题带字距（letter-spacing 生效）", (s2.spaced || 0) >= 1, JSON.stringify(s2));
-check("正文字体是衬线族（font-family 生效）", Boolean(s2.serif), JSON.stringify(s2));
+check(
+  "正文字体是衬线族（**在看得见的字上**生效，不是只在祖先 View 上）",
+  Boolean(s2.serif),
+  JSON.stringify(s2),
+);
 
 // ── B. 交互：点第一个卦卡进详情 ──────────────────────────────────────────────
 // ⚠️ 用 CDP 的**真鼠标事件**，不用 `element.click()`：

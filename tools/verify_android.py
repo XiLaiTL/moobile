@@ -45,7 +45,12 @@ ADB = os.environ.get(
 )
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'docs', 'evidence', 'r1', 'android_todo_ui.xml')
-API = 'http://127.0.0.1:8787'
+# ⚠️ 后端端口可配（2026-10-23 实测）：这台机器上 Windows 把 8764-8863 整段**保留**了，
+#    8787 落在里面 ⇒ 服务端起不来（`Access is denied` 那类 socket 错），而没有管理员权限
+#    清不掉那段保留。所以服务端支持 `MOBILE_TODO_PORT`；**设备侧仍然是 8787**
+#    （应用默认值没改），靠下面那条 `adb reverse` 转到宿主实际端口。
+_TODO_PORT = os.environ.get('MOBILE_TODO_PORT', '8787')
+API = f'http://127.0.0.1:{_TODO_PORT}'
 PKG = 'com.anonymous.host'
 
 SEED = ['服务器下发的第一条', '服务器下发的第二条']
@@ -332,7 +337,8 @@ def main():
     check('服务器已重置为 2 条', len(srv) == 2, ','.join(t['text'] for t in srv))
     adb('shell', 'pm', 'clear', PKG)  # 清掉 app 数据 = 清掉本地 SQLite
     adb('reverse', 'tcp:8081', 'tcp:8081')
-    adb('reverse', 'tcp:8787', 'tcp:8787')
+    # 设备侧 8787 → 宿主**实际**端口（可能被 `MOBILE_TODO_PORT` 改过）
+    adb('reverse', 'tcp:8787', f'tcp:{_TODO_PORT}')
     launch()
 
     xml = wait_for_app()

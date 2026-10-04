@@ -10,7 +10,11 @@ const fs = require("fs");
 const { spawn, execSync } = require("child_process");
 
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const PORT = 9231;
+// ⚠️ 端口**不能写死**（2026-10-23 实测）：原来是 9231，而这台机器的 8664-9697 整段被
+//    Windows 保留给 Hyper-V / WSL 那类东西 ⇒ Chrome 连 devtools 的 http 服务都起不来，
+//    症状是"连不上 CDP、页面空白"（看着像界面坏了，其实是端口绑不上）。挑法见该文件头。
+const { freeCdpPort } = require("./cdp_port");
+let PORT = 9231; // 兜底值；main() 里会换成实测绑得上的那个
 const OUT = require("path").join(__dirname, "..", "docs", "evidence"); // 证据产物统一落 docs/evidence/
 const URL = "http://localhost:8081";
 const PROFILE = process.env.TEMP + "\\chrome_moobile_" + Date.now();
@@ -23,6 +27,7 @@ function check(name, ok, detail) {
 }
 
 async function main() {
+  PORT = await freeCdpPort();
   const chrome = spawn(
     CHROME,
     [
