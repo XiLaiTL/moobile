@@ -13,6 +13,7 @@
     "canvas-web.js",
     "canvas-svg.js",
     "canvas-ops.js",
+    "canvas-font.js",
     "index.js",
     "core.js",
     "native-rn.js",

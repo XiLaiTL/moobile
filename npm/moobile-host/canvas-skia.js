@@ -111,7 +111,13 @@ export {
   resetUnrenderableTextCount,
   pickTextFont,
 } from './canvas-font.js';
-import { pickTextFont, noteIfUnrenderable, setSkiaApi } from './canvas-font.js';
+// ⚠️★ `export { … } from './x.js'` **不产生本地绑定** —— 它只把名字转出去。
+//    所以下面这个组件里要用到的名字，必须**另外 import 一遍**。
+//    2026-10-23 实测踩到：`subscribeFallback` 只写在上面那段转发里，组件里直接调用它 ⇒
+//    真机上 `Render Error | Property 'subscribeFallback' doesn't exist`、**首屏白屏**。
+//    ⇒ 离线门抓不到这类错（这个文件要 `import React`，而判据跑在 node 里、没有 react），
+//       **只有真机 / 浏览器跑一遍才看得见** —— 这正是"判据要放在它能跑的那一层"的反面教材。
+import { pickTextFont, noteIfUnrenderable, setSkiaApi, subscribeFallback } from './canvas-font.js';
 
 /** 造出那个注册进组件通道的 React 组件（**只造一次** —— 每次渲染换类型会整棵子树重挂）。 */
 export function makeSkiaCanvas(skia, options = {}) {

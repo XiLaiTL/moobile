@@ -101,16 +101,21 @@ function listFiles(dir, base = dir, out = []) {
  * 我们真正怕的是"发出去的那份和源码不一致"。
  */
 function importantMatcher() {
+  const entries = declaredEntries();
+  if (!entries.length) return () => true; // 读不到白名单就不筛，宁可多比也不漏比
+  return (rel) => entries.some((e) => rel === e || rel.startsWith(e + "/"));
+}
+
+/** `package.json` 的 `files` 白名单（原样、去掉 `./` 与结尾 `/`）。 */
+function declaredEntries() {
   let files;
   try {
     files = JSON.parse(readFileSync(join(SRC, "package.json"), "utf8")).files;
   } catch {
-    return () => true; // 读不到白名单就不筛，宁可多比也不漏比
+    return [];
   }
-  if (!Array.isArray(files) || !files.length) return () => true;
-
-  const entries = files.map((e) => e.replace(/^\.\//, "").replace(/\/$/, ""));
-  return (rel) => entries.some((e) => rel === e || rel.startsWith(e + "/"));
+  if (!Array.isArray(files)) return [];
+  return files.map((e) => e.replace(/^\.\//, "").replace(/\/$/, ""));
 }
 
 function sha256(file) {
@@ -132,6 +137,33 @@ function main() {
   const important = importantMatcher();
   const srcFiles = new Set(listFiles(SRC).filter(important));
   const bad = [];
+
+  // ── ★ 白名单自洽：源码**顶层**的 `.js` 必须都在 `files` 里（2026-10-23 真机实测补的）──
+  //
+  // 为什么必须有（真机上栽的那次）：`canvas-skia.js` 里 `import './canvas-font.js'`，
+  // 而 `package.json` 的 `files` 白名单**漏了 `canvas-font.js`** ⇒ `npm install`（`file:` 依赖）
+  // 装出来的副本里**没有那个文件** ⇒ 应用 bundling 失败、**首屏一片空白**。
+  // ⚠️★ 而**这条门当时是绿的** —— 因为上面那句 `importantMatcher()` 用**同一张白名单**筛两边，
+  //    白名单漏掉的文件在两边都被筛掉了 ⇒ "missing" 自然是空的。
+  //    **判据与被测物共用一张表 ⇒ 这张表自己的漏永远看不见。**（与"计数闭合不是对账"同源。）
+  const declared = new Set(declaredEntries());
+  // ⚠️★ 这里必须用**未经过滤**的源码清单 —— 第一版写成 `srcFiles`（已经按白名单筛过），
+  //    于是"白名单漏了 A"时 A 在 `srcFiles` 里也不存在 ⇒ 这条判据**永远不会红**（证伪时当场抓到）。
+  //    同一个坑在注释里刚写过一遍，我立刻又踩了一次：**过滤一遍之后再说"没漏"是恒真的。**
+  const topLevelJs = listFiles(SRC)
+    .filter((r) => !r.includes("/") && r.endsWith(".js"))
+    .sort();
+  const uncovered = topLevelJs.filter((r) => !declared.has(r));
+  if (uncovered.length) {
+    console.error(
+      `check_npm_fresh: 宿主包**顶层有 ${uncovered.length} 个文件没写进 package.json 的 files**：\n` +
+        uncovered.map((f) => `    · ${f}`).join("\n") +
+        "\n  后果：`npm install`（file: 依赖）装出来的副本里**没有这些文件** ——\n" +
+        "        应用一旦 import 到它们就会 **bundling 失败、首屏空白**（2026-10-23 实测踩到）。\n" +
+        `  修法：把它们加进 ${join("npm", "moobile-host", "package.json")} 的 \`files\`，再跑 tools/refresh_host_copies.sh。`,
+    );
+    process.exit(1);
+  }
 
   for (const { app, dir } of copies) {
     const dstFiles = new Set(listFiles(dir).filter(important));
