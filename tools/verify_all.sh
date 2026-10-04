@@ -263,6 +263,102 @@ run "生成物自查（迁移的洞，13 项）" node "$ROOT/tools/migrate_app_a
 # 当年这 5 处是**手工**找出来的（卦卡点不动、折叠点不开），现在是报告里的一条。
 run "F1 新规则 on_click-on-view（诱饵 + 两侧对账，13 项）" node "$ROOT/tools/migrate_click_scan.mjs"
 
+# 按下态的组装顺序（`Style::press`）——**生成器语义**判据，不是"有没有这个块"。
+#
+# 为什么必须有：第十七轮"验过生成器"验的是数量（`grep -c '.press()'` ⇒ 10 个函数有这个块），
+# 而 `emitModule` 把常态写在 `.press()` 之前、把 `:hover` 写在它之后 ⇒ 常态与按下态
+# **整体互换**（`button.bagua_mode` 常态只剩两条：按住才变成一个按钮；grid 子项的
+# `min_width` 也变成"只在按住时生效"）。**数量判据对语义反了的实现照样绿。**
+# 这条门拿真 `emitModule` 跑两个最小夹具（普通按下态 + grid 子项），按 `Style::press`
+# 的语义把链推一遍，断言常态/按下态各拿到什么值；再拿**两种错形状**做证伪。
+# 不依赖仓库外的源项目，所以在新鲜克隆 / CI 上也跑得动。
+run "按下态组装顺序（press，含证伪）" node "$ROOT/tools/press_order_check.mjs"
+
+# 样式**源侧账本**：每一条源声明都必须落进一个"有名字的桶"（桶里的条目带 `file:line`），
+# 并且"算成已映射 ⇒ 至少给一条调用、或者给一句说明"。
+#
+# 为什么必须有：第十八轮做了一次**人工只读清点**（656 条声明逐条对账、"无痕消失 0"）——
+# 但那次清点**没变成判据** ⇒ 下次动生成器会不会又漏、漏多少，没人知道。
+# 这条门把那次清点变成每次生成都算一遍的东西，并加一条第十八轮没有的兜底：
+# `emitted++` 与"真的产出了调用"是**两件独立的事**，以前没有任何东西把它们绑在一起。
+#
+# ⚠️ 它里面有一条判据是**门自己重跑映射**（不依赖生成器的自述）—— 实测：把生成器里那段
+#    兜底删掉，建在自述上的那条会**空转**，而自己重跑的那条照样能红。
+# ⚠️ 真实应用那一半要仓库外的源项目，不在本机时 SKIP（不是 PASS）—— 夹具那一半照跑。
+run "样式源侧账本（每声明一个桶 + 零调用兜底，含证伪）" node "$ROOT/tools/migrate_ledger_check.mjs"
+
+# 库能产出的**样式键** vs **原生 RN 真认的键**（"有没有对应物"）。
+#
+# 为什么必须有：`style/style.mbt` 里那句"下面这批是**可移植且 RN 支持**的"对 **6 个键不成立**
+# （2026-10-23 在**装在本仓库里的真 RN** 的 `ReactNativeStyleAttributes.js` 上逐条核过：
+# 0.83.10 / 0.86.3 / 0.87.1 三份都缺 `whiteSpace` / `order` / 四个 `border*Style`）。
+# 形状与本仓库栽过好几次的"web 绿、真机红"完全一样：RNW 当 CSS 照单全收、原生静默不认。
+# 而且**不是潜伏的**：真实应用 `zhouyi-reader` 的产物里就有 **11 处**，它的 web 判据 103/0 全过。
+#
+# 判据的形状是"**新键必须登记**"：库有、RN 没有 ⇒ 必须在 `RN_UNSUPPORTED` 里写清
+# `why`（原生的事实）与 `instead`（**对应物/替代路径**）；RN 哪天支持了它也会红（表过期）。
+# 找不到装好的 RN 时那几条 SKIP（新鲜克隆 / CI 上正常），键集与表的一致性判据照跑。
+run "样式键的平台矩阵（库 vs 原生 RN 登记表，含证伪）" node "$ROOT/tools/style_platform_check.mjs"
+
+# **机器可读产物里的"当前事实"必须真的当前**（`migration.generated.json` 的 `facts` 块）。
+#
+# 为什么只修这一份、不修 `MIGRATION.md`：两份都漂了同样的数（实测 `510=435+75` vs `439+71`、
+# `unmatchedLost 18` vs `0`、`18 类/357 处` vs `19/362`），但**性质不同** ——
+# `MIGRATION.md` 里有**人手补记**（重新生成会冲掉它）⇒ 它只能当叙述；
+# 而 `migration.generated.json` 是**纯生成物**、读者是**机器/LLM**（会拿它当数据用）
+# ⇒ 它必须说现在的事，也能干净地"重算 + 比对 + 同步"。
+#
+# ⚠️ 判据 ①（时间戳/事实块在不在）与判据 ③（证伪）不需要源项目，CI 上照跑；
+#    判据 ②（逐字段与重算一致）要仓库外的源项目，不在本机时 SKIP。
+run "机器可读迁移事实（facts 与重算一致，含证伪）" node "$ROOT/tools/migrate_facts_check.mjs"
+
+# ── **画布通道**（`canvas/` + 宿主侧三个后端）────────────────────────────────────
+#
+# 为什么现在才进门（2026-10-23）：这条试金石**一直存在**（35 项，离线可跑：node_modules +
+# CanvasKit 的 wasm，不需要浏览器/网络），但它**没进这个入口** ⇒ 平时没人跑它。
+# 代价实测到了：`canvas-ops.js` 把变换写成"两项合一"（`{translateX, translateY}`），
+# 而 RN Skia 的 `processTransform3d` **只读每项的第一个键** ⇒ 真机上 `scale` 只缩 x、
+# `translate` 只移 x —— **正圆画成横扁的椭圆（实测 a/b=0.512≈k）、内外圈对不上**。
+# 更糟的是这条门里的期望值把**错形状**钉住了，而且它的 CanvasKit 回放**两个键都读**，
+# 所以"形状自洽 + 回放正确"两边都对，唯独真机那条路是坏的。现在：
+#   · 期望值改成拆开的写法；新增"每项只有一个键"+"按 RN Skia 的规则重放 == 按 canvas 的规则重放"
+#     两条判据（含证伪）；
+#   · 并且**把它接进这个入口** —— 没进门的好判据等于没有。
+if [ -d "$ROOT/examples/apps/canvas-spike/host/node_modules" ]; then
+  run "画布通道（canvas 试金石：指令→树→真 Skia 回放，35 项）" \
+    bash -c "cd '$ROOT/examples/apps/canvas-spike/host' && node verify.mjs"
+else
+  skip "画布通道（canvas 试金石）" "examples/apps/canvas-spike/host/node_modules 没装（cd 进去跑 npm install）"
+fi
+
+# 样式层再生成的判据：迁移生成的应用，`styles/styles.mbt` 必须与**重算出来的**逐函数一致。
+#
+# 为什么它是一条门而不是"顺手 a diff"：`styles.mbt` 头上写着"不要手改"，但人就是会改。
+# 一旦允许"生成器改了、产物沉默地不跟"，下次谁都不敢重生成 —— 2026-10-23 我实际就是
+# 卡在这里（要修文字样式就必须动生成器，而产物被人改过）。**同步必须是有意识的一步。**
+# 门里带证伪（人工改一格 + 加一格 ⇒ 必须报出来），所以它同时证明"比对是活的"。
+#
+# ⚠️ 退出码 2 = "环境不够，没验"（源项目 `../yi/zhouyi_reader` 在**仓库外面**，
+#    新鲜克隆 / CI 上必然找不到）→ 记 **SKIP**，不是 PASS 也不是 FAIL。
+#    实测（2026-10-23）：这条件原先一律记失败 ⇒ 这条门一提交就会让 CI 红，本机全绿。
+run_regen_styles() {
+  local log="$LOGDIR/regen-styles.log"
+  node "$ROOT/tools/regen_styles_check.mjs" >"$log" 2>&1
+  local rc=$?
+  if [ "$rc" = "2" ]; then
+    skip "样式层再生成同步（regen --styles）" "$(sed -n 's/^SKIP  *//p' "$log" | head -1)"
+  else
+    tally "样式层再生成同步（regen --styles，含证伪）" "$rc" "$log"
+  fi
+}
+run_regen_styles
+
+# 观感缺口扫描器（`migrate/motion-gap.js` → `MIGRATION.md §2.4`）：它是"迁移后看/用起来
+# 会差什么"那张清单的唯一来源。一坏，报告就**安静地少一节**。
+# 门里带证伪（换掉 hover 的判据 ⇒ 那一类必须消失；诱饵属性必须不进结果），
+# 并对真实源项目断言"清单非空且含 hover"。
+run "观感缺口扫描（motion-gap，含证伪）" node "$ROOT/tools/motion_gap_check.mjs"
+
 
 # 能力注册表与依赖是否仍一致（生成物是入库的，所以能 diff）
 if [ -d "$ROOT/examples/apps/todo-app/host/node_modules/moobile-host" ]; then
