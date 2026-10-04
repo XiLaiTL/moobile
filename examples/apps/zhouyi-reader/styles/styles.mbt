@@ -18,6 +18,7 @@ pub fn att(s : @style.Style) -> @html.Attrs {
 /// 页面根样式（源 CSS 里的 `body` / `html`）—— 挂在最外层容器上。
 ///   · background 简写只取到了颜色那一部分
 ///   · font-family 只取回退链的第一项（Charter）：RN 没有回退链，**设备上必须真有这个字**，其余候选已丢弃
+///   · line-height:1.65 无单位 —— 按**倍数**换算（CSS 语义）。RN 的 lineHeight 是点数，原样搬会变成 1.65px
 ///   · TODO(migrate) font-feature-settings:"palt" —— 原生字体渲染由平台决定  （backend/index.html:22）
 ///   · TODO(migrate) -webkit-font-smoothing:antialiased —— 原生字体渲染由平台决定  （backend/index.html:24）
 pub fn page() -> @style.Style {
@@ -27,7 +28,7 @@ pub fn page() -> @style.Style {
     .background_color("#efe5d0")
     .color("#2a1f17")
     .font_family("Charter")
-    .line_height(1.65)
+    .line_height_em(1.65)
 }
 
 ///|
@@ -168,6 +169,7 @@ pub fn details_m_more() -> @style.Style {
 
 ///|
 /// `class="details.m-more>div.m-more-body"` —— backend/index.html:456 （另见 backend/index.html:456、backend/index.html:456）
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
 pub fn details_m_more_div_m_more_body() -> @style.Style {
   @style.Style::new()
     .padding_top(@style.px(4.0))
@@ -385,6 +387,7 @@ pub fn div_error() -> @style.Style {
 /// `class="div.hex-card"` —— backend/index.html:69
 ///   · display:flex 补写了 flex_direction(Row)：CSS 的默认主轴是 row，RN 的默认是 column
 ///   · background 简写只取到了颜色那一部分
+///   · grid 子项：补 min_width(116.0) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档
 ///   · TODO(migrate) cursor:pointer —— 触屏没有光标概念（Web/桌面才有意义）  （backend/index.html:73）
 ///   · TODO(migrate) transition:border-color .15s, transform .15s —— RN 没有 CSS 过渡；动效走 Animated / Reanimated  （backend/index.html:74）
 pub fn div_hex_card() -> @style.Style {
@@ -398,6 +401,8 @@ pub fn div_hex_card() -> @style.Style {
     .border_width(1.0)
     .border_style(@style.BorderStyle::Solid)
     .border_color("#d9c69f")
+    .min_width(@style.px(116.0))
+    .flex_grow(1.0)
 }
 
 ///|
@@ -431,6 +436,7 @@ pub fn div_hex_card_span_xiang() -> @style.Style {
 ///|
 /// `class="div.hex-index"` —— backend/index.html:45
 ///   · background 简写只取到了颜色那一部分
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
 pub fn div_hex_index() -> @style.Style {
   @style.Style::new()
     .background_color("#f6efe0")
@@ -454,10 +460,13 @@ pub fn div_hex_index_div_hex_index_section() -> @style.Style {
 
 ///|
 /// `class="div.hex-index>div.hex-index-section>div.hex-index-grid"` —— backend/index.html:64 （另见 backend/index.html:64）
-///   · TODO(migrate) display:grid —— `@style` 只有 Flex / Hidden 两个取值（行内排版在 RN 上是怎么显示的问题，见 R1 判决）  （backend/index.html:64）
-///   · TODO(migrate) grid-template-columns:repeat(auto-fill, minmax(116px, 1fr)) —— RN 没有 grid 布局（`@style` 只有 flex）。降级成 flex 需要**人来决定**列宽策略  （backend/index.html:65）
+///   · display:grid 降级成 flex(row) + flex_wrap(wrap)：RN 没有 grid；列宽由子项的 min_width + flex_grow 表达（见 mapClass 的 isGridCell）
+///   · grid-template-columns:repeat(auto-fill, minmax(116px, 1fr)) 未映射到容器 —— **列宽改写在子项上**：`.min_width(@style.px(116))` + `.flex_grow(1.0)`（见 mapClass 的 isGridCell）
 pub fn div_hex_index_div_hex_index_section_div_hex_index_grid() -> @style.Style {
   @style.Style::new()
+    .display(@style.Display::Flex)
+    .flex_direction(@style.FlexDirection::Row)
+    .flex_wrap(@style.FlexWrap::Wrap)
     .gap(6.0)
 }
 
@@ -542,6 +551,7 @@ pub fn div_m_bottom() -> @style.Style {
 ///|
 /// `class="div.m-cite"` —— backend/index.html:411
 ///   · background 简写只取到了颜色那一部分
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderLeftStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
 pub fn div_m_cite() -> @style.Style {
   @style.Style::new()
     .margin_top(@style.px(6.0))
@@ -586,6 +596,7 @@ pub fn div_m_click_txt_span_m_fold() -> @style.Style {
 
 ///|
 /// `class="div.m-click-txt>span.m-jtext"` —— backend/index.html:332
+///   · ⚠️ 原生 RN **没有** `whiteSpace` 这个键（`react-native-web` 有）⇒ **真机上这一条不生效**。对应物（部分有）：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（语义**不完全相同**：那是截断、还会带省略号，不是"不折行"）；`pre-line` / `pre-wrap` 的语义**接近** RN `Text` 的默认行为（保留换行符），差距要真机才量得准。判据：`tools/style_platform_check.mjs`
 ///   · TODO(migrate) display:inline —— `@style` 只有 Flex / Hidden 两个取值（行内排版在 RN 上是怎么显示的问题，见 R1 判决）  （backend/index.html:332）
 pub fn div_m_click_txt_span_m_jtext() -> @style.Style {
   @style.Style::new()
@@ -598,10 +609,13 @@ pub fn div_m_click_txt_span_m_jtext() -> @style.Style {
 
 ///|
 /// `class="div.m-detail>div.m-layout"` —— backend/index.html:309
-///   · TODO(migrate) display:grid —— `@style` 只有 Flex / Hidden 两个取值（行内排版在 RN 上是怎么显示的问题，见 R1 判决）  （backend/index.html:309）
-///   · TODO(migrate) grid-template-columns:250px 1fr —— RN 没有 grid 布局（`@style` 只有 flex）。降级成 flex 需要**人来决定**列宽策略  （backend/index.html:309）
+///   · display:grid 降级成 flex(row) + flex_wrap(wrap)：RN 没有 grid；列宽由子项的 min_width + flex_grow 表达（见 mapClass 的 isGridCell）
+///   · TODO(migrate) grid-template-columns:250px 1fr —— RN 没有 grid 布局（`@style` 只有 flex）。这一条认不出列宽（只支持 repeat(auto-fill|auto-fit, minmax(<N>px, 1fr))），降级策略要人定  （backend/index.html:309）
 pub fn div_m_detail_div_m_layout() -> @style.Style {
   @style.Style::new()
+    .display(@style.Display::Flex)
+    .flex_direction(@style.FlexDirection::Row)
+    .flex_wrap(@style.FlexWrap::Wrap)
     .gap(44.0)
     .align_items(@style.Align::FlexStart)
 }
@@ -648,6 +662,7 @@ pub fn div_m_detail_div_m_top() -> @style.Style {
 ///|
 /// `class="div.m-detail>div.m-top>button.m-nav"` —— backend/index.html:295 （另见 backend/index.html:295、backend/index.html:295）
 ///   · background 简写只取到了颜色那一部分
+///   · ⚠️ 原生 RN **没有** `whiteSpace` 这个键（`react-native-web` 有）⇒ **真机上这一条不生效**。对应物（部分有）：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（语义**不完全相同**：那是截断、还会带省略号，不是"不折行"）；`pre-line` / `pre-wrap` 的语义**接近** RN `Text` 的默认行为（保留换行符），差距要真机才量得准。判据：`tools/style_platform_check.mjs`
 ///   · TODO(migrate) cursor:pointer —— 触屏没有光标概念（Web/桌面才有意义）  （backend/index.html:297）
 ///   · TODO(migrate) font-family:inherit —— RN 的字体不继承  （backend/index.html:297）
 pub fn div_m_detail_div_m_top_button_m_nav() -> @style.Style {
@@ -713,10 +728,11 @@ pub fn div_m_group_div_m_group_name() -> @style.Style {
 
 ///|
 /// `class="div.m-gua-name"` —— backend/index.html:311
+///   · line-height:1.02 无单位 —— 按**倍数**换算（CSS 语义）。RN 的 lineHeight 是点数，原样搬会变成 1.02px
 pub fn div_m_gua_name() -> @style.Style {
   @style.Style::new()
     .font_size(96.0)
-    .line_height(1.02)
+    .line_height_em(1.02)
     .font_weight(@style.FontWeight::W700)
     .letter_spacing_em(0.04)
     .color("#1a1410")
@@ -790,6 +806,9 @@ pub fn div_m_tags_span_m_tag() -> @style.Style {
 ///|
 /// `class="div.m-weny-box"` —— backend/index.html:405 （另见 backend/index.html:405）
 ///   · background 简写只取到了颜色那一部分
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderLeftStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · grid 子项：补 min_width(116.0) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档
 pub fn div_m_weny_box() -> @style.Style {
   @style.Style::new()
     .margin_top(@style.px(8.0))
@@ -802,14 +821,20 @@ pub fn div_m_weny_box() -> @style.Style {
     .border_top_width(1.0)
     .border_top_style(@style.BorderStyle::Dashed)
     .border_top_color("#d9c69f")
+    .min_width(@style.px(116.0))
+    .flex_grow(1.0)
 }
 
 ///|
 /// `class="div.m-yao"` —— backend/index.html:354
-///   · TODO(migrate) display:grid —— `@style` 只有 Flex / Hidden 两个取值（行内排版在 RN 上是怎么显示的问题，见 R1 判决）  （backend/index.html:354）
-///   · TODO(migrate) grid-template-columns:160px 1fr —— RN 没有 grid 布局（`@style` 只有 flex）。降级成 flex 需要**人来决定**列宽策略  （backend/index.html:355）
+///   · display:grid 降级成 flex(row) + flex_wrap(wrap)：RN 没有 grid；列宽由子项的 min_width + flex_grow 表达（见 mapClass 的 isGridCell）
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderBottomStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · TODO(migrate) grid-template-columns:160px 1fr —— RN 没有 grid 布局（`@style` 只有 flex）。这一条认不出列宽（只支持 repeat(auto-fill|auto-fit, minmax(<N>px, 1fr))），降级策略要人定  （backend/index.html:355）
 pub fn div_m_yao() -> @style.Style {
   @style.Style::new()
+    .display(@style.Display::Flex)
+    .flex_direction(@style.FlexDirection::Row)
+    .flex_wrap(@style.FlexWrap::Wrap)
     .gap(26.0)
     .align_items(@style.Align::Center)
     .padding_horizontal(@style.px(0.0))
@@ -1046,6 +1071,7 @@ pub fn div_div_container() -> @style.Style {
 
 ///|
 /// `class="div>div.footer"` —— backend/index.html:282
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
 pub fn div_div_footer() -> @style.Style {
   @style.Style::new()
     .text_align(@style.TextAlign::Center)
@@ -1079,6 +1105,7 @@ pub fn div_div_footer_div_seal() -> @style.Style {
 /// `class="div>div.topnav"` —— backend/index.html:27
 ///   · display:flex 补写了 flex_direction(Row)：CSS 的默认主轴是 row，RN 的默认是 column
 ///   · background 简写只取到了颜色那一部分
+///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderBottomStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
 ///   · TODO(migrate) position:sticky —— `@style` 只有 Relative / Absolute；sticky / fixed 在 RN 上没有对应物  （backend/index.html:31）
 pub fn div_div_topnav() -> @style.Style {
   @style.Style::new()
@@ -1212,6 +1239,7 @@ pub fn p_ann_span_a_label_cheng() -> @style.Style {
 
 ///|
 /// `class="p.m-jtext"` —— backend/index.html:332
+///   · ⚠️ 原生 RN **没有** `whiteSpace` 这个键（`react-native-web` 有）⇒ **真机上这一条不生效**。对应物（部分有）：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（语义**不完全相同**：那是截断、还会带省略号，不是"不折行"）；`pre-line` / `pre-wrap` 的语义**接近** RN `Text` 的默认行为（保留换行符），差距要真机才量得准。判据：`tools/style_platform_check.mjs`
 ///   · TODO(migrate) display:inline —— `@style` 只有 Flex / Hidden 两个取值（行内排版在 RN 上是怎么显示的问题，见 R1 判决）  （backend/index.html:332）
 pub fn p_m_jtext() -> @style.Style {
   @style.Style::new()
@@ -1224,6 +1252,7 @@ pub fn p_m_jtext() -> @style.Style {
 
 ///|
 /// `class="p.m-txt"` —— backend/index.html:457 （另见 backend/index.html:457、backend/index.html:457、backend/index.html:457、backend/index.html:457）
+///   · grid 子项：补 min_width(116.0) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档
 pub fn p_m_txt() -> @style.Style {
   @style.Style::new()
     .font_size(14.5)
@@ -1231,16 +1260,21 @@ pub fn p_m_txt() -> @style.Style {
     .margin_horizontal(@style.px(0.0))
     .margin_vertical(@style.px(4.0))
     .letter_spacing_em(0.04)
+    .min_width(@style.px(116.0))
+    .flex_grow(1.0)
 }
 
 ///|
 /// `class="p.m-weny"` —— backend/index.html:410
+///   · grid 子项：补 min_width(116.0) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档
 pub fn p_m_weny() -> @style.Style {
   @style.Style::new()
     .font_size(13.5)
     .color("#2a1f17")
     .margin_horizontal(@style.px(0.0))
     .margin_vertical(@style.px(2.0))
+    .min_width(@style.px(116.0))
+    .flex_grow(1.0)
 }
 
 ///|
@@ -1271,6 +1305,7 @@ pub fn p_m_yao_xiang_span_xlab() -> @style.Style {
 /// `class="span.chip"` —— backend/index.html:148 （另见 backend/index.html:148）
 ///   · background 简写只取到了颜色那一部分
 ///   · font-family 只取回退链的第一项（Kaiti TC）：RN 没有回退链，**设备上必须真有这个字**，其余候选已丢弃
+///   · grid 子项：补 min_width(116.0) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档
 pub fn span_chip() -> @style.Style {
   @style.Style::new()
     .padding_horizontal(@style.px(10.0))
@@ -1283,6 +1318,8 @@ pub fn span_chip() -> @style.Style {
     .border_color("#d9c69f")
     .font_family("Kaiti TC")
     .letter_spacing_em(0.08)
+    .min_width(@style.px(116.0))
+    .flex_grow(1.0)
 }
 
 ///|

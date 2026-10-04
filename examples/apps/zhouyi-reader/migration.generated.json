@@ -2398,5 +2398,109 @@
       "reason": "没有找到 `fn app() -> Val[Html]` 这个形状的入口 —— 入口要手工改",
       "next": "自动完成，无需动作"
     }
-  ]
+  ],
+  "facts": {
+    "generatedAt": "2026-10-04T04:59:21.632Z",
+    "tool": "moobile-host create --from-rabbita",
+    "note": "这一段是**当前事实**（读数字读这里，generatedAt 是算它的时间）；顶层同名的 styles / scan 是**迁移当天**的记录，保留作历史",
+    "styles": {
+      "classes": 104,
+      "accounting": {
+        "decls": 510,
+        "emitted": 439,
+        "lost": 71
+      },
+      "unmatchedLost": 0,
+      "ruleLosses": {
+        "pseudo": 9,
+        "hover-same-element": 11,
+        "hover-descendant": 5,
+        "media": 13
+      }
+    },
+    "scan": {
+      "files": 6,
+      "lines": 3139,
+      "kinds": 19,
+      "hits": 362,
+      "findings": [
+        {
+          "id": "style.class",
+          "count": 122
+        },
+        {
+          "id": "style.inline",
+          "count": 0
+        },
+        {
+          "id": "css.hover",
+          "count": 16
+        },
+        {
+          "id": "css.media",
+          "count": 2
+        },
+        {
+          "id": "css.grid",
+          "count": 5
+        },
+        {
+          "id": "css.sticky",
+          "count": 2
+        },
+        {
+          "id": "css.var",
+          "count": 166
+        },
+        {
+          "id": "dom.direct",
+          "count": 15
+        },
+        {
+          "id": "gesture.mouse",
+          "count": 4
+        },
+        {
+          "id": "gesture.coord",
+          "count": 0
+        },
+        {
+          "id": "gesture.dpr",
+          "count": 2
+        },
+        {
+          "id": "input.controlled",
+          "count": 1
+        },
+        {
+          "id": "net.http",
+          "count": 1
+        },
+        {
+          "id": "canvas.api",
+          "count": 11
+        },
+        {
+          "id": "click.on-view",
+          "count": 5
+        },
+        {
+          "id": "tag.excluded",
+          "count": 7
+        },
+        {
+          "id": "tag.outside",
+          "count": 0
+        },
+        {
+          "id": "dep.rabbita",
+          "count": 1
+        },
+        {
+          "id": "target.build",
+          "count": 2
+        }
+      ]
+    }
+  }
 }

@@ -129,6 +129,25 @@ fn init_app(emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
       0.0
   }
   debug_log("初始视口宽度：" + vp_w.to_string())
+  // ── 把源 CSS 里 `body`/`html` 的**文字**样式交给运行时（每端都跑一次）──────────
+  //
+  // 为什么非有这一句不可（2026-10-23 实测）：`page()` 挂在根 `View` 上，而 CSS 里
+  // `body` 的 `font-family` / `line-height` / `color` 是**靠继承**传给所有文字的；
+  // RN 里没有这层继承 —— 文字必须是 `Text`，而 `react-native-web` 的 `Text` 自带一条
+  // `font-family: -apple-system…` 的默认规则，**直接落在元素上的声明永远赢过继承值**。
+  // 于是整页文字落到系统 sans 字体。
+  //
+  // 实测（Chrome 计算值，1440×900，旧版 ① vs 迁移版 ③）：
+  //   罗盘标题字体  `Charter, Georgia, …` → `-apple-system, …`；行高 `26.4px` → `normal`
+  //   卦卡卦名字号  12px → 14px；颜色 `#2a1f17` → `#000`
+  //
+  // ⚠️ **不能写成模块级的 `let _x = …`**：JS 后端把"未被引用的模块级绑定"当成纯表达式
+  //    优化掉了（实测：`.core` 里有这个符号，产物 JS 里连调用点都不剩 —— 判据是
+  //    `grep set__text__style__of moobile.js` 命中 0）。放进 `init` 才是"每次挂载都执行"。
+  //
+  // ⚠️ 这一句解决的是"**连页面默认字体都拿不到**"。还差的是一层逐元素的继承
+  //    （`Text` 上的 `font-size` 传不到它里面的裸文本）——库里那段注释写了已知不足。
+  @moobile.set_text_style_of(@styles.page())
   (
     {
       data: None,
