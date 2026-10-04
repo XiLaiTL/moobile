@@ -23,6 +23,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OPS, OP_TAGS, decode, encode, usedTags, opsToTree, treeStats } from '../../../../npm/moobile-host/canvas-ops.js';
 // ★ "两份变换语义"的重放器：用来做"按 RN Skia 的规则 == 按 canvas 的规则"那条对账判据。
 import { applyAsRnSkia, applyAsCanvas, IDENTITY_MATRIX } from './play.mjs';
+// ★ 画布文字的字体选择（回退字体）—— 那份**不依赖 React**，所以能在 node 里直接判
+//   （`canvas-skia.js` 就不行：它 `import React`）。见 ③′ 那一段。
+import * as CF from '../../../../npm/moobile-host/canvas-font.js';
 import { COLORS, ringDraw, ringItems } from './compass.mjs';
 import { loadCanvasKit, pickTypeface, pixelAt, readPixels, replay, savePng, hexToRgb } from './play.mjs';
 // ★ 对账用的镜像程序：与 MoonBit 的 `spike.mbt` 是同一条规格的两个实现
@@ -261,6 +264,61 @@ try {
   threw2 = true;
 }
 check('3g 负例：词汇表里没有的 op → 抛（防止"加了 op 忘了映射"静默通过）', threw2);
+
+// ── ③′ **画布文字的字体选择（回退字体那条路）**（2026-10-23 真机实测之后补的）─────────
+//
+// 为什么单独一段：Android 上"按族名要不到中文字形"（33 个族全试过、`glyph=0`），
+// 而 RN Skia 的 `<Text font=>` **不做字体回退** ⇒ 画布上的中文**一条都画不出来、还不报错**。
+// 出路是"应用注册一份能画中文的 typeface，宿主在画不出时用它"（`canvas-font.js`）。
+// 这条路最容易错的不是"选哪个字体"，而是：**注册是异步的**（`Data.fromURI` 是 Promise）
+// ⇒ 注册完之后**必须通知画布重渲染**，否则**首屏永远没有字**（而重开页面又有 —— 最难查的那种）。
+{
+  section('③′ 画布文字的字体选择（回退字体：能画就用应用的、画不出才换、注册要通知重渲染）');
+
+  const mk = (ids) => ({ getGlyphIDs: (t) => ids.slice(0, String(t).length) });
+  const primaryGood = () => mk([38, 39]);
+  const primaryBad = () => mk([0, 0]);
+  const api = { Font: () => mk([9647, 9648]) };
+
+  check(
+    '③′-1 `fontCoversText`：能画 → 真；画不出 → 假；**只缺一个字也算画不出**（every 不是 some）',
+    CF.fontCoversText(primaryGood(), '乾坤') === true &&
+      CF.fontCoversText(primaryBad(), '乾坤') === false &&
+      CF.fontCoversText(mk([9647, 0]), '乾坤') === false,
+    JSON.stringify([CF.fontCoversText(primaryGood(), '乾坤'), CF.fontCoversText(primaryBad(), '乾坤')]),
+  );
+
+  CF.setSkiaApi(api);
+  check(
+    '③′-2 应用给的字体**能画**时就用它（回退不许抢）',
+    CF.pickTextFont({ makeFont: primaryGood, parsed: { size: 12 }, text: '乾坤' }).getGlyphIDs('乾')[0] === 38,
+  );
+  check(
+    '③′-3 画不出、且**没注册**回退 → **原样返回**（不许静默换成别的字体）',
+    CF.pickTextFont({ makeFont: primaryBad, parsed: { size: 12 }, text: '乾坤' }).getGlyphIDs('乾')[0] === 0,
+  );
+
+  let notified = 0;
+  const off = CF.subscribeFallback(() => notified++);
+  CF.setFallbackTypeface({ id: '类型face' });
+  check(
+    '③′-4 ★ 注册回退时**通知订阅者**（画布据此重渲染）—— 少了这一句，首屏永远没有字',
+    notified === 1,
+    `通知次数 ${notified}`,
+  );
+  check(
+    '③′-5 画不出、且**已注册**回退 → 用它（真机上跑通的就是这条）',
+    CF.pickTextFont({ makeFont: primaryBad, parsed: { size: 12 }, text: '乾坤' }).getGlyphIDs('乾')[0] === 9647,
+  );
+
+  // 证伪：把回退撤掉 ⇒ ③′-5 那条路必须回到"原样返回"（否则上面几条可能是空转的）
+  CF.setFallbackTypeface(null);
+  check(
+    '③′-6 证伪：撤掉回退 ⇒ 又回到"原样返回"（说明 ③′-5 真的在验回退）',
+    CF.pickTextFont({ makeFont: primaryBad, parsed: { size: 12 }, text: '乾坤' }).getGlyphIDs('乾')[0] === 0,
+  );
+  off();
+}
 
 // ── ④⑤ 真 Skia 出图 + 像素对数据 ─────────────────────────────────────────────
 section('④⑤ 真 Skia（CanvasKit）出图 + 像素必须对得上数据');

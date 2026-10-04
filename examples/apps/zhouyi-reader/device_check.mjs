@@ -24,6 +24,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import zlib from "node:zlib";
 
 const PKG = process.env.ZHOUYI_PKG || "com.anonymous.zhouyireader";
 const results = [];
@@ -625,6 +626,146 @@ if (onDetail) {
     "（夹具）进入了某一卦的详情页",
     false,
     `点了 3 次罗盘外环都没进详情页（当前页：${uiTexts(dump()).slice(0, 80)}）`,
+  );
+}
+
+// ── 5c) 画布上的文字：**真的画出来了吗**（量像素，不靠应用自述）────────────────
+//
+// 为什么必须有（2026-10-23 实测）：Android 上"按族名要不到中文字形"——设备 **33 个字体族里
+// 没有一个**能画「乾」（对照拉丁 `A` = 38 ⇒ 探针没问题），而 Skia 的 `<Text font=>`
+// **不做字体回退** ⇒ 画布上的中文**一条都画不出来，而且不报错、不崩**。
+// 那一轮这个洞是**用户用眼睛看出来的** —— 所以这里补一条**量**的判据。
+//
+// 判据怎么定的（同一台模拟器上的标定读数）：
+//   回退字体**没生效**：画布区域里"独立的墨色连通块" = **790** 个
+//   回退字体**生效**后：                          = **2191** 个（一个汉字就是一两块笔画）
+//   ⇒ 阈值 **1500**（两边各有 ~2× 余量）。⚠️ 画面构成变了要**重新标定**（别硬抄这个数）。
+//
+// ⚠️ 为什么不用"应用自己报的 unrenderableTextCount()"：**判据不能建在被检查者的自述上**
+//    （那一句是本仓库栽过的坑：把兜底删掉，自述计数就恒为 0、判据空转）。
+section("画布文字（回退字体）");
+if (canvas) {
+  // ⚠️ **先回到"罗盘页"**：上面那批折叠判据把页面留在**详情页**了，而这一段量的是罗盘画布。
+  //    前两版都栽在"以为回去了"：第一版用"六十四卦"返回（那去的是**列表页**，量到 571 块），
+  //    第二版点顶部导航 + sleep（页还没切完，量到 329 块）。**导航与 sleep 都不可靠。**
+  //    现在改成**重启应用**：应用本来就开在罗盘页（脚本开头的断言就是这么过的），
+  //    重启是**确定性**的。到位判据：罗盘页特有的「立竿测影」出现在 dump 里（轮询，不 sleep）。
+  adb("shell", "am", "force-stop", PKG);
+  adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1");
+  for (let i = 0; i < 40; i++) {
+    await sleep(1500);
+    if (uiTexts(dump()).includes("立竿测影")) break;
+  }
+  await sleep(2000); // 让画布这一帧落定（Skia 首帧之后还有一次"回退字体就绪"的重渲染）
+  // 解 PNG（`screencap -p` 出来的是 8 位非隔行 PNG）：只为拿像素，不装任何图像库。
+  const decodePng = (buf) => {
+    let off = 8;
+    let w = 0;
+    let h = 0;
+    let bpp = 4;
+    const idat = [];
+    while (off + 8 <= buf.length) {
+      const len = buf.readUInt32BE(off);
+      const type = buf.toString("ascii", off + 4, off + 8);
+      const data = buf.subarray(off + 8, off + 8 + len);
+      if (type === "IHDR") {
+        w = data.readUInt32BE(0);
+        h = data.readUInt32BE(4);
+        if (data[8] !== 8 || data[12] !== 0) throw new Error("只支持 8 位、非隔行 PNG");
+        bpp = { 0: 1, 2: 3, 4: 2, 6: 4 }[data[9]] || 4;
+      } else if (type === "IDAT") idat.push(data);
+      else if (type === "IEND") break;
+      off += 12 + len;
+    }
+    const raw = zlib.inflateSync(Buffer.concat(idat));
+    const stride = w * bpp;
+    const out = Buffer.alloc(h * stride);
+    let pos = 0;
+    for (let y = 0; y < h; y++) {
+      const f = raw[pos++];
+      const cur = out.subarray(y * stride, (y + 1) * stride);
+      const prev = y > 0 ? out.subarray((y - 1) * stride, y * stride) : Buffer.alloc(stride);
+      for (let x = 0; x < stride; x++) {
+        const a = x >= bpp ? cur[x - bpp] : 0;
+        const b = prev[x];
+        const c = x >= bpp ? prev[x - bpp] : 0;
+        let v = raw[pos + x];
+        if (f === 1) v += a;
+        else if (f === 2) v += b;
+        else if (f === 3) v += (a + b) >> 1;
+        else if (f === 4) {
+          const p = a + b - c;
+          const pa = Math.abs(p - a);
+          const pb = Math.abs(p - b);
+          const pc = Math.abs(p - c);
+          v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+        }
+        cur[x] = v & 0xff;
+      }
+      pos += stride;
+    }
+    return { w, h, bpp, px: out };
+  };
+
+  const buf = execFileSync("adb", ["exec-out", "screencap", "-p"], {
+    env: { ...process.env, MSYS_NO_PATHCONV: "1" },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  let blobs = 0;
+  let ink = 0;
+  try {
+    const img = decodePng(buf);
+    const X0 = Math.max(0, Math.round(canvas.cx - canvas.side / 2));
+    const X1 = Math.min(img.w, Math.round(canvas.cx + canvas.side / 2));
+    const Y0 = Math.max(0, Math.round(canvas.cy - canvas.side / 2));
+    const Y1 = Math.min(img.h, Math.round(canvas.cy + canvas.side / 2));
+    const W = X1 - X0;
+    const H = Y1 - Y0;
+    // "笔画像素"：墨色 / 朱红 / 棕（画布上的线条与文字都在这几档里）
+    const isInk = (x, y) => {
+      const i = (y * img.w + x) * img.bpp;
+      const r = img.px[i];
+      const g = img.px[i + 1];
+      const b2 = img.px[i + 2];
+      for (const [pr, pg, pb] of [[26, 20, 16], [138, 37, 24], [122, 104, 81]]) {
+        if (Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b2 - pb) <= 70) return true;
+      }
+      return false;
+    };
+    const seen = new Uint8Array(W * H);
+    const stack = [];
+    for (let y0 = 0; y0 < H; y0++) {
+      for (let x0 = 0; x0 < W; x0++) {
+        if (seen[y0 * W + x0] || !isInk(X0 + x0, Y0 + y0)) continue;
+        stack.length = 0;
+        stack.push(x0, y0);
+        seen[y0 * W + x0] = 1;
+        blobs++;
+        while (stack.length) {
+          const y = stack.pop();
+          const x = stack.pop();
+          ink++;
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+              if (seen[ny * W + nx] || !isInk(X0 + nx, Y0 + ny)) continue;
+              seen[ny * W + nx] = 1;
+              stack.push(nx, ny);
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    check("画布截图能解开（PNG 解码）", false, String(e.message).slice(0, 120));
+  }
+  // ⚠️ 阈值来自标定（无字 790 / 有字 2191）；这里如实把读数打出来，便于下次重新标定。
+  check(
+    "★ 画布上**真的有字**（独立的墨色连通块 ≥ 1500 —— 标定：无字 790 / 有字 2191）",
+    blobs >= 1500,
+    `实测连通块 ${blobs} 个 / 墨点 ${ink}（阈值 1500；画面构成变了要重新标定）`,
   );
 }
 

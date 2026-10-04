@@ -17,13 +17,15 @@
 //
 // 桌面（RNW）两条都不适用：Skia 没有 Windows 后端（见 `docs/design/DESKTOP-RNW.md`）。
 
-import { registerSkiaCanvas } from 'moobile-host/canvas-skia';
+import { registerSkiaCanvas, setFallbackTypeface } from 'moobile-host/canvas-skia';
 import * as Skia from '@shopify/react-native-skia';
 // ⚠️ `import * as Skia` 拿到的是**包的命名空间**（`Skia` / `Canvas` / `Path` / `matchFont`…），
 //    **不是** native 注入的那个 Skia API 对象 —— 所以 `Skia.FontMgr` 是 `undefined`
 //    （实测报 `Cannot read property 'System' of undefined`）。字体要走包导出的 `matchFont`，
 //    它内部才去拿 `Skia.FontMgr.System()`。
-import { matchFont } from '@shopify/react-native-skia';
+//    ★ 而"回退字体"那条路要**造 Font、读 Data、做 Typeface**，那些都在真 API 对象上
+//      ⇒ 所以这里同时要 `import { Skia as SkiaApi }`（它才是有 `Data`/`Typeface`/`Font` 的那个）。
+import { matchFont, Skia as SkiaApi } from '@shopify/react-native-skia';
 
 /**
  * 注册原生画布后端。返回注册到的组件键（便于启动日志/断言）。
@@ -45,15 +47,62 @@ import { matchFont } from '@shopify/react-native-skia';
  *    `SkFont`、**不做回退**（`FontMgr` 也只暴露 `matchFamilyStyle`，没有按字符找字体的 API）。
  *    ⇒ 画布上的中文在真机上**一个都画不出来**；而 web 走 DOM `fillText`、浏览器自己会回退，
  *    所以 web/桌面全绿 —— 又一个"web 绿、真机红"。
- *    详见 `docs/FINDINGS.md` 第二十四轮。正解方向是改用 `Skia.ParagraphBuilder`（SkParagraph
- *    走字体回退），那是**下一件**；本轮只把它变成**会响的**（见宿主侧的 glyph 覆盖检查）。
+ *    详见 `docs/FINDINGS.md` 第二十四轮。
+ *
+ * ✅ **2026-10-23 修法（已落地，见同一轮第六/七节）**：库侧给了"**回退字体**"这条口
+ *    （`setFallbackTypeface`），应用负责**把字体找来**。这里找的是**系统自带的 CJK 字体**：
+ *    按族名要不到，但**按文件读得到** —— 实测
+ *    `await SkiaApi.Data.fromURI('file:///system/fonts/NotoSansCJK-Regular.ttc')`
+ *    （⚠️ 它返回 **Promise**，必须 await；不 await 会报 `Expected Data but got different type`）
+ *    → `Typeface.MakeFreeTypeFaceFromData` 出来的 typeface 里「乾」= 字形 **9647** ✅。
+ *    ⇒ **零新依赖、APK 不增大**。宿主侧在"应用选的字体画不出这些字"时改用它；
+ *      注册是异步的，宿主会**通知画布重渲染**，所以第一屏也有字。
  */
 export function registerNativeCanvas() {
   const makeFont = (f) => {
     const fontSize = (f && f.size) || 10;
     const fontFamily = (f && f.family) || 'serif';
     // `matchFont` 会按族名去系统字体里找；找不到就回落到默认字体（不抛）。
+    // ⚠️ 但"回落到默认"这条在中文上**没用**（默认字体没有中文字形）—— 所以下面要喂回退字体。
     return matchFont({ fontFamily, fontSize });
   };
-  return registerSkiaCanvas({ skia: Skia, makeFont });
+  // 注册完就去找回退字体（**不等它**：拿到之后宿主会自己重渲染画布）
+  loadSystemCjkFallback();
+  return registerSkiaCanvas({ skia: Skia, skiaApi: SkiaApi, makeFont });
+}
+
+/**
+ * 找一份**能画中文**的系统字体，交给宿主当回退。
+ *
+ * 为什么是"系统字体"而不是"自带一份"：APK 不增大、不用管授权；代价是**路径与文件名依赖
+ * Android 版本**，所以按候选列表依次试，全失败就**明说**（画布上的中文标签会画不出来），
+ * 而不是安静地留一片空白。
+ */
+async function loadSystemCjkFallback() {
+  const candidates = [
+    'file:///system/fonts/NotoSansCJK-Regular.ttc',
+    'file:///system/fonts/NotoSerifCJK-Regular.ttc',
+  ];
+  for (const uri of candidates) {
+    try {
+      // ⚠️ `Data.fromURI` 是 **Promise**（见类型定义 `DataFactory.d.ts`）
+      const data = await SkiaApi.Data.fromURI(uri);
+      if (!data) continue;
+      const tf = SkiaApi.Typeface.MakeFreeTypeFaceFromData(data);
+      if (!tf) continue;
+      const probe = SkiaApi.Font(tf, 12);
+      const glyph = Array.from(probe.getGlyphIDs('乾'))[0];
+      if (!glyph) continue; // 这份字体也画不出中文，换下一个
+      setFallbackTypeface(tf);
+      console.log(`[zhouyi-reader] 画布回退字体已就绪：${uri}（「乾」= 字形 ${glyph}）`);
+      return true;
+    } catch (e) {
+      // 换下一个候选；全失败时下面会明说
+    }
+  }
+  console.warn(
+    '[zhouyi-reader] 系统里没找到能画中文的字体 —— 画布上的方位/卦名标签会**画不出来**。\n' +
+      '  候选：' + candidates.join('、'),
+  );
+  return false;
 }

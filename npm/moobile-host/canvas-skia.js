@@ -74,10 +74,14 @@ export function treeToReact(tree, skia, options = {}) {
               '  或者在应用里给字体系统（useFont / matchFamilyStyle）后再注册。',
           );
         }
-        const props = { key: i, text: String(p.text), x: p.x, y: p.y, color: p.color, font: makeFont(p.font) };
+        const text = String(p.text);
+        const props = { key: i, text, x: p.x, y: p.y, color: p.color };
         if (p.transform) props.transform = p.transform;
-        // ★ 字形覆盖检查：这个字体画不出这些字时**报出来**，不静默画空白（2026-10-23 实测补的）
-        noteIfUnrenderable(props.font, props.text, p.font);
+        // ★ 字体选择：应用给的优先；**画不出才用回退字体**（应用注册进来的那份）。
+        //   再画不出就报 warning（……不静默丢一段文字，也不静默画空白）。
+        const font = pickTextFont({ makeFont, parsed: p.font, text });
+        props.font = font;
+        noteIfUnrenderable(font, text, p.font);
         return React.createElement(Text, props);
       }
       default:
@@ -92,70 +96,33 @@ export function treeToReact(tree, skia, options = {}) {
   );
 }
 
-/**
- * ⚠️★ **这个字体画不出这段文字吗？**（2026-10-23 真机实测之后加的）
- *
- * ## 为什么需要它：Skia 的 `<Text font=>` **不做字体回退**
- *
- * 实测（Android 模拟器，`examples/apps/zhouyi-reader` 的罗盘）：
- *   · `matchFont({family:'Kaiti TC'})` → 对「乾」`getGlyphIDs` 返回 **0**（= `.notdef`）；
- *   · 更狠的是：设备上**33 个字体族里没有一个**能画出中文（`serif` / `sans-serif` /
- *     `Noto Sans CJK SC` / `System` 全是 0）；对照拉丁 `A` = 38 ⇒ 探针本身没问题。
- *   · 真因：**Android 的中文字形只走系统字体回退链**（`fonts.xml` 里 `lang="zh-Hans"` 那一族），
- *     而 RN Skia 的 `<Text>` 用单个 `SkFont`、**不查回退链**（`FontMgr` 也只暴露
- *     `matchFamilyStyle`，没有"按字符找字体"的 API）。
- *   ⇒ 结果是**一个字都画不出来、而且一点动静都没有**（不报错、不崩）。
- *     而 web 那条路（`canvas-web.js` 的 DOM `fillText`）由浏览器自己回退 ⇒ 全绿 ——
- *     又一个"**web 绿、真机红**"。
- *
- * ## 它做什么
- *
- * 不替应用选字体（"用哪个字体"是应用的决定 —— 见 `registerSkiaCanvas` 的注释），
- * 只把**"这个选择在你的设备上画不出这些字"**这件事**说 loud**：
- * 每个字体族报一次 `console.warn`，并把计数累积在 `unrenderableTextCount()` 上，
- * 好让真机判据里能断言它（`device_check.mjs` 那类）。
- *
- * ⚠️ **这不是修复**：正解是改用 `Skia.ParagraphBuilder`（SkParagraph 走字体回退），
- *    或者由应用加载一个真含中文字形的 typeface。见 `docs/FINDINGS.md` 第二十四轮。
- */
-export function fontCoversText(font, text) {
-  try {
-    if (!font || typeof font.getGlyphIDs !== 'function') return true; // 问不出来就不拦
-    const ids = Array.from(font.getGlyphIDs(String(text)));
-    return ids.length > 0 && ids.every((g) => g !== 0);
-  } catch {
-    return true;
-  }
-}
-
-let g_unrenderable = 0;
-const g_warnedFamilies = new Set();
-
-/** 已发现的"画不出来"的文字条数（真机判据/启动日志用）。 */
-export function unrenderableTextCount() {
-  return g_unrenderable;
-}
-
-function noteIfUnrenderable(font, text, parsed) {
-  if (fontCoversText(font, text)) return;
-  g_unrenderable++;
-  const fam = (parsed && parsed.family) || '(默认)';
-  if (g_warnedFamilies.has(fam)) return;
-  g_warnedFamilies.add(fam);
-  console.warn(
-    `[moobile-host/canvas-skia] 字体「${fam}」画不出画布上的文字（例如「${String(text).slice(0, 4)}」）` +
-      ' —— 这些字**不会**出现在画面上，而且不会报错。\n' +
-      '  最常见的原因：Android 的中文字形只走**系统字体回退链**，而 Skia 的 <Text font=> 用单个\n' +
-      '  SkFont、不做回退（实测：设备上 33 个字体族没有一个能画中文，连 Noto Sans CJK 也拿不到）。\n' +
-      '  出路：① 用 `Skia.ParagraphBuilder`（SkParagraph 会回退）；② 加载一个真含中文字形的 typeface。\n' +
-      '  详见库仓库 `docs/FINDINGS.md` 第二十四轮。',
-  );
-}
+// ── 画布文字的字体选择（回退字体那条路）──────────────────────────────
+//
+// ⚠️ 逻辑**抽到 `canvas-font.js`**（那份不依赖 React）—— 因为判据跑在 node 里（没有 react），
+//    而这条路上最容易错的几件事（回退有没有生效 / 注册有没有通知重渲染 / 没注册时会不会静默照旧）
+//    **必须有离线判据钉着**。背景与契约写在那份文件头。
+//    （实测教训：这一轮"改了代码 ≠ 改动生效"已经踩过一次。）
+export {
+  fontCoversText,
+  setFallbackTypeface,
+  currentFallbackTypeface,
+  subscribeFallback,
+  unrenderableTextCount,
+  resetUnrenderableTextCount,
+  pickTextFont,
+} from './canvas-font.js';
+import { pickTextFont, noteIfUnrenderable, setSkiaApi } from './canvas-font.js';
 
 /** 造出那个注册进组件通道的 React 组件（**只造一次** —— 每次渲染换类型会整棵子树重挂）。 */
 export function makeSkiaCanvas(skia, options = {}) {
+  // 回退字体要用**真 API 对象**造 `Font`（命名空间上没有 `Font`）—— 注册时一起给。
+  if (options.skiaApi) setSkiaApi(options.skiaApi);
   function SkiaCanvas(props) {
     const { ops, width, height, ...rest } = props;
+    // ⚠️★ 回退字体是**异步**加载的（`Data.fromURI` 是 Promise）⇒ 它可能在首帧之后才就绪。
+    //    没有这一句，第一屏**永远没有字**（而后面重开页面又有了 —— 那种"偶发"最难查）。
+    const [, bumpFallback] = React.useState(0);
+    React.useEffect(() => subscribeFallback(() => bumpFallback((n) => n + 1)), []);
     // `jsonProps` 已经把 ops 解析成数组了；这里只做形状兜底（解出非数组时点名，不静默画空白）
     const list = useMemo(() => {
       if (!Array.isArray(ops)) {
@@ -185,6 +152,10 @@ export function makeSkiaCanvas(skia, options = {}) {
  * @param {string} [spec.component]     默认 `Canvas`
  * @param {string[]} [spec.platforms]   默认 `['android','ios']`（Skia 只跑原生）
  * @param {Function} [spec.makeFont]    有文字指令时**必须**给（见前文）
+ * @param {object} [spec.skiaApi]       真 API 对象（`import { Skia as SkiaApi } from '@shopify/react-native-skia'`）。
+ *   只有"回退字体"那条路需要它：`makeFont` 造出来的字体**画不出这些字**时，宿主用
+ *   `skiaApi.Font(回退 typeface, size)` 顶上去。**命名空间不够**（上面没有 `Font`/`FontMgr`，
+ *   实测 `Skia.FontMgr` 是 undefined）。不给也不会崩：退化成"报一句 warning"。
  * @returns {string[]} 注册的组件键（便于启动日志与验证脚本断言）
  */
 export function registerSkiaCanvas(spec = {}) {
@@ -204,7 +175,8 @@ export function registerSkiaCanvas(spec = {}) {
   }
   return registerLibrary({
     namespace,
-    components: { [component]: makeSkiaCanvas(skia, { makeFont, quiet }) },
+    // ⚠️ `skiaApi` 只在"回退字体"那条路上需要（造 `Font`）—— 不给也不会崩，只是回退用不了。
+    components: { [component]: makeSkiaCanvas(skia, { makeFont, skiaApi: spec.skiaApi, quiet }) },
     // ⚠️ 少了这一行，组件拿到的 `ops` 是一段**字符串** —— 会当场抛（见 makeSkiaCanvas）
     jsonProps: { [component]: ['ops'] },
     platforms,
