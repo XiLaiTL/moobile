@@ -319,6 +319,222 @@ priv struct HCounter {
 }
 
 ///|
+/// `render_props` 刚写进去的**文字键**那一格 —— `make_element` 紧接着读它。
+///
+/// 为什么不直接从 `props` 拿：`render_props` 已经把 `Props` 消费成了 JS 对象，
+/// 而"这个元素自己写了哪些文字键"只有它有。传一格比再解析一遍 JS 对象便宜得多。
+priv struct PropsTextRef {
+  mut v : @vdom.Styles?
+}
+
+///|
+let g_props_text : PropsTextRef = { v: None }
+
+///|
+/// 哪些键算"文字键"（**会继承**的那些）。
+///
+/// 判据只有一处：不在这张表里的键（背景色、内边距、边框…）**不继承** ——
+/// 照搬会给每个字都画上一个底色框（实测过：第一版把 `page()` 整份铺到文字上，
+/// 每个字都带上了纸色底）。
+fn is_text_key(k : String) -> Bool {
+  k == "fontFamily" ||
+  k == "fontSize" ||
+  k == "fontWeight" ||
+  k == "fontStyle" ||
+  k == "lineHeight" ||
+  k == "letterSpacing" ||
+  k == "color" ||
+  k == "textAlign" ||
+  k == "textTransform"
+}
+
+///|
+/// 把 `(键, 值)` 列表打成一份 `Styles`（`set_text_style` 用）。
+///
+/// 为什么绕这一道：`Styles` 是**只读**的（`entries` 不让写 —— 那是刻意的，
+/// 见 `vendor/rabbita/vdom/vdom.mbt` 的字段注释）。而 `Styles::apply` 是公开的，
+/// 于是"造一份表"只能借它：先建空的，再把每个键 apply 进去。
+///
+/// ⚠️ **这里不许按名字过滤键**（2026-10-23 第十八轮实测）。第一版内嵌了一张 **5 键**白名单
+/// （`fontFamily`/`fontSize`/`lineHeight`/`letterSpacing`/`color`），而它的调用方
+/// （`set_text_style` 与 `render_props`）**已经用 `is_text_key` 筛过一遍** ——
+/// 而那张表认 **9** 个键。于是 `fontWeight`/`fontStyle`/`textAlign`/`textTransform`
+/// 安静地落进 `_ =>` 兜底分支（空 `Style`）：不报错、不崩、判据全绿，只是"样式没生效"。
+/// 现在收口到 `Style::from_entries` —— 它**只做类型还原，不认识名字**，所以不会漏键。
+fn entries_to_styles(entries : Array[(String, @style.StyleValue)]) -> @vdom.Styles {
+  @vdom.Styles::from_style(@style.Style::from_entries(entries))
+}
+
+///|
+/// 把**一个键**并进一份 `Styles`（"后来的赢"）。
+///
+/// 为什么要它：`Styles::apply` 只收 `Style`，而库里没有"Styles → Style"的公开路径
+/// （`Styles::entries` 这样的访问器是刻意不给的，见 `vendor/rabbita/vdom/vdom.mbt`）。
+///
+/// ⚠️ 与 `entries_to_styles` 是**同一条教训的第二道闸门**（2026-10-23 实测）：这里曾经有
+/// **同一张 5 键白名单的副本**，而 `make_text` 的"补应用默认"回环走的正是这里 ——
+/// 所以只修 `entries_to_styles` 会"看起来修好了、其实没生效"（键在最后一米又被吃掉）。
+fn apply_key(dst : @vdom.Styles, k : String, v : @style.StyleValue) -> Unit {
+  dst.apply(@style.Style::from_entries([(k, v)]))
+}
+
+///|
+/// **文本样式表**：源 CSS 里挂在 `body`/`html` 上的字体族 / 字号 / 行高 / 颜色。
+///
+/// ## 为什么必须有这一层（2026-10-23 实测的真因）
+///
+/// 这是"跨端都会失真、但只有量过才看得见"的那类洞：
+///
+/// 1. 迁移器把 `body { font-family: Charter, Georgia, … }` 抽成了 `page()`，挂在根 `View` 上。
+///    CSS 里这能靠**继承**传给所有文字；
+/// 2. 但 RN 里的文字必须是 `Text`，而 rabbita 的裸文本（`"八卦罗盘"` 这种）
+///    在 `render.mbt` 里是**没有属性的** `Text`；
+/// 3. `react-native-web` 给每个 `Text` 附带一条 `font-family: -apple-system…` 的**默认规则**。
+///    直接落在元素上的声明**永远赢过继承来的值** ⇒ 根上的 `Charter` 传不到文字上。
+///
+/// 实测（Chrome 计算值，1440×900）：旧版 `Charter, Georgia, …` vs 迁移版
+/// `-apple-system, …`；字号 12px → 14px；颜色 `#2a1f17` → `#000`；行高 `26.4px` → `normal`。
+/// **页面上每一处文字都中**，所以观感差异是全局的。
+///
+/// ## 已知的不足（**写下来，别让它变成"以为做过了"**）
+///
+/// 这一版只解决"**文字连页面默认字体都拿不到**"。还差的是一层**逐元素**的继承：
+///
+/// · `Text`（源 CSS 的 `span` / `button` / `h2`）上的 `font-size` / `font-family`
+///   **传不到**它里面那层裸文本 —— 实测：`.bagua-mode` 写了 `font-size:13px`、
+///   `font-family:"Kaiti TC"`，而按钮上的字仍是应用默认（16px / `Charter`）；
+/// · 反过来，`View` 上的字号会漏给深层文字（实测：一条装饰性 `<p>` 的 `font-size:12`
+///   能把整页文字都染成 12px）—— 所以**不能**简单地"把祖先的字号照搬下去"。
+///
+/// 要做对，需要在 `render.mbt` 里维护一条**按 CSS 继承规则合成**的祖先链上下文
+/// （`Text` 的声明向下传、`View` 的清掉），并配一条"**在看得见的字上**量字号"的判据。
+/// 试过一版（2026-10-23，见 `docs/FINDINGS.md`），没做对，已回退 —— 回退比留着半成品好。
+///
+/// ## 落点
+///
+/// 只在**裸文本叶子**上加：`Text` 元素里面的那层不再重复加（`Text` 里的 `Text`
+/// 在 RNW 上会被父层的 `Text` 覆盖，重复加只会把祖先的声明也一起盖掉）。
+/// 有属性的 `Text`（`span(class=…)` 这类）本来就拿到了自己的 `font_family`，不动它们。
+priv struct TextRef {
+  /// 应用级默认（源 CSS 的 `body`/`html`）—— `None` = 没设。
+  mut app : @vdom.Styles?
+  /// **最近一层"自己写了文字键"的元素**的样式（进出元素时保存/恢复）。
+  ///
+  /// 为什么要它（2026-10-23 实测）：第一版只有一个布尔门（"在不在 `Text` 里"），
+  /// 于是 `span(class=…)` 里面的裸文本**什么都不带** ⇒ 落到 `react-native-web` 的
+  /// `-apple-system` 上。实测字体分布：`-apple-system` **31** 处、`Kaiti TC` 12、`Charter` 6 ——
+  /// **大多数文字没拿到设计里的字体**，而布尔门那一版是绿的（判据当时只查"页面上有没有衬线"）。
+  ///
+  /// 现在：进任何**带文字键**的元素就把那份样式记下来，裸文本优先用它（父元素的字号/字体/颜色），
+  /// 没有才回落到应用默认。这正是 CSS 的继承语义在**一层**上的近似 ——
+  /// 完整版（沿祖先链按 CSS 规则合成）试过、没做对、已回退；这一版只做"最近一层"。
+  mut near : @vdom.Styles?
+}
+
+///|
+let g_text : TextRef = { app: None, near: None }
+
+///|
+/// 交给运行时的**文本默认样式**（生成器调用；手写应用也可以调用）。
+///
+/// 只留**会继承**的键（`fontFamily` / `lineHeight` / `color` / …）；
+/// 背景色、内边距、边框这些**不继承** —— 照搬会给每个字都画上一个底色框
+/// （实测：第一版把 `page()` 整份搬过去，每个字都带上了纸色底）。
+pub fn set_text_style(styles : @vdom.Styles) -> Unit {
+  if styles.is_empty() {
+    g_text.app = None
+    return
+  }
+  let kept : Array[(String, @style.StyleValue)] = []
+  for i = 0; i < styles.length(); i = i + 1 {
+    let (k, v) = styles.at(i)
+    if is_text_key(k) {
+      kept.push((k, v))
+    }
+  }
+  g_text.app = if kept.length() == 0 { None } else { Some(entries_to_styles(kept)) }
+}
+
+
+///|
+/// 同上，但收的是 `Style` —— **给生成物用的入口**。
+///
+/// 为什么要有这个薄壳：生成物里最自然的写法是 `set_text_style(@styles.page())`，
+/// 而 `page()` 产出的就是 `@style.Style`。让应用自己去 `@vdom.Styles::from_style`
+/// 等于逼它 import 一层 vendored 包 —— 那是库该收起来的东西。
+pub fn set_text_style_of(page : @style.Style) -> Unit {
+  set_text_style(@vdom.Styles::from_style(page))
+}
+
+///|
+/// 造一个元素。进出**有属性的 `Text`** 时维护 `in_text`。
+fn make_element(
+  tag : String,
+  props : JsValue,
+  own_text : @vdom.Styles?,
+  kids : () -> JsValue,
+) -> JsValue {
+  let mapped = map_tag(tag)
+  let saved = g_text.near
+  match own_text {
+    Some(t) => g_text.near = Some(t)
+    None => ()
+  }
+  let kid_js = kids()
+  let el = js_create_element(js_host_component(mapped), props, kid_js)
+  g_text.near = saved
+  el
+}
+
+
+
+
+
+
+
+
+///|
+/// 造一个 `Text` 元素。`own` 非空时用它（有属性的 `Text`），
+/// 否则若这一层**不在** `Text` 里，就把应用默认铺上去。
+fn make_text(child : JsValue, own : JsValue?) -> JsValue {
+  let props = js_obj_new()
+  match own {
+    Some(s) => js_obj_set(props, "style", s)
+    None => {
+      // **最近一层元素自己写的文字键**优先（等价于 CSS 里最近祖先的声明），
+      // 它**没写的键**用应用默认（`body`/`html`）补 —— 两半缺一不可：
+      //
+      //   只给 `near`（第一版）：`.bagua-mode` 只写了 `font-size`，于是叶子拿到了字号、
+      //      **没拿到字体** ⇒ 落到 `-apple-system`。实测：`Charter` 从 6 处掉到 **0** 处。
+      //   只给 `app`（更早那版）：字号被网页默认值顶掉（按钮 13px → 16px）。
+      //   两半合起来才是 CSS 的语义：近的覆盖远的，没被覆盖的回落。
+      let pick = match (g_text.near, g_text.app) {
+        (Some(t), Some(a)) => {
+          let out = t.share()
+          for i = 0; i < a.length(); i = i + 1 {
+            let (k, v) = a.at(i)
+            if !out.contains(k) {
+              apply_key(out, k, v)
+            }
+          }
+          Some(out)
+        }
+        (Some(t), None) => Some(t.share())
+        (None, Some(a)) => Some(a.share())
+        (None, None) => None
+      }
+      match pick {
+        Some(styles) => js_obj_set(props, "style", styles_to_js(styles))
+        None => ()
+      }
+    }
+  }
+  let arr = js_arr_new()
+  js_arr_push(arr, child)
+  js_create_element(js_host_component("Text"), props, arr)
+}
+
+///|
 let g_handlers : HCounter = { n: 0 }
 
 ///|
@@ -373,9 +589,52 @@ fn render_props(
   // 但对第三方组件库是"凭空多一个 prop"（有的库会拿 `style != null` 做判断，
   // 有的库会把它当受控样式覆盖自己的默认值）。少一个键，少一类边界情况。
   let styles = props.styles_map()
-  if !styles.is_empty() {
-    js_obj_set(o, "style", styles_to_js(styles))
+  // ── 把 `press:` 前缀的键拆出来 ───────────────────────────────────────────────
+  //
+  // `press:` 是**按下态**（源 CSS 的 `:hover`；见 `style/style.mbt` 的 `Style::press`）。
+  // 为什么不拆不行（2026-10-23 实测）：`Style::press()` 在链尾调用时会把**它前面的所有键**
+  // 都加上前缀 —— 卦卡的 `.min_width(116).flex_grow(1).press()` 于是把列宽也变成了
+  // `press:minWidth`，**列宽只在按下时生效** ⇒ 网格塌成单列（容器 331px、卡片 54px）。
+  // 拆开之后：普通键进 `style`，`press:` 键进 `pressStyle`（RN 不认 `press:` 这种样式名，
+  // 混在一起等于既丢了列宽、又给元素塞了个非法样式键）。
+  let plain : Array[(String, @style.StyleValue)] = []
+  let press : Array[(String, @style.StyleValue)] = []
+  for i = 0; i < styles.length(); i = i + 1 {
+    let (k, v) = styles.at(i)
+    if k.has_prefix(@style.press_prefix) {
+      press.push((k.unsafe_substring(start=@style.press_prefix.length(), end=k.length()), v))
+    } else {
+      plain.push((k, v))
+    }
   }
+  if plain.length() > 0 {
+    js_obj_set(o, "style", styles_to_js(@vdom.Styles::from_style(@style.Style::from_entries(plain))))
+  }
+  if press.length() > 0 {
+    // 按下态先以 `pressStyle` 原样交给宿主：**库这一侧还没有消费它的通道**
+    // （那要 `Pressable` 包裹 + 函数式 `style`，是下一刀）。先拆出来，保证
+    // ① 常态样式不被污染；② 宿主侧想接就有现成的数据。
+    js_obj_set(o, "pressStyle", styles_to_js(@vdom.Styles::from_style(@style.Style::from_entries(press))))
+  }
+  // 把这一格里**会继承的文字键**交给 `make_element`：它要在**画孩子之前**知道
+  // "这一层自己写了什么字体/字号/颜色" —— 裸文本要按最近一层来落（见 `TextRef.near`）。
+  //
+  // ⚠️ 按下态（`press:` 前缀）里的文字键**不进继承** —— 那是"按下时才生效"的值，
+  //    混进常态继承会让常态颜色被按下色顶掉。
+  let mut own : @vdom.Styles? = None
+  if !styles.is_empty() {
+    let kept : Array[(String, @style.StyleValue)] = []
+    for i = 0; i < styles.length(); i = i + 1 {
+      let (k, v) = styles.at(i)
+      if is_text_key(k) && !k.has_prefix(@style.press_prefix) {
+        kept.push((k, v))
+      }
+    }
+    if kept.length() > 0 {
+      own = Some(entries_to_styles(kept))
+    }
+  }
+  g_props_text.v = own
   o
 }
 
@@ -415,16 +674,8 @@ fn render_children(
 pub fn render_node(v : @vdom.VNode, sched : &@cmd.Scheduler) -> JsValue {
   match v {
     @vdom.VNode::Elem(tag, props, kids, ..) =>
-      js_create_element(
-        js_host_component(map_tag(tag)),
-        render_props(tag, props, sched),
-        render_children(kids, sched),
-      )
-    @vdom.VNode::Text(s) => {
-      let arr = js_arr_new()
-      js_arr_push(arr, js_str(s))
-      js_create_element(js_host_component("Text"), js_obj_new(), arr)
-    }
+      make_element(tag, render_props(tag, props, sched), g_props_text.v, () => render_children(kids, sched))
+    @vdom.VNode::Text(s) => make_text(js_str(s), None)
     @vdom.VNode::Frag(kids) =>
       js_create_element(
         js_fragment(),
@@ -622,16 +873,8 @@ fn render_memo(
       }
     }
     @vdom.VNode::Elem(tag, props, kids, ..) =>
-      js_create_element(
-        js_host_component(map_tag(tag)),
-        render_props(tag, props, sched),
-        render_children_memo(kids, sched, ctx),
-      )
-    @vdom.VNode::Text(s) => {
-      let arr = js_arr_new()
-      js_arr_push(arr, js_str(s))
-      js_create_element(js_host_component("Text"), js_obj_new(), arr)
-    }
+      make_element(tag, render_props(tag, props, sched), g_props_text.v, () => render_children_memo(kids, sched, ctx))
+    @vdom.VNode::Text(s) => make_text(js_str(s), None)
     @vdom.VNode::Frag(kids) =>
       js_create_element(
         js_fragment(),
@@ -696,16 +939,8 @@ fn render_fast(
       render_fast(f(), sched, ctx)
     }
     @vdom.VNode::Elem(tag, props, kids, ..) =>
-      js_create_element(
-        js_host_component(map_tag(tag)),
-        render_props(tag, props, sched),
-        render_children_fast(kids, sched, ctx),
-      )
-    @vdom.VNode::Text(s) => {
-      let arr = js_arr_new()
-      js_arr_push(arr, js_str(s))
-      js_create_element(js_host_component("Text"), js_obj_new(), arr)
-    }
+      make_element(tag, render_props(tag, props, sched), g_props_text.v, () => render_children_fast(kids, sched, ctx))
+    @vdom.VNode::Text(s) => make_text(js_str(s), None)
     @vdom.VNode::Frag(kids) =>
       js_create_element(
         js_fragment(),

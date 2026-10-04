@@ -56,6 +56,63 @@ pub fn Style::entries(self : Style) -> Array[(String, StyleValue)] {
 }
 
 ///|
+/// **按下状态**的样式 —— 给触屏与 web 同一套表达（源 CSS 的 `:hover` 降级到这里）。
+///
+/// 用**键前缀**（`press:`）而不是给 `StyleValue` 加变体：加变体会让每一个构造器都得处理
+/// "带不带状态"，污染整个类型化属性集；键前缀只影响一次遍历，形状仍是扁平的 (String, Value)。
+///
+/// ⚠️ **语义**：它把**当前已有的键**都加上前缀 —— 所以**`.press()` 落在链的哪一格，
+/// 就决定它前面那一段是按下态**。要让"源 CSS 的 `:hover` 是按下态、常态仍是常态"，
+/// 链的形状只能是 **hover 的键 → `.press()` → 常态的键**（它夹在中间）：
+///
+/// ```text
+/// .border_color("#8a2518")     // 源 CSS 的 :hover ⇒ 落在 .press() 之前 ⇒ 按下态 ✅
+/// .press()
+/// .background_color("#e6d8bc") // 源 CSS 的常态  ⇒ 落在 .press() 之后 ⇒ 仍是常态 ✅
+/// .min_width(@style.px(116.0)) // grid 列宽也是常态调用，必须在这一侧 ✅
+/// ```
+///
+/// 三种落法只有这一种对，而**错的两种都很难看见**（产物编得过、判据全绿，只是语义反了）：
+///   · 写在**链尾**（把常态整段标成按下态）—— 2026-10-23 第十七轮就这么修的，实测后果：
+///     卦卡的 `.min_width(116).flex_grow(1)` 变成"只在按住时生效" ⇒ **网格塌成单列**
+///     （容器 331px、卡片 54px）；第十八轮又量到更重的一层：`button.bagua-mode` 的常态
+///     只剩 `borderColor` + `color` 两条 —— 没内边距、没底色、没边框、没字号，
+///     **按住才变成一个按钮**。
+///   · 写在**链中间但两侧写反**（常态在前、hover 在后）—— 同样是整体互换，只是这次
+///     连"hover 那一半"也没落在按下态上。
+///
+/// 生成器侧的组装只有**一处**（`style-emit.js` 的 `emitModule`），判据在
+/// `tools/regen_styles_check.mjs` 的"按下态组装顺序"那一节。
+///
+/// ⚠️ 消费侧（库的 `Pressable` 接线）**尚未就绪**（2026-10-23）：生成器默认不产出它
+/// （`DSH_PRESS_FROM_HOVER=1` 才开），等接线稳了再默认打开。
+pub fn Style::press(self : Style) -> Style {
+  let out : Array[(String, StyleValue)] = []
+  for i = 0; i < self.entries.length(); i = i + 1 {
+    let (k, v) = self.entries[i]
+    out.push(("press:" + k, v))
+  }
+  { entries: out }
+}
+
+///|
+/// 键前缀（`render.mbt` 与生成物共用一个常量，别各自写死字符串）。
+pub let press_prefix : String = "press:"
+
+///|
+/// 把一份 `(键, 值)` 列表**原样**装回 `Style` —— **不按名字过滤**。
+///
+/// 为什么不复用"按名字 match"的写法（那种写法踩过，2026-10-23）：那种白名单只适用于
+/// **特定用途**（"哪些键会被文字继承"）。一旦拿它去重建**常态样式**，名单外的键
+/// （`minWidth` / `flexGrow` …）就被**静默丢掉** —— 症状是"样式看起来没生效"，
+/// 排查方向会被带偏。这个构造器只做类型还原，不认识名字，所以不会漏键。
+pub fn Style::from_entries(entries : Array[(String, StyleValue)]) -> Style {
+  { entries: entries.copy() }
+}
+
+
+
+///|
 pub fn Style::is_empty(self : Style) -> Bool {
   self.entries.length() == 0
 }
@@ -713,9 +770,30 @@ pub fn Style::text_transform(self : Style, v : TextTransform) -> Style {
 // ---------------------------------------- 补齐：yi 的 CSS 用到的可移植属性
 //
 // 清单来自 `docs/evidence/r1/style_gap.md` 的差集分析（yi 的 198 条 CSS 共 57 个属性名，
-// 本层原有 34 个覆盖）。下面这批是**可移植且 RN 支持**的，补齐它们；
+// 本层原有 34 个覆盖）。下面这批按"可移植且 RN 支持"补进来的；
 // 不可移植的（grid / 伪元素 / transition / cursor …）在 README 里另有降级策略，
 // 刻意不加进类型 —— 让它们在编译期就写不出来。
+//
+// ⚠️★ **但这句"RN 支持"对 6 个键不成立**（2026-10-23 逐条在**真 RN 的登记表**上核过；
+// `ReactNativeStyleAttributes.js`，本仓库装着的 0.83.10 / 0.86.3 / 0.87.1 三份都缺）：
+//
+//   · `whiteSpace`（`Style::white_space`）—— 原生没有这个键。对应物：**部分有**，
+//     `nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（截断，语义不同）；
+//     `pre-line` / `pre-wrap` 接近 RN `Text` 的默认行为。
+//   · `order`（`Style::order`）—— Yoga 不支持。对应物：**没有**，要在 Model 里把顺序排好。
+//   · `borderTopStyle` / `borderBottomStyle` / `borderLeftStyle` / `borderRightStyle`
+//     （`Style::border_top_style` 等）—— 原生只有**四边共用**的 `borderStyle`。
+//     对应物：**半有**，当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 等价。
+//
+// 另有两个键**只有 iOS**（在登记表里、Android 上静默失效）：`textDecorationStyle` /
+// `textDecorationColor`（`Style::text_decoration_style` / `Style::text_decoration_color`）。
+//
+// ⇒ 也就是说：**这 6 个键在 web（react-native-web）上生效、在原生上静默不生效**
+//   —— 正是本仓库反复栽的那一类"web 绿、真机红"。真实影响面（实测）：
+//   `examples/apps/zhouyi-reader` 的产物里 **11 处**（`border_*_style` 8 + `white_space` 3），
+//   而同一个应用的 web 判据 103/0 全过。
+//   **判据**：`tools/style_platform_check.mjs`（库能产出的每一个"原生不认"的键都必须登记，
+//   并写清"对应物"；RN 哪天支持了它也会红 —— 表过期）。
 
 ///|
 pub(all) enum WhiteSpace {
@@ -774,12 +852,14 @@ pub fn Style::display(self : Style, v : Display) -> Style {
 }
 
 ///|
+/// ⚠️ **原生 RN 没有 `whiteSpace` 这个键**（`react-native-web` 有）⇒ 真机上这一条**不生效**。对应物（部分有）：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（截断，语义不同）。详见文件上方"补齐"那段的说明与 `tools/style_platform_check.mjs`。
 pub fn Style::white_space(self : Style, v : WhiteSpace) -> Style {
   self.kw("whiteSpace", v.to_string())
 }
 
 ///|
 /// `order` —— flex 排序。yi 用它把某块提到前面（`order: -1`）。
+/// ⚠️ **原生 RN 没有 `order`**（Yoga 不支持）⇒ 真机上不生效。对应物：**样式层没有** —— 要在 Model 里把顺序排好（与 `@media` 同一档）。判据：`tools/style_platform_check.mjs`。
 pub fn Style::order(self : Style, v : Double) -> Style {
   self.unitless("order", v)
 }
@@ -805,31 +885,37 @@ pub fn Style::border_right_color(self : Style, v : String) -> Style {
 }
 
 ///|
+/// ⚠️ **原生 RN 没有分边的 border style**（只有四边共用的 `borderStyle`）⇒ 真机上这一条不生效（按默认 `solid` 画）。对应物（半有）：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 等价。判据：`tools/style_platform_check.mjs`。
 pub fn Style::border_top_style(self : Style, v : BorderStyle) -> Style {
   self.kw("borderTopStyle", v.to_string())
 }
 
 ///|
+/// ⚠️ **原生 RN 没有分边的 border style**（只有四边共用的 `borderStyle`）⇒ 真机上不生效。对应物（半有）见 `Style::border_top_style` 的说明。判据：`tools/style_platform_check.mjs`。
 pub fn Style::border_bottom_style(self : Style, v : BorderStyle) -> Style {
   self.kw("borderBottomStyle", v.to_string())
 }
 
 ///|
+/// ⚠️ **原生 RN 没有分边的 border style**（只有四边共用的 `borderStyle`）⇒ 真机上不生效。对应物（半有）见 `Style::border_top_style` 的说明。判据：`tools/style_platform_check.mjs`。
 pub fn Style::border_left_style(self : Style, v : BorderStyle) -> Style {
   self.kw("borderLeftStyle", v.to_string())
 }
 
 ///|
+/// ⚠️ **原生 RN 没有分边的 border style**（只有四边共用的 `borderStyle`）⇒ 真机上不生效。对应物（半有）见 `Style::border_top_style` 的说明。判据：`tools/style_platform_check.mjs`。
 pub fn Style::border_right_style(self : Style, v : BorderStyle) -> Style {
   self.kw("borderRightStyle", v.to_string())
 }
 
 ///|
+/// ⚠️ 这个键**只有 iOS** 实现 —— Android 上静默不生效（安卓的 `TextPaint` 没有"下划线颜色"这个概念）。判据：`tools/style_platform_check.mjs`。
 pub fn Style::text_decoration_color(self : Style, v : String) -> Style {
   self.kw("textDecorationColor", v)
 }
 
 ///|
+/// ⚠️ 这个键**只有 iOS** 实现 —— Android 上静默不生效（它在 RN 的登记表里，但安卓侧没有对应物）。判据：`tools/style_platform_check.mjs`。
 pub fn Style::text_decoration_style(self : Style, v : TextDecorationStyle) -> Style {
   self.kw("textDecorationStyle", v.to_string())
 }
