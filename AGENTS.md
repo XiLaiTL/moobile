@@ -18,9 +18,9 @@
 ## 2. 验证入口（只记这一条）
 
 ```bash
-bash tools/verify_all.sh              # 离线 32 项（⚠️ 项数会随门增长，以它自己打的汇总行为准）（编译 / **白盒测试（`moon test`，行为层）** / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物（native_rn_check，19 项）** / **能力包平台矩阵** / antd 试金石 / **组件库生成器（libgen 假包探针，24 项）** / **SSE 试金石** / **chat-app：生成物一致 + 无头 23 项** / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度 / **F1 迁移动检对账：JS 与 MoonBit 两份实现逐 finding 逐 hit 一致** / **宿主矩阵生成器（expo / rnw / webview，32 项）** / **生成物自查：根样式 `page()` 与根上的滚动容器（迁移移不过来的两块，13 项）** / **F1 新规则 `click.on-view`（诱饵 + 两侧对账，13 项）** / **按下态组装顺序（`press`：常态/hover 三段先后，含两组证伪，10 项）** / **样式源侧账本（每条源声明一个桶 + 零调用兜底，含证伪，21 项）** / **样式键的平台矩阵（库能产出的键 vs 原生 RN 的登记表，含证伪，8 项）** / **机器可读迁移事实（`migration.generated.json` 的 `facts` 块与重算一致，含证伪，5 项）** / **画布通道（canvas 试金石：指令→树→真 Skia 回放，含两组变换对账，35 项）** / **样式层再生成同步（`regen --styles`，含证伪）** / **观感缺口扫描（motion-gap，含证伪）**）
+bash tools/verify_all.sh              # 离线 33 项（⚠️ 项数会随门增长，以它自己打的汇总行为准）（编译 / **白盒测试（`moon test`，行为层）** / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物（native_rn_check，19 项）** / **能力包平台矩阵** / antd 试金石 / **组件库生成器（libgen 假包探针，24 项）** / **SSE 试金石** / **chat-app：生成物一致 + 无头 23 项** / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度 / **F1 迁移动检对账：JS 与 MoonBit 两份实现逐 finding 逐 hit 一致** / **宿主矩阵生成器（expo / rnw / webview，32 项）** / **生成物自查：根样式 `page()` 与根上的滚动容器（迁移移不过来的两块，13 项）** / **F1 新规则 `click.on-view`（诱饵 + 两侧对账，13 项）** / **按下态组装顺序（`press`：常态/hover 三段先后，含两组证伪，10 项）** / **样式源侧账本（每条源声明一个桶 + 零调用兜底，含证伪，21 项）** / **样式键的平台矩阵（库能产出的键 vs 原生 RN 的登记表，含证伪，8 项）** / **分边边框样式的自动折叠（能折/不许折两半，含两组证伪，22 项）** / **机器可读迁移事实（`migration.generated.json` 的 `facts` 块与重算一致，含证伪，5 项）** / **画布通道（canvas 试金石：指令→树→真 Skia 回放，含两组变换对账，35 项）** / **样式层再生成同步（`regen --styles`，含证伪）** / **观感缺口扫描（motion-gap，含证伪）**）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
-python3 tools/verify_android.py       # 真机 27 项（当前 25/27，两条挂在既有问题上，见 docs/STATUS.md §2.2/§4-6；需要模拟器 + APK）
+python3 tools/verify_android.py       # todo-app 真机 27 项（当前 25/27，两条挂在既有问题上，见 docs/STATUS.md §2.2/§4-6；需要模拟器 + APK）
 ```
 
 **改了什么就至少跑对应的那几项**（对照表在 `CONTRIBUTING.md` §1）。
