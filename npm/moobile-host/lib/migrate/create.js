@@ -846,6 +846,92 @@ function renderReport(data) {
   return L.join('\n');
 }
 
+// ── ★ 报告的两个区：**生成区**（工具写、可覆盖）与**手写区**（工具只读、永不覆盖）──────
+//
+// 为什么要有这一层（2026-10-23 拍板，`PLAN.md` §8.2 第 6 条）：这份报告是"迁移当天的生成物
+// **＋ 人手补记**"两种东西。以前它们混在一起，于是**两头都疼**：
+//   · 重新生成 ⇒ **把人的补记冲掉**（真实损失）；
+//   · 不重新生成 ⇒ 报告里的数字**一直漂**（实测漂过 4 处，见 `docs/STATUS.md` §4-10）。
+// 分区之后：生成区随便重写（数字永远当前），手写区**逐字节保留**（人的话一句不丢）。
+//
+// ⚠️ 找不到标记时（老报告、或人手写时把标记删了）**不猜、不丢**：把**整份旧文件**当手写区
+//    保留下来，并在它头上写一句"请人工把要紧的补记搬进手写区、然后把这段删掉"。
+//    宁可多留一段冗余，也不静默删掉人写的东西。
+const GENERATED_START =
+  '<!-- ═══ 生成区开始 ═══ 以下内容由 `moobile-host create` **每次重新生成** —— 别在这里手改（会被覆盖）；要写补记请写进下面的「手写区」。 -->';
+const GENERATED_END = '<!-- ═══ 生成区结束 ═══ -->';
+const HAND_START =
+  '<!-- ═══ 手写区开始 ═══ 生成器**只读不写**：重新生成时这一段**逐字节保留**。 -->';
+const HAND_END = '<!-- ═══ 手写区结束 ═══ -->';
+
+/** 新手写区的默认内容（第一次生成时放这个）。 */
+const HAND_TEMPLATE = `> ⚠️ **本地补记（人手写的，不是生成器写的）**：上面的生成区是 \`create\` 在**迁移当天**算的。
+> 之后这个应用被手改过的地方、以及"报告里已经过期的数字"，都记在这里 —— **重新生成报告不会冲掉这一段**。
+
+- （在这里写你的补记。建议写清：**日期**、改了什么、**判据是哪条命令**。）
+`;
+
+/**
+ * 从一份已有的报告里取出**手写区**的正文（不含标记本身）。
+ *
+ * 返回 `{ text, legacy }`：`legacy: true` 表示"没找到标记 ⇒ 把整份旧文件当手写区保留"。
+ */
+function extractHandRegion(text) {
+  const i = text.indexOf(HAND_START);
+  const j = text.indexOf(HAND_END);
+  if (i >= 0 && j > i) return { text: text.slice(i + HAND_START.length, j), legacy: false };
+  const gs = text.indexOf(GENERATED_START);
+  const ge = text.indexOf(GENERATED_END);
+  if (gs >= 0 && ge > gs) {
+    // 有生成区标记、但没有手写区标记（有人手工删了一段）：把生成区**之外**的全部当手写区
+    const rest = (text.slice(0, gs) + text.slice(ge + GENERATED_END.length)).trim();
+    return { text: rest ? `\n${rest}\n` : '', legacy: true };
+  }
+  return { text: text.trim() ? `\n${text.trim()}\n` : '', legacy: true };
+}
+
+/** 老格式（没有标记）保留下来的那段，头上加一句"该怎么办"。 */
+const LEGACY_BANNER = `
+> ⚠️★ **下面这段是"上一版报告"（当时还没有分区标记），原样保留 —— 一个字都没删。**
+> 上面那个生成区已经重新生成过，所以这一段里的数字**多半已经过期**。
+> 请人工把**要紧的补记**搬进本区顶部，然后把这一段删掉。
+`;
+
+/** 把"生成区 + 手写区"拼成最终的报告文本。 */
+function composeReport(generatedBody, handText) {
+  const hand = handText.replace(/^\n+/, '').replace(/\s+$/, '');
+  return [
+    GENERATED_START,
+    '',
+    generatedBody.replace(/\s+$/, ''),
+    '',
+    GENERATED_END,
+    '',
+    HAND_START,
+    '',
+    hand,
+    '',
+    HAND_END,
+    '',
+  ].join('\n');
+}
+
+/** 报告落盘时的**最终文本**：读旧文件里的手写区（或整份老报告）+ 新生成区。 */
+function reportWithHandRegion(generatedBody, previous) {
+  let hand = HAND_TEMPLATE;
+  if (previous && previous.trim()) {
+    const got = extractHandRegion(previous);
+    if (got.legacy) {
+      hand = `${LEGACY_BANNER}\n${got.text.replace(/^\n+/, '')}`;
+    } else if (got.text.trim()) {
+      hand = got.text;
+    }
+  }
+  // ⚠️ 只为判据门存在的开关（`tools/report_region_check.mjs` 的证伪）：假装"没保留手写区"。
+  if (process.env.MOBILE_REPORT_DROP_HAND === '1') hand = HAND_TEMPLATE;
+  return composeReport(generatedBody, hand);
+}
+
 
 /**
  * 给搬过来的包补 `moon.pkg`：**加它现在真的需要的 import**，入口包还要挂 `link.exports`。
@@ -1204,7 +1290,10 @@ function main(argv = process.argv.slice(2)) {
   writeProject(target, finalFiles);
   // 落盘之后**再自查**（审计读文件，读的是生成物本身），然后把结果补进报告与收尾输出。
   reportData.audit = auditApp(target);
-  fs.writeFileSync(path.join(target, 'MIGRATION.md'), renderReport(reportData));
+  // ★ 报告分两区写：生成区重写、**手写区逐字节保留**（`reportWithHandRegion` 的注释）。
+  const reportPath = path.join(target, 'MIGRATION.md');
+  const previousReport = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : '';
+  fs.writeFileSync(reportPath, reportWithHandRegion(renderReport(reportData), previousReport));
   fs.writeFileSync(
     path.join(target, 'migration.generated.json'),
     JSON.stringify({ ...machine, audit: reportData.audit }, null, 2) + '\n',
@@ -1252,5 +1341,9 @@ module.exports = {
   blockOutUnportable,
   detectClickOnView,
   renderReport,
+  reportWithHandRegion,
+  extractHandRegion,
+  composeReport,
+  REPORT_MARKERS: { GENERATED_START, GENERATED_END, HAND_START, HAND_END, HAND_TEMPLATE },
   augmentMoonPkg,
 };
