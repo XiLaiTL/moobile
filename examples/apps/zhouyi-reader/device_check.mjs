@@ -225,6 +225,75 @@ function shot() {
   });
   return { hash: createHash("sha256").update(buf).digest("hex").slice(0, 16), size: buf.length };
 }
+
+/**
+ * **轮询等"指纹到达目标状态"**，返回最后那张。
+ *
+ * 为什么不能"点一下 + sleep 一会儿"（2026-10-23 实测）：`adb shell input tap` 之后界面要等
+ * React 提交 + 一次截屏，而这台机器上固定 `sleep(1500)` **读到的是点击前的那一帧** ——
+ * 表现是"慢一拍"（点展开读到没变、下一次检查却已经是展开态）。
+ * 另外 `screencap` 还会**回陈旧帧**（模型已变、两张截屏逐字节相同），所以判据得盯**目标状态**。
+ */
+async function waitForShot(pred, ms = 20000, step = 800) {
+  const t0 = Date.now();
+  let last = shot();
+  while (Date.now() - t0 < ms) {
+    if (pred(last.hash)) return last;
+    await sleep(step);
+    last = shot();
+  }
+  return last;
+}
+
+/** 解一张 `screencap -p` 出来的 PNG（8 位、非隔行）—— 只为拿像素，不装任何图像库。 */
+function decodePng(buf) {
+  let off = 8;
+  let w = 0;
+  let h = 0;
+  let bpp = 4;
+  const idat = [];
+  while (off + 8 <= buf.length) {
+    const len = buf.readUInt32BE(off);
+    const type = buf.toString("ascii", off + 4, off + 8);
+    const data = buf.subarray(off + 8, off + 8 + len);
+    if (type === "IHDR") {
+      w = data.readUInt32BE(0);
+      h = data.readUInt32BE(4);
+      if (data[8] !== 8 || data[12] !== 0) throw new Error("只支持 8 位、非隔行 PNG");
+      bpp = { 0: 1, 2: 3, 4: 2, 6: 4 }[data[9]] || 4;
+    } else if (type === "IDAT") idat.push(data);
+    else if (type === "IEND") break;
+    off += 12 + len;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const stride = w * bpp;
+  const out = Buffer.alloc(h * stride);
+  let pos = 0;
+  for (let y = 0; y < h; y++) {
+    const f = raw[pos++];
+    const cur = out.subarray(y * stride, (y + 1) * stride);
+    const prev = y > 0 ? out.subarray((y - 1) * stride, y * stride) : Buffer.alloc(stride);
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? cur[x - bpp] : 0;
+      const b = prev[x];
+      const c = x >= bpp ? prev[x - bpp] : 0;
+      let v = raw[pos + x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a);
+        const pb = Math.abs(p - b);
+        const pc = Math.abs(p - c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      cur[x] = v & 0xff;
+    }
+    pos += stride;
+  }
+  return { w, h, bpp, px: out };
+}
 // ⚠️ 真机上"拖拽转了多少"这条**判据没达成**，原因是**库的手势通道**：
 //    实测（同一台模拟器、同一屏）把两个已知屏幕点喂给 `@gesture`，拿到的"元素内坐标"对不上：
 //
@@ -274,28 +343,25 @@ if (canvas) {
   const tapped = tapText(dump(), "京房八宫");
   check("（模式）找得到并点到「京房八宫」", tapped, tapped ? "" : "dump 里没有这个按钮");
   if (tapped) {
-    await sleep(1500);
-    let afterMode = shot();
-    for (let i = 0; i < 3 && afterMode.hash === beforeMode.hash; i++) {
-      await sleep(600 * (i + 1));
-      afterMode = shot();
-    }
+    // ⚠️ 轮询等"画面变了"，别用固定 sleep（同上：固定 sleep 读到的是点击前的那一帧）。
+    //    ⚠️ `adb exec-out screencap` 还会**回陈旧帧**（实测：模型已变、两张截屏逐字节相同），
+    //    所以这里等的是"指纹变了"这个**目标状态**，而不是"等一段时间"。
+    const afterMode = await waitForShot((h) => h !== beforeMode.hash, 20000, 800);
     check(
       "点「京房八宫」→ 真机画面变了（Skia 那条绘制路径也跟着模式走）",
       afterMode.hash !== beforeMode.hash,
       `前 ${beforeMode.hash} 后 ${afterMode.hash}`,
     );
-    tapText(dump(), "后天文王");
-    await sleep(1500);
-    let back = shot();
-    for (let i = 0; i < 3 && back.hash !== beforeMode.hash; i++) {
-      await sleep(600 * (i + 1));
-      back = shot();
-    }
+    const backTapped = tapText(dump(), "后天文王");
+    const back = backTapped
+      ? await waitForShot((h) => h === beforeMode.hash, 25000, 1000)
+      : afterMode;
     check(
       "切回「后天文王 · 卦气」→ 画面**复原**（不是「点一下就乱刷」）",
-      back.hash === beforeMode.hash,
-      `基准 ${beforeMode.hash} / 切回 ${back.hash}`,
+      backTapped && back.hash === beforeMode.hash,
+      backTapped
+        ? `基准 ${beforeMode.hash} / 切回 ${back.hash}`
+        : "dump 里找不到「后天文王」这个按钮（它可能在模式行的可见区之外）",
     );
   }
 }
@@ -588,8 +654,12 @@ if (onDetail) {
     check("折叠箭头是合上的（▾ 不可见）", arrowCount(scrolled.xml) === 0, `▾ 节点 ${arrowCount(scrolled.xml)}`);
 
     adb("shell", "input", "tap", String(Math.round(head.cx)), String(Math.round(head.cy)));
-    await sleep(1500);
-    const opened = dump();
+    // ⚠️★ **轮询等目标状态，不用固定 sleep**（2026-10-23 实测的教训）：
+    //    `adb shell input tap` 之后界面要等 React 提交 + 一次 uiautomator dump；
+    //    这台机器上固定 `sleep(1500)` **读到的是点击前的界面** —— 表现为"慢一拍"：
+    //    "点标题展开"读到 `▾ 节点 0`（没变），而紧接着"收起后箭头合上"却读到 `▾ 节点 1`（已经展开了）。
+    //    本仓库早就记过这条（"节流 rAF：React 的提交比刷新慢一拍"），这里把它落到代码里。
+    const opened = await waitFor((x) => arrowCount(x) >= 1, 20000, 600);
     const afterSet = longTextSetBelow(opened, y0);
     const fresh = [...afterSet].filter((s) => !beforeSet.has(s));
     check("点标题展开：箭头变 ▾（模型真的变了）", arrowCount(opened) >= 1, `▾ 节点 ${arrowCount(opened)}`);
@@ -608,8 +678,8 @@ if (onDetail) {
     check("展开后标题还在（内容插在它下面）", Boolean(head2), head2 ? `y=${Math.round(head2.cy)}` : "标题不见了");
     if (head2) {
       adb("shell", "input", "tap", String(Math.round(head2.cx)), String(Math.round(head2.cy)));
-      await sleep(1500);
-      const closed = dump();
+      // 同上：轮询等"箭头合上"（别用固定 sleep —— 那会读到点击前的界面）
+      const closed = await waitFor((x) => arrowCount(x) === 0, 20000, 600);
       const cy2 = findNode(closed, FOLD_TITLE) ? findNode(closed, FOLD_TITLE).y1 : y0;
       const closedSet = longTextSetBelow(closed, cy2);
       check("收起后箭头又是合上的（▾ 消失）", arrowCount(closed) === 0, `▾ 节点 ${arrowCount(closed)}`);
@@ -657,55 +727,6 @@ if (canvas) {
     if (uiTexts(dump()).includes("立竿测影")) break;
   }
   await sleep(2000); // 让画布这一帧落定（Skia 首帧之后还有一次"回退字体就绪"的重渲染）
-  // 解 PNG（`screencap -p` 出来的是 8 位非隔行 PNG）：只为拿像素，不装任何图像库。
-  const decodePng = (buf) => {
-    let off = 8;
-    let w = 0;
-    let h = 0;
-    let bpp = 4;
-    const idat = [];
-    while (off + 8 <= buf.length) {
-      const len = buf.readUInt32BE(off);
-      const type = buf.toString("ascii", off + 4, off + 8);
-      const data = buf.subarray(off + 8, off + 8 + len);
-      if (type === "IHDR") {
-        w = data.readUInt32BE(0);
-        h = data.readUInt32BE(4);
-        if (data[8] !== 8 || data[12] !== 0) throw new Error("只支持 8 位、非隔行 PNG");
-        bpp = { 0: 1, 2: 3, 4: 2, 6: 4 }[data[9]] || 4;
-      } else if (type === "IDAT") idat.push(data);
-      else if (type === "IEND") break;
-      off += 12 + len;
-    }
-    const raw = zlib.inflateSync(Buffer.concat(idat));
-    const stride = w * bpp;
-    const out = Buffer.alloc(h * stride);
-    let pos = 0;
-    for (let y = 0; y < h; y++) {
-      const f = raw[pos++];
-      const cur = out.subarray(y * stride, (y + 1) * stride);
-      const prev = y > 0 ? out.subarray((y - 1) * stride, y * stride) : Buffer.alloc(stride);
-      for (let x = 0; x < stride; x++) {
-        const a = x >= bpp ? cur[x - bpp] : 0;
-        const b = prev[x];
-        const c = x >= bpp ? prev[x - bpp] : 0;
-        let v = raw[pos + x];
-        if (f === 1) v += a;
-        else if (f === 2) v += b;
-        else if (f === 3) v += (a + b) >> 1;
-        else if (f === 4) {
-          const p = a + b - c;
-          const pa = Math.abs(p - a);
-          const pb = Math.abs(p - b);
-          const pc = Math.abs(p - c);
-          v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-        }
-        cur[x] = v & 0xff;
-      }
-      pos += stride;
-    }
-    return { w, h, bpp, px: out };
-  };
 
   const buf = execFileSync("adb", ["exec-out", "screencap", "-p"], {
     env: { ...process.env, MSYS_NO_PATHCONV: "1" },
@@ -767,6 +788,125 @@ if (canvas) {
     blobs >= 1500,
     `实测连通块 ${blobs} 个 / 墨点 ${ink}（阈值 1500；画面构成变了要重新标定）`,
   );
+}
+
+// ── 5d) 画布**几何**：它必须是个正圆（2026-10-23 实测补的）──────────────────────
+//
+// 为什么必须有：那一天真机上"八卦阵"变成了**横扁的椭圆**、而且外圈与内圈对不上 ——
+// 根因是 `canvas-ops.js` 把变换写成两项合一（`{translateX, translateY}`），
+// 而 RN Skia 的 `processTransform3d` **只读每项的第一个键** ⇒ `scale(k,k)` 只缩了 x。
+// **那次是用户用眼睛看出来的**，而当时 29 条真机判据全绿。所以这里补一条**量**的判据。
+//
+// 判据怎么来的（同一台模拟器上的标定读数）：
+//   修前（椭圆）：横半轴 489.5px / 竖半轴 955.2px ⇒ **a/b = 0.512**（≈ k = 369/720），圆心比画布中心低 482px
+//   修后（正圆）：a = b = 489.5px ⇒                **a/b = 1.000**，圆心落在画布中心
+// ⇒ 做法：逐行取"最外沿"半宽 h(y)，拟合 `h² = A + B·y + C·y²`（椭圆正是这个形状），
+//    解出 a、b、圆心与残差；断言 **|a/b − 1| ≤ 0.03**，且残差小（残差大说明量的不是那条外圈）。
+section("画布几何（正圆性）");
+if (canvas) {
+  const shotBuf = execFileSync("adb", ["exec-out", "screencap", "-p"], {
+    env: { ...process.env, MSYS_NO_PATHCONV: "1" },
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  let verdict = null;
+  try {
+    const img = decodePng(shotBuf);
+    const side = Math.round(canvas.side);
+    // 取样区内缩 20px：把画布外面的页面留白排除掉（它是纸色，会被当成"内容"）
+    const X0 = Math.max(0, Math.round(canvas.cx - side / 2) + 20);
+    const X1 = Math.min(img.w, Math.round(canvas.cx + side / 2) - 20);
+    const Y0 = Math.max(0, Math.round(canvas.cy - side / 2) + 20);
+    const Y1 = Math.min(img.h, Math.round(canvas.cy + side / 2) - 20);
+    const boxBg = [246, 239, 224]; // 画布盒子的底色（--bg-elev）
+    const isContent = (x, y) => {
+      const i = (y * img.w + x) * img.bpp;
+      return (
+        Math.abs(img.px[i] - boxBg[0]) + Math.abs(img.px[i + 1] - boxBg[1]) + Math.abs(img.px[i + 2] - boxBg[2]) > 40
+      );
+    };
+    const rows = [];
+    for (let y = Y0; y < Y1; y++) {
+      let l = -1;
+      let r = -1;
+      for (let x = X0; x < X1; x++) {
+        if (isContent(x, y)) {
+          if (l < 0) l = x;
+          r = x;
+        }
+      }
+      if (l < 0) continue;
+      if (l <= X0 + 1 || r >= X1 - 2) continue; // 贴到取样区边缘 ⇒ 这一行被裁了
+      rows.push([y, (r - l + 1) / 2]);
+    }
+    if (rows.length > 50) {
+      // 最小二乘：h² = A + B·y + C·y²（3×3 正规方程 + 高斯消元）
+      const S = [0, 0, 0, 0, 0];
+      const T = [0, 0, 0];
+      for (const [y, h] of rows) {
+        const y2 = y * y;
+        const h2 = h * h;
+        S[0] += 1;
+        S[1] += y;
+        S[2] += y2;
+        S[3] += y2 * y;
+        S[4] += y2 * y2;
+        T[0] += h2;
+        T[1] += h2 * y;
+        T[2] += h2 * y2;
+      }
+      const M = [
+        [S[0], S[1], S[2], T[0]],
+        [S[1], S[2], S[3], T[1]],
+        [S[2], S[3], S[4], T[2]],
+      ];
+      for (let c = 0; c < 3; c++) {
+        let piv = c;
+        for (let r2 = c + 1; r2 < 3; r2++) if (Math.abs(M[r2][c]) > Math.abs(M[piv][c])) piv = r2;
+        const tmp = M[c];
+        M[c] = M[piv];
+        M[piv] = tmp;
+        if (M[c][c] === 0) continue;
+        for (let r2 = 0; r2 < 3; r2++) {
+          if (r2 === c) continue;
+          const f = M[r2][c] / M[c][c];
+          for (let k = c; k < 4; k++) M[r2][k] -= f * M[c][k];
+        }
+      }
+      const A0 = M[0][3] / M[0][0];
+      const B0 = M[1][3] / M[1][1];
+      const C0 = M[2][3] / M[2][2];
+      const k2 = -C0; // a²/b²
+      if (k2 > 0) {
+        const cy = B0 / (2 * k2);
+        const a = Math.sqrt(Math.max(A0 + k2 * cy * cy, 1));
+        const b = a / Math.sqrt(k2);
+        let rms = 0;
+        for (const [y, h] of rows) {
+          const t = (y - cy) / b;
+          const pred = Math.abs(t) < 1 ? a * Math.sqrt(1 - t * t) : 0;
+          rms += (pred - h) ** 2;
+        }
+        verdict = { a, b, cy, rms: Math.sqrt(rms / rows.length), n: rows.length, midY: (Y0 + Y1) / 2 };
+      }
+    }
+  } catch (e) {
+    check("画布截图能解开（PNG 解码）", false, String(e.message).slice(0, 120));
+  }
+  if (!verdict) {
+    check("画布几何：能量到最外圈（逐行最外沿 + 椭圆拟合）", false, "样本不足或拟合失败");
+  } else {
+    const ratio = verdict.a / verdict.b;
+    check(
+      "★ 罗盘是**正圆**（横半轴/竖半轴 ≈ 1；标定：修前 0.512 / 修后 1.000）",
+      Math.abs(ratio - 1) <= 0.03,
+      `a=${verdict.a.toFixed(1)}px b=${verdict.b.toFixed(1)}px a/b=${ratio.toFixed(3)} 残差RMS=${verdict.rms.toFixed(1)}px（${verdict.n} 行）`,
+    );
+    check(
+      "★ 圆心落在画布中间（偏差 ≤ 4% 边长；标定：修前低 482px）",
+      Math.abs(verdict.cy - verdict.midY) <= canvas.side * 0.04,
+      `圆心 y≈${verdict.cy.toFixed(0)} / 取样区中心 y≈${verdict.midY.toFixed(0)}（差 ${(verdict.cy - verdict.midY).toFixed(0)}px）`,
+    );
+  }
 }
 
 // ── 6) 没有原生崩溃 ──────────────────────────────────────────────────────────
