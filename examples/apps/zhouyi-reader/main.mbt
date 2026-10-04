@@ -544,12 +544,12 @@ fn text_sec(
         let open = i < opens.length() && opens[i]
         kids.push(
           button(
-            attrs=@styles.att(@styles.div_m_click_txt()),
+            attrs=@styles.att(row_inline(@styles.div_m_click_txt())),
             title="点击展开/折叠注疏",
             on_click=on_toggle(i),
             [
               span(attrs=@styles.att(@styles.div_m_click_txt_span_m_fold()), if open { "▾" } else { "▸" }),
-              span(attrs=@styles.att(@styles.div_m_click_txt_span_m_jtext()), b.文),
+              span(attrs=@styles.att(jtext_fit_style()), b.文),
             ],
           ),
         )
@@ -1587,13 +1587,13 @@ fn yao_view(
       if has_xiao_comm {
         body.push(
           button(
-            attrs=@styles.att(@styles.div_click_m_yao_xiang()),
+            attrs=@styles.att(row_inline(@styles.div_click_m_yao_xiang())),
             title="点击展开/折叠小象注疏",
             on_click=emit(ToggleXiaoxiangOpen(y.位 - 1)),
             [
               span(attrs=@styles.att(@styles.div_click_m_yao_xiang_span_m_fold()), if xiao_open { "▾" } else { "▸" }),
               span(attrs=@styles.att(@styles.div_click_m_yao_xiang_span_xlab()), "小象"),
-              span(xs.map(x => x.文).join("　")),
+              span(attrs=@styles.att(inline_text_style()), xs.map(x => x.文).join("　")),
             ],
           ),
         )
@@ -1817,13 +1817,64 @@ fn guilei_view(gl : @shared.Guilei) -> Html {
 /// （后代选择器 + 标签选择器），机械映射到不了元素上 —— 报告里归在「真损失」那一类
 /// （`MIGRATION.md` §2.1）。这里按原值补回来：`padding: 12px 18px; font-size: 14.5px;
 /// letter-spacing: .2em; color: var(--ink-2)`。
+///
+/// ⚠️ **再手工补一条排版（2026-10-24）**：原实现的箭头是 `summary::before { content: "▸ " }`
+/// —— **行内**，与标题在同一行。迁过来改成"按钮 + 两个 span"之后，`button`→`Pressable`（`View`）
+/// 默认 column ⇒ 实测箭头单独占一行、还浮在整行正中，标题被挤到下面（盒子高 66px）。
+/// ⇒ 补 row + baseline，`gap: 4` 顶替原来那个空格。
 fn more_head_style() -> @style.Style {
   @style.Style::new()
+    .display(@style.Display::Flex)
+    .flex_direction(@style.FlexDirection::Row)
+    .align_items(@style.Align::Baseline)
+    .gap(4.0)
     .padding_horizontal(@style.px(18.0))
     .padding_vertical(@style.px(12.0))
     .font_size(14.5)
     .letter_spacing_em(0.2)
     .color("#4a3b2e")
+}
+
+///|
+/// **手工补的"行内流"容器**（`row` + 基线对齐）。
+///
+/// 为什么补在这里、而不是 `styles/styles.mbt` 里：**那份文件是生成物**
+/// （头上写着「由 `moobile-host create --from-rabbita` 生成 —— 不要手改」），
+/// 手工改它会与生成器不同步 —— 离线门「样式层再生成同步」会逐函数点名报红
+/// （实测：`div_click_m_yao_xiang, div_m_click_txt, div_m_click_txt_span_m_jtext`）。
+/// 所以凡"源 CSS 靠行内流成立、迁过来丢了"的补丁，一律写在**这个手写文件**里，
+/// 在调用点套在生成的那份之上（`more_head_style` 也是这个路子）。
+///
+/// 补的是什么：源标记是「块容器 + 行内 `span`」（浏览器里"▸ 乾，元，亨，利，贞。"同一行），
+/// 而 RN 的 `div`/`button` 是 `View`、默认 `flex-direction: column` ⇒ 箭头与正文**各占一行**，
+/// 且 `.m-fold` 的 `text-align:center` 配满宽盒子 ⇒ 箭头**浮在整行正中**。
+/// 2026-10-24 实测（卦辞那一行）：改前箭头 y=352 / 正文 y=370、盒高 44；改后同行、盒高 26。
+/// 真机（Android/Yoga）同形：改前 4 个箭头里 1 个同行，改后 6 个全同行。
+///
+/// **刻意不给 `flex_wrap`**：要的是"箭头在句首、长句在**自己盒子**里折行"
+/// （源 CSS 就是句内折行）。加了 wrap，长句会整块掉到下一行、箭头又孤零零留在上一行。
+/// 长句那一侧因此必须配 `inline_text_style()`（`flex_shrink:1` + `min_width:0`），
+/// 不然 RN 的 flex item 默认 `flex-shrink:0`，会**横着溢出**容器（实测坤卦那条 40 字卦辞）。
+fn row_inline(base : @style.Style) -> @style.Style {
+  base
+    .display(@style.Display::Flex)
+    .flex_direction(@style.FlexDirection::Row)
+    .align_items(@style.Align::Baseline)
+}
+
+///|
+/// 卦辞 / 大象 / 彖辞那一行的**正文**：生成的 `.m-jtext` 之上再加"能收缩"
+/// （源 CSS 的 `display:inline` 迁不过来，见 `row_inline`）。
+fn jtext_fit_style() -> @style.Style {
+  @styles.div_m_click_txt_span_m_jtext().flex_shrink(1.0).min_width(@style.px(0.0))
+}
+
+///|
+/// **一行文字的兜底样式**：容器补成 `row` 之后，文字那一侧必须**能收缩**
+/// —— RN 的 flex item 默认 `flex-shrink: 0`，长句会横着溢出容器而不是折行；
+/// `min-width: 0` 解开自动最小尺寸。（配 `row_inline` 用；`more_head_style` 的标题同理。）
+fn inline_text_style() -> @style.Style {
+  @style.Style::new().flex_shrink(1.0).min_width(@style.px(0.0))
 }
 
 ///|
@@ -1841,7 +1892,7 @@ fn more_section(
       attrs=@html.Attrs::build().styles(more_head_style()),
       title="点击展开/折叠",
       on_click=emit(ToggleMore(i)),
-      [span(attrs=@styles.att(@styles.span_m_fold()), if open { "▾" } else { "▸" }), span(title)],
+      [span(attrs=@styles.att(@styles.span_m_fold()), if open { "▾" } else { "▸" }), span(attrs=@styles.att(inline_text_style()), title)],
     ),
     if open {
       div(attrs=@styles.att(@styles.details_m_more_div_m_more_body()), body)
