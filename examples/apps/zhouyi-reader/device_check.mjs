@@ -909,6 +909,146 @@ if (canvas) {
   }
 }
 
+// ── 5f) 叶子文字样式（`fontWeight`）在真机上**真的生效**吗 ─────────────────────
+//
+// 廿一轮那条欠账的原话是"真机上那 4 个文字键（`fontWeight` / `fontStyle` / `textAlign` /
+// `textTransform`）的效果**仍未量**"。这条先量 `fontWeight`。
+//
+// 为什么这条判据值得存在：那一轮我们**改的就是这几个键**（它们曾经在内嵌白名单里被静默丢掉），
+// 而 web 侧「看」不出这类问题 —— CSS 的 `font-weight` **会继承**，RN 的不继承：
+// 一旦键在某条路径上被吃掉，**只有真机看得见**。（同理：一轮前那条"椭圆"就是"29 条全绿、
+// 用户用眼睛看出来的" —— "会自己抓住"的判据比"人眼发现"的判据值钱。）
+//
+// 怎么量（**不靠应用自述、也不装图像库**）：详情页上每一爻都是「爻题（`span.m-yao-title`：
+// 16.5px **W700** 红字）+ 爻辞（16px 常规深字）」，一屏里两类都有 ⇒ 分成两组比：
+//   A 组 = 2~3 字的爻题节点          B 组 = 同字号（框高 66~82px）的整句正文（卦辞 / 爻辞）
+// 统计量 = 墨色**水平游程**里"**粗笔（≥4px）占的段数比例**" —— 见下面的标定为什么选它。
+//
+// ⚠️ 为什么不用"墨点密度"：它被**字形复杂度**带偏（实测 A 0.122 / B 0.136 —— 加粗的那组反而更"稀"，
+//    因为「六三」的「三」只有三横）。也正因如此，这条判据**不是**"绝对粗细"，
+//    而是"**同一屏上两组之间的比值**"。
+// ⚠️ 为什么不用"游程 p25"（第一版用的就是它）：它是**整数分位数** ⇒ 样本少时读数会跳
+//    （实测同一次原始态里 A 的 p25 逐个节点是 4/5/5/5/4/4 ⇒ 平均 4.67，而证伪态是 3.33：
+//    真正的信号只有"3 还是 4"），于是原始态 1.56 / 证伪态 1.11，阈值只能卡在 1.35，两侧余量都只有 ~0.2。
+//    换成"粗笔段数占比"（几千段里的比例，连续量）之后：原始态 **2.15** / 证伪态 **1.22**。
+// ⚠️ 方向上的偏差是**诚实记下**的：A 组是红字（#8a2518，亮度 66）、B 组是深字（#1a1410，亮度 22）
+//    ⇒ 抗锯齿时红字的边缘更早越过墨色阈值 ⇒ **红字量出来偏细**（对"加粗"这个结论偏保守）。
+//
+// 标定（同一台模拟器、同一卦「风地观」#20、同一套取样规则；A 组 6 个节点、B 组 7 个节点，两次都一样）：
+//   | 统计量               | 原始代码 | 证伪（删掉 `font_weight`）|
+//   | 粗笔段数占比 比值    | **2.15** | **1.22**                  |
+//   | 游程 p25 比值        | 1.67     | 1.00                      |
+//   | 每节点 p25 均值 比值 | 1.56     | 1.11                      |
+//   ⇒ 阈值取 **1.6**（原始侧余量 0.55、证伪侧余量 0.38）。
+//   跑判据本体（样本比探针少一些：B 组 3 个节点）时的读数：**原始 2.33（A 0.952 / B 0.409）/
+//   证伪 1.32（A 0.542 / B 0.409）** —— ⚠️ A 那两组的组分比在两次之间**逐位相同**
+//   （0.952 / 0.542），抖动全在 B（0.443 与 0.409，样本多少之差）。
+section("文字样式（fontWeight）");
+{
+  // 前置：走到某一卦的详情页（本判据要的样本只在那里）
+  adb("shell", "am", "force-stop", PKG);
+  adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1");
+  await waitFor((x) => uiTexts(x).includes("八卦罗盘"), 90000);
+  const cv = measureCanvas();
+  let onDetail = false;
+  if (cv) {
+    // 点外环中径（与 `tapRing` 同一套几何：绘制坐标 222–300 的中径 = 260/720）
+    adb(
+      "shell",
+      "input",
+      "tap",
+      String(Math.round(cv.cx + (cv.side * 260) / 720)),
+      String(Math.round(cv.cy)),
+    );
+    const d = await waitFor((x) => /第\d{1,2}卦/.test(uiTexts(x)), 25000);
+    onDetail = /第\d{1,2}卦/.test(uiTexts(d));
+  }
+  check("（文字样式）能走到卦的详情页（爻题与爻辞同屏的那一页）", onDetail, onDetail ? "" : "点外环没进详情页");
+
+  /** 墨色水平游程（竖笔的粗细）**原始段长列表** —— 统计留到最后池化算（别在节点级先算分位数）。 */
+  function strokeRuns(img, x1, y1, x2, y2) {
+    const lum = (x, y) => {
+      const i = (y * img.w + x) * img.bpp;
+      return 0.299 * img.px[i] + 0.587 * img.px[i + 1] + 0.114 * img.px[i + 2];
+    };
+    const runs = [];
+    for (let y = Math.max(0, y1); y < Math.min(img.h, y2); y++) {
+      let run = 0;
+      for (let x = Math.max(0, x1); x < Math.min(img.w, x2); x++) {
+        if (lum(x, y) < 140) run++;
+        else {
+          if (run) runs.push(run);
+          run = 0;
+        }
+      }
+      if (run) runs.push(run);
+    }
+    return runs.length ? runs : null;
+  }
+
+  const isYaoTitle = (t) => /^(初|上)?[九六][一二三四五]?$/.test(t.trim());
+  const isBody = (t) => /^[\u4e00-\u9fff]{4,}/.test(t.trim());
+  const A = new Map();
+  const B = new Map();
+  if (onDetail) {
+    for (let step = 0; step < 16; step++) {
+      const ns = nodes(dump());
+      const inView = (n) => n.y1 > 150 && n.y2 < 2280 && n.x2 - n.x1 > 30;
+      const ta = ns.filter((n) => isYaoTitle(n.text) && inView(n));
+      // B 组限"同字号"：框高 66~82px（16px 的整句正文）；小字提示 / 页脚（≈55–62px）排除掉
+      const tb = ns.filter(
+        (n) => isBody(n.text) && n.text.trim().length >= 5 && inView(n) && n.y2 - n.y1 >= 66 && n.y2 - n.y1 <= 82,
+      );
+      if (ta.length || tb.length) {
+        const img = decodePng(
+          execFileSync("adb", ["exec-out", "screencap", "-p"], {
+            env: { ...process.env, MSYS_NO_PATHCONV: "1" },
+            maxBuffer: 64 * 1024 * 1024,
+          }),
+        );
+        for (const n of ta) {
+          const s = strokeRuns(img, n.x1, n.y1, n.x2, n.y2);
+          if (s && !A.has(n.text.trim())) A.set(n.text.trim(), s);
+        }
+        for (const n of tb) {
+          const s = strokeRuns(img, n.x1, n.y1, n.x2, n.y2);
+          if (s && !B.has(n.text.trim().slice(0, 8))) B.set(n.text.trim().slice(0, 8), s);
+        }
+      }
+      adb("shell", "input", "swipe", "540", "1700", "540", "1100", "250");
+      await sleep(700);
+    }
+  }
+  const avg = (m, f) => {
+    const v = [...m.values()].map(f);
+    return v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0;
+  };
+  // 池化（把所有节点的段长合起来再算）—— 节点级先算分位数会被"整数分位"放大抖动
+  const pooled = (m) => {
+    const all = [...m.values()].flat();
+    const sorted = all.slice().sort((a, b) => a - b);
+    const q = (p) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] : 0);
+    return { runs: all.length, fracGe4: all.filter((v) => v >= 4).length / all.length, p25: q(0.25), med: q(0.5) };
+  };
+  // ⚠️ 前提自查（别"零样本"地判过）：两组都要有足够样本，否则这条判据没有意义
+  check(
+    "（文字样式）两组样本都够（爻题 ≥ 3 个、同字号正文 ≥ 3 个）",
+    A.size >= 3 && B.size >= 3,
+    `爻题 ${A.size} 个 / 正文 ${B.size} 个`,
+  );
+  const pa = pooled(A);
+  const pb = pooled(B);
+  const ratio = pb.fracGe4 > 0 ? pa.fracGe4 / pb.fracGe4 : 0;
+  check(
+    "★ 真机上 `fontWeight` **真的生效**（爻题里粗笔（≥4px）占的段数比例 ≥ 同屏正文的 1.6 倍；标定：有加粗 2.15 / 删掉后 1.22）",
+    ratio >= 1.6,
+    `爻题 粗笔占比 ${pa.fracGe4.toFixed(3)}（${A.size} 个节点 / ${pa.runs} 段，p25=${pa.p25}）/ ` +
+      `正文 ${pb.fracGe4.toFixed(3)}（${B.size} 个 / ${pb.runs} 段，p25=${pb.p25}）⇒ 比值 ${ratio.toFixed(2)}；` +
+      `每节点 p25 均值 ${avg(A, (r) => r.slice().sort((x, y) => x - y)[Math.floor(r.length / 4)]).toFixed(2)} / ` +
+      `${avg(B, (r) => r.slice().sort((x, y) => x - y)[Math.floor(r.length / 4)]).toFixed(2)}`,
+  );
+}
+
 // ── 6) 没有原生崩溃 ──────────────────────────────────────────────────────────
 section("稳定性");
 let logcat = "";
