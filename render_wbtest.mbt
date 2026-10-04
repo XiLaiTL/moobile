@@ -35,11 +35,14 @@ test "entries_to_styles：is_text_key 认下的每一个键都必须原样还原
     ("color", @style.StyleValue::Str("#2a1f17")),
     ("textAlign", @style.StyleValue::Str("center")),
     ("textTransform", @style.StyleValue::Str("uppercase")),
+    // ⚠️ `numberOfLines` 严格说不是 CSS 的继承键（它是 RN 的**组件属性**），但它在
+    //    `is_text_key` 里 —— 见那边的注释（它只在 `Text` 上有效，写在 `View` 上等于白写）。
+    ("numberOfLines", @style.StyleValue::Unitless(1.0)),
   ]
   let kept = all.filter(e => is_text_key(e.0))
-  // 前提自查：这张夹具必须**恰好**覆盖 `is_text_key` 认的全部 9 个键。
+  // 前提自查：这张夹具必须**恰好**覆盖 `is_text_key` 认的全部 10 个键。
   // （否则将来有人往 `is_text_key` 里加键，这条判据会悄悄变松。）
-  assert_eq(kept.length(), 9)
+  assert_eq(kept.length(), 10)
   let out = entries_to_styles(kept)
   let missing : Array[String] = []
   for e in kept {
@@ -156,4 +159,63 @@ test "apply_key：补应用默认时也不许丢键" {
   if missing.length() > 0 {
     fail("apply_key 丢了 \{missing.length()} 个键（第一个是 \{missing[0]}）—— 白名单在最后一米又把键吃掉了")
   }
+}
+
+///|
+/// **判据：`numberOfLines` 在库这一层必须"从 `style` 里摘出来"**（它是 `Text` 的**属性**，
+/// 不是样式键）。
+///
+/// 为什么值得一条测试：这个键的失效方式**两端不一样、但都不报错**：
+///   · **原生 RN** —— `ReactNativeStyleAttributes` 里**没有** `numberOfLines` ⇒ 留在 `style` 里
+///     就是**静默忽略**（`<Text numberOfLines>` 才生效）；
+///   · **web（RNW）** —— `style` 里的 `numberOfLines` 会变成一条**非法 CSS 属性**，同样不生效。
+/// 两边都"看着没事"，所以只能靠**结构**判据：`split_prop_keys` 之后，
+/// `numberOfLines` **不在**样式那一半、**在**属性那一半（两个方向都断言 —— 只断一个方向的话，
+/// "两边都有"或"两边都没有"都能骗过它）。
+///
+/// ⚠️ **诚实说明**：这里量的是**纯函数**（两个调用点 `render_props` / `make_text` 共用它），
+///    不是"真机上真的截断了" —— 后者要一条端到端判据，**目前还没有**（没有应用在用这个键，
+///    见 `docs/FINDINGS.md` 第三十轮与 `PLAN.md` §8.2 的 5b）。
+test "numberOfLines：构造器产出的键名，与\"属性键\"那张表必须对得上" {
+  let st = @style.Style::new().number_of_lines(1.0)
+  let e = st.entries()
+  assert_eq(e.length(), 1)
+  let (k, v) = e[0]
+  // 键名对不对（typo 会让它**退化成一个普通样式键** —— 那正是这个功能失效的样子）
+  assert_eq(k, "numberOfLines")
+  assert_true(is_prop_key(k))
+  // 值必须是**无单位数**（RN 收 `numberOfLines={1}` 这个数字，不收 `"1px"`）
+  match v {
+    @style.StyleValue::Unitless(d) => assert_eq(d, 1.0)
+    _ => fail("number_of_lines 产出的不是 Unitless —— RN 那边这是一个数字")
+  }
+}
+
+///|
+/// **判据：一份样式过 `split_prop_keys` 之后，属性键只能在属性那一半。**
+test "split_prop_keys：numberOfLines 不许留在样式那一半（两端都会静默失效）" {
+  let st = @style.Style::new()
+    .color("#2a1f17")
+    .number_of_lines(2.0)
+    .font_size(16.0)
+  let styles = @vdom.Styles::from_style(st)
+  let (style_only, props) = split_prop_keys(styles)
+  // 方向 ①：样式里**不许有**它（留在里面 = 原生忽略 / RNW 非法 CSS）
+  assert_true(style_only.get("numberOfLines") is None)
+  // 方向 ②：属性里**必须有**它
+  let mut found : @style.StyleValue? = None
+  for p in props {
+    if p.0 == "numberOfLines" {
+      found = Some(p.1)
+    }
+  }
+  match found {
+    Some(@style.StyleValue::Unitless(_)) => ()
+    Some(_) => fail("numberOfLines 摘出来了，但值不是 Unitless")
+    None => fail("numberOfLines 没有出现在属性那一半 —— 它会既不在 style、也不在 props（彻底丢掉）")
+  }
+  // 方向 ③：**普通键一个都不许被顺手摘走**（摘过头会把颜色也弄丢）
+  assert_true(style_only.get("color") is Some(_))
+  assert_true(style_only.get("fontSize") is Some(_))
+  assert_eq(style_only.length(), 2)
 }

@@ -780,6 +780,9 @@ pub fn Style::text_transform(self : Style, v : TextTransform) -> Style {
 //   · `whiteSpace`（`Style::white_space`）—— 原生没有这个键。对应物：**部分有**，
 //     `nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（截断，语义不同）；
 //     `pre-line` / `pre-wrap` 接近 RN `Text` 的默认行为。
+//     ★ 2026-10-23 起这条"惯例"有了**显式的键**：`Style::number_of_lines`（见下面那条的说明）。
+//     ⚠️ 但生成器**不自动**把 `white-space: nowrap` 折成它 —— 语义不同（截断 + 省略号 ≠ 不折行），
+//        自动折会**悄悄改变外观**；要哪一处用它，由**人**在应用代码里显式写（拍板结论）。
 //   · `order`（`Style::order`）—— Yoga 不支持。对应物：**没有**，要在 Model 里把顺序排好。
 //   · `borderTopStyle` / `borderBottomStyle` / `borderLeftStyle` / `borderRightStyle`
 //     （`Style::border_top_style` 等）—— 原生只有**四边共用**的 `borderStyle`。
@@ -855,6 +858,25 @@ pub fn Style::display(self : Style, v : Display) -> Style {
 /// ⚠️ **原生 RN 没有 `whiteSpace` 这个键**（`react-native-web` 有）⇒ 真机上这一条**不生效**。对应物（部分有）：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines(1)`（截断，语义不同）。详见文件上方"补齐"那段的说明与 `tools/style_platform_check.mjs`。
 pub fn Style::white_space(self : Style, v : WhiteSpace) -> Style {
   self.kw("whiteSpace", v.to_string())
+}
+
+///|
+/// `numberOfLines` —— `white-space: nowrap` 在 **RN 上惯用的那条替代路径**（**显式键，不自动折**）。
+///
+/// ⚠️★ **它不是样式键，是 `Text` 的组件属性**（`<Text numberOfLines={1}>`）。`@style` 这一层故意
+/// 仍把它写成 `Style` 的一个键（好用、可组合），由**渲染层把它从 `style` 对象里摘出来挂成 prop**
+/// （`render.mbt` 的 `prop_keys_of`）—— 留在 `style` 里 RN 会忽略、RNW 会当成非法 CSS。
+///
+/// ⚠️ **语义与 `white-space: nowrap` 不同**：这是**截断**（超出部分去掉、通常带省略号），
+/// 不是"不折行、把容器撑开"。所以：
+///   · 生成器**不会**自动把 `white-space: nowrap` 折成它（会悄悄改变外观）；
+///   · 要哪一处用它，**人在应用代码里显式写**（`@style.Style::number_of_lines(1.0)`）。
+///
+/// 两端都认这个属性（实测）：原生 RN `Libraries/Text/Text.js` 读 `props.numberOfLines`；
+/// `react-native-web` 的 `Text` 也读它（`1` → 单行样式，`>1` → `-webkit-line-clamp`）。
+/// 判据：`tools/style_platform_check.mjs` 的 `PROP_KEYS`（**属性**那一类，与"样式键"分开登记）。
+pub fn Style::number_of_lines(self : Style, v : Double) -> Style {
+  self.unitless("numberOfLines", v)
 }
 
 ///|

@@ -39,6 +39,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STYLE_MBT = path.join(ROOT, 'style/style.mbt');
 
+/** 一份源码里有没有这个键（**词边界**匹配：`numberOfLines` 不该被 `fooNumberOfLinesBar` 命中）。
+ *  抽成函数是为了让**判据与它的证伪用同一份逻辑**（不然证伪证的是另一件事）。 */
+const sourceMentionsKey = (src, key) => new RegExp(`\\b${key}\\b`).test(src);
+
 let pass = 0;
 let fail = 0;
 const say = (ok, msg) => {
@@ -105,7 +109,7 @@ const RN_UNSUPPORTED = {
     why: '原生 RN 没有 `whiteSpace`；`react-native-web` 有',
     instead:
       '**部分有**：`nowrap` 的 RN 惯例是 `Text` 的 `numberOfLines={1}`（语义不完全相同：那是**截断**，不是"不折行"，还会带省略号）；`pre-line` / `pre-wrap` 的语义**接近** RN `Text` 的默认行为（保留 `\\n`），差距要在真机上量',
-    plan: '如实点名；`nowrap` 给 `numberOfLines` 这条替代路径（要新键，另议）',
+    plan: '如实点名；`nowrap` 的替代路径已落地为**显式键** `@style.Style::number_of_lines`（见 `PROP_KEYS`）—— ⚠️ 生成器**不自动折**（截断 ≠ 不折行）',
   },
   borderTopStyle: {
     why: '原生 RN 只有**四边共用**的 `borderStyle`，**没有分边**的 `borderTopStyle`（分边的 *宽度*/*颜色* 都有，唯独 style 是全局的）',
@@ -147,6 +151,28 @@ const IOS_ONLY = {
   },
 };
 
+/**
+ * ★ 第三类（2026-10-23 新增，拍板结论）：**库里的"组件属性键"** —— 它们**不是样式键**，
+ * 但 `@style` 这一层故意把它们写成 `Style` 的键（好用、可组合），由**渲染层摘出来挂成 prop**
+ * （`render.mbt` 的 `is_prop_key` / `split_prop_keys`）。
+ *
+ * ⚠️ 为什么必须单独一张表：判据 1 的形状是"库能产出、而 RN 的**样式**登记表里没有 ⇒ 必须登记" ——
+ * 而这一类**本来就不该在样式登记表里**。不分开的话，门会把一个**正确**的设计判成"没登记"。
+ * 分开之后要断的是**另外两件事**（都在下面判据 7）：
+ *   ① 它确实**不在** RN 的样式登记表里（在的话说明我们用错了通道：属性当样式发）；
+ *   ② 它确实**在** RN 与 RNW 的 `Text` 实现里（**从装在本仓库里的真源码读**，不是凭记忆）。
+ */
+const PROP_KEYS = {
+  numberOfLines: {
+    why: '它不是样式键，是 `Text` 的**组件属性**（`<Text numberOfLines={1}>`）；留在 `style` 里两端都错：原生 RN **静默忽略**、RNW 把它当非法 CSS',
+    instead:
+      '**怎么用它**：`@style.Style::number_of_lines(1.0)`（库会把它摘出来挂成 prop）。⚠️ 语义与 `white-space: nowrap` **不同**：这是**截断**（超出部分去掉、通常带省略号），不是"不折行"。所以**生成器不自动折**（会自动改变外观），要哪一处用由**人**显式写。',
+    plan: '显式键（2026-10-23 拍板："加，但不自动折"）',
+    /** 到两端源码里找它的文件名（相对 react-native / react-native-web 的包根）。 */
+    sources: ['Libraries/Text/Text.js', 'dist/exports/Text/index.js'],
+  },
+};
+
 // ── 判据 0：前提 ─────────────────────────────────────────────────────────────
 const keys = libKeys();
 say(keys.size >= 60, `前提自查：从 \`style/style.mbt\` 推出了库的键集（${keys.size} 个）`);
@@ -163,14 +189,18 @@ const presentIn = (k) => regs.filter((r) => r.keys.has(k)).map((r) => r.version)
 
 if (regs.length) {
   // ── 判据 1：库有、RN 没有 ⇒ 必须登记 ───────────────────────────────────────
-  const missingSomewhere = [...keys].filter((k) => missingIn(k).length > 0).sort();
+  // ⚠️ **属性键（`PROP_KEYS`）不参与这一条**：它们本来就不该在**样式**登记表里（见那张表的注释）。
+  const missingSomewhere = [...keys]
+    .filter((k) => !PROP_KEYS[k])
+    .filter((k) => missingIn(k).length > 0)
+    .sort();
   const unregistered = missingSomewhere.filter((k) => !RN_UNSUPPORTED[k]);
   say(
     unregistered.length === 0,
     '★ 每一个"库能产出、而原生 RN 认不出"的键都在登记表里（新键必须登记，不许悄悄通过）' +
       (unregistered.length
         ? `\n      → **没登记**：${unregistered.join('、')}\n      → 登记处：${'tools/style_platform_check.mjs'} 的 \`RN_UNSUPPORTED\`（要写 why 与 instead）`
-        : `（实测这 6 个：${missingSomewhere.join('、')}）`),
+        : `（实测这 ${missingSomewhere.length} 个：${missingSomewhere.join('、')}）`),
   );
 
   // ── 判据 2：登记表不许过期（RN 已经支持了就得改处置）──────────────────────
@@ -242,6 +272,49 @@ if (products.length) {
   console.log('SKIP  影响面（没有生成物的 styles/styles.mbt）');
 }
 
+// ── 判据 7：**属性键**（`PROP_KEYS`）—— 通道对不对，从两端真源码里读 ──────────
+//
+// 为什么单独一条：判据 1 只证明"这个键不在样式登记表里"。而**光不在**还不构成设计正确 ——
+// 要证明的是"它走的是属性那条通道、而且**两端都认**"。两件事都能从装在本仓库里的源码读，
+// 不需要凭记忆（也**不许**凭记忆：`numberOfLines` 是我"记得"RN 支持，记错了就白写）。
+{
+  const propKeys = Object.keys(PROP_KEYS);
+  say(propKeys.length > 0, `属性键表非空（${propKeys.join('、')}）`);
+  for (const k of propKeys) {
+    const p = PROP_KEYS[k];
+    // ① 它**不该**在样式登记表里（在的话说明我们把一个属性当样式发了）
+    const inStyleReg = regs.filter((r) => r.keys.has(k)).map((r) => r.version);
+    say(
+      inStyleReg.length === 0,
+      `属性键 \`${k}\` **不在** RN 的样式登记表里（在的话说明通道用错了：属性不该当样式发）` +
+        (inStyleReg.length ? `\n      → 居然在：${inStyleReg.join('、')}` : ''),
+    );
+    // ② 它**必须**在两端 `Text` 的实现里（一次读源码，两个包都查）
+    for (const rel of p.sources) {
+      const hits = [];
+      const searched = [];
+      for (const r of regs) {
+        const file = path.join(ROOT, 'examples/apps', r.app, 'node_modules', rel.startsWith('dist/') ? 'react-native-web' : 'react-native', rel);
+        if (!fs.existsSync(file)) continue;
+        searched.push(r.version);
+        const src = fs.readFileSync(file, 'utf8');
+        if (new RegExp(`\\b${k}\\b`).test(src)) hits.push(r.version);
+      }
+      const which = rel.startsWith('dist/') ? 'react-native-web' : 'react-native';
+      if (!searched.length) {
+        console.log(`SKIP  判据 7-②（${which} 没装：${rel}）`);
+        continue;
+      }
+      say(
+        hits.length === searched.length,
+        `★ 属性键 \`${k}\` 在 **${which}** 的 \`Text\` 实现里真的有（${rel}）` +
+          `（读了 ${searched.length} 份：${searched.join('、')} ⇒ 命中 ${hits.join('、') || '无'}）` +
+          (hits.length === searched.length ? '' : '\n      → 没命中：说明我记错了或版本变了 ⇒ **这个键不能这么用**'),
+      );
+    }
+  }
+}
+
 // ── 判据 6：证伪（两条，都对着"判据自己会不会红"）─────────────────────────────
 {
   // 两条**模型级**证伪：把判据表里用到的谓词，喂给一份**合成登记表**，看它会不会按预期翻面。
@@ -259,6 +332,19 @@ if (products.length) {
   say(
     missingUnder(withoutWs, 'whiteSpace') === true,
     '证伪②：合成一份**缺** `whiteSpace` 的登记表 ⇒ "必须登记"那条会翻面（两个方向都不空转）',
+  );
+  // ③ "属性键真的在 `Text` 实现里"那条的谓词（判据 7-②）：喂一份**没有**它的假源码 ⇒ 必须不命中
+  // ⚠️ 假源码里**一个字母都不能提那个键**（第一版我在注释里写了"既没有 xxx" ⇒ 谓词当然命中 ⇒
+  //    这条证伪自己假红了一次：**证伪的夹具也要干净**）。
+  const fakeText = 'function Text(props) { return null; }';
+  say(
+    !sourceMentionsKey(fakeText, 'numberOfLines') && sourceMentionsKey('const n = props.numberOfLines;', 'numberOfLines'),
+    '证伪③：判据 7-② 用的谓词**两个方向都动**（假源码 ⇒ 不命中；真形态 ⇒ 命中）—— 它不会恒真',
+  );
+  // ④ 反向：**词边界**是不是真的起作用（`fooNumberOfLinesBar` 不该被当成命中）
+  say(
+    !sourceMentionsKey('props.fooNumberOfLinesBar = 1;', 'numberOfLines'),
+    '证伪④：那个谓词认**词边界**（`fooNumberOfLinesBar` 不算命中）—— 免得把"提到了这个名字"当成"支持这个属性"',
   );
 }
 

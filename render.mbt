@@ -262,6 +262,55 @@ pub fn map_event(tag : String, event : String) -> String {
 }
 
 ///|
+/// **哪些键是"组件属性"而不是样式键** —— 它们要挂在元素上、**不能**留在 `style` 对象里。
+///
+/// 目前只有一个：`numberOfLines`（RN 的 `<Text numberOfLines={1}>`，是 `Text` 的 **prop**）。
+/// 留在 `style` 里的后果两端不一样，但都错：**原生 RN 忽略它**（登记表里没这个样式键）、
+/// **RNW 把它当成一条非法 CSS 属性**写进 `style` 对象里。
+///
+/// ⚠️ 这个清单**与 `tools/style_platform_check.mjs` 的 `PROP_KEYS` 是同一件事的两半**：
+///    那边断言"库能产出的属性键都登记了、而且两端真的认它"，这里负责**真的把它挂对地方**。
+///    改了这里就要跑那条门（反之亦然）。
+fn is_prop_key(k : String) -> Bool {
+  k == "numberOfLines"
+}
+
+///|
+/// 从一个样式表里**摘出**属性键（返回 `(剩下的样式, 属性列表)`）。
+///
+/// 为什么要"摘"而不是"不过滤"：`styles_to_js` 是**类型化样式 → RN style 对象**的那一步，
+/// 它按 key 原样写；属性键混进去就等于**给 RN 塞了一个它不认的样式名**（见 `is_prop_key` 的注释）。
+fn split_prop_keys(
+  styles : @vdom.Styles,
+) -> (@vdom.Styles, Array[(String, @style.StyleValue)]) {
+  let kept : Array[(String, @style.StyleValue)] = []
+  let props : Array[(String, @style.StyleValue)] = []
+  let n = styles.length()
+  for i = 0; i < n; i = i + 1 {
+    let (k, v) = styles.at(i)
+    if is_prop_key(k) {
+      props.push((k, v))
+    } else {
+      kept.push((k, v))
+    }
+  }
+  (@vdom.Styles::from_style(@style.Style::from_entries(kept)), props)
+}
+
+///|
+/// 把一个 `StyleValue` 写进 JS 对象（`styles_to_js` 与"属性键"两条路共用同一套转换）。
+fn set_style_value(o : JsValue, k : String, value : @style.StyleValue, font_size : Double) -> Unit {
+  let v = match value.resolve_em(font_size) {
+    @style.StyleValue::Unitless(d) | @style.StyleValue::Px(d) => js_num(d)
+    @style.StyleValue::Pct(d) => js_str("\{d}%")
+    @style.StyleValue::Em(d) => js_str("\{d}em")
+    @style.StyleValue::Auto => js_str("auto")
+    @style.StyleValue::Str(s) => js_str(s)
+  }
+  js_obj_set(o, k, v)
+}
+
+///|
 /// 类型化样式 → RN 的 `style` 对象。
 ///
 /// **长度与无单位量必须是数字**（RN 不接受 `"16px"`），其余必须是字符串
@@ -283,14 +332,7 @@ fn styles_to_js(styles : @vdom.Styles) -> JsValue {
   let n = styles.length()
   for i = 0; i < n; i = i + 1 {
     let (key, value) = styles.at(i)
-    let v = match value.resolve_em(font_size) {
-      @style.StyleValue::Unitless(d) | @style.StyleValue::Px(d) => js_num(d)
-      @style.StyleValue::Pct(d) => js_str("\{d}%")
-      @style.StyleValue::Em(d) => js_str("\{d}em")
-      @style.StyleValue::Auto => js_str("auto")
-      @style.StyleValue::Str(s) => js_str(s)
-    }
-    js_obj_set(o, key, v)
+    set_style_value(o, key, value, font_size)
   }
   o
 }
@@ -336,6 +378,10 @@ let g_props_text : PropsTextRef = { v: None }
 /// 判据只有一处：不在这张表里的键（背景色、内边距、边框…）**不继承** ——
 /// 照搬会给每个字都画上一个底色框（实测过：第一版把 `page()` 整份铺到文字上，
 /// 每个字都带上了纸色底）。
+///
+/// ⚠️ `numberOfLines` 严格说**不是 CSS 的继承键**（它是 RN 的组件属性）—— 这里刻意把它算进来：
+///    它**只在 `Text` 上有效**，写在 `View` 上等于白写；算进来之后"容器上写了、裸文本子节点
+///    就会拿到"才符合写代码的人的意图（与 `white-space` 那类"文字键写在容器上"同一个形状）。
 fn is_text_key(k : String) -> Bool {
   k == "fontFamily" ||
   k == "fontSize" ||
@@ -345,7 +391,8 @@ fn is_text_key(k : String) -> Bool {
   k == "letterSpacing" ||
   k == "color" ||
   k == "textAlign" ||
-  k == "textTransform"
+  k == "textTransform" ||
+  is_prop_key(k)
 }
 
 ///|
@@ -524,7 +571,17 @@ fn make_text(child : JsValue, own : JsValue?) -> JsValue {
         (None, None) => None
       }
       match pick {
-        Some(styles) => js_obj_set(props, "style", styles_to_js(styles))
+        Some(styles) => {
+          // ⚠️ 属性键（`numberOfLines`）要**摘出来挂在 Text 上**，不能留在 `style` 里
+          //    —— 它在 RN 那边是 `Text` 的 prop，留在 `style` 里等于白写（详见 `is_prop_key`）。
+          let (style_only, prop_keys) = split_prop_keys(styles)
+          if style_only.length() > 0 {
+            js_obj_set(props, "style", styles_to_js(style_only))
+          }
+          for p in prop_keys {
+            set_style_value(props, p.0, p.1, 16.0)
+          }
+        }
         None => ()
       }
     }
@@ -601,14 +658,28 @@ fn render_props(
   let press : Array[(String, @style.StyleValue)] = []
   for i = 0; i < styles.length(); i = i + 1 {
     let (k, v) = styles.at(i)
+    if is_prop_key(k) {
+      // 属性键（`numberOfLines`）**不进** `style`、也不进 `pressStyle` —— 它走下面那条单独的通道
+      continue
+    }
     if k.has_prefix(@style.press_prefix) {
       press.push((k.unsafe_substring(start=@style.press_prefix.length(), end=k.length()), v))
     } else {
       plain.push((k, v))
     }
   }
-  if plain.length() > 0 {
-    js_obj_set(o, "style", styles_to_js(@vdom.Styles::from_style(@style.Style::from_entries(plain))))
+  // ★ 属性键与"该进 style 的键"由**同一个函数**分开（`split_prop_keys`）——
+  //   裸文本那条路（`make_text`）用的是它，两处共用 ⇒ 判据打它一个就够。
+  let (plain_only, prop_keys) = split_prop_keys(
+    @vdom.Styles::from_style(@style.Style::from_entries(plain)),
+  )
+  if plain_only.length() > 0 {
+    js_obj_set(o, "style", styles_to_js(plain_only))
+  }
+  // ⚠️ 属性键挂在**元素自己**的 props 上（不是 `style` 里）：`<Text numberOfLines={1}>`。
+  //    留在 `style` 里的后果两端都错：原生 RN **忽略**它、RNW 把它当非法 CSS（见 `is_prop_key`）。
+  for p in prop_keys {
+    set_style_value(o, p.0, p.1, 16.0)
   }
   if press.length() > 0 {
     // 按下态先以 `pressStyle` 原样交给宿主：**库这一侧还没有消费它的通道**
