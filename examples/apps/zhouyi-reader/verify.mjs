@@ -777,6 +777,54 @@ check("详情页出现爻辞（初九 / 潜龙勿用 / 象曰）", /初九|潜�
 check("详情页有返回按钮「‹ 六十四卦」", /‹\s*六十四卦/.test(detail), detail.slice(0, 80).split('\n').join(" | "));
 check("已离开列表页（不再有「文王卦序」提示）", !detail.includes("文王卦序"));
 
+// ── ★ 「文字键按元素生效」的判据：爻题该粗、爻辞该常规（2026-10-23 加）─────────
+//
+// 为什么要有：真机侧同一天补了一条同名的判据（`device_check.mjs` 的「文字样式（fontWeight）」，
+// 量像素里的笔画粗细）。**两端都要有**，因为两侧丢掉键的路径不一样：web 上 CSS 的 `font-weight`
+// **会继承**（祖先写粗、叶子也粗）⇒ "web 绿"永远不能代替"真机绿"；反过来，**迁移侧真的丢了键**
+// 时 web 也看得见（读计算样式）—— 而在此之前那 103 条里**一条都没量文字样式**。
+//
+// 口径（与真机那条对齐）：量**看得见的那一层**（文本叶子）的计算样式，且**同一屏两组对照**：
+//   爻题（源 CSS：`font-weight:700` / 16.5px / `#8a2518`）vs 爻辞（常规 / 16px / `#1a1410`）。
+//   ⚠️ 别只断"页面上有 700" —— 那是**恒真**的（页头 brand 就是 700）。要断的是
+//   "**这一组元素**都是 700、**那一组**都不是"。
+//   ⚠️ 也别只看祖先（第十轮那条衬线体判据就栽过：祖先 View 上有、真正画字的叶子没有）。
+const textKeys = await evaluate(`(() => {
+  const leaves = Array.from(document.querySelectorAll('*'))
+    .filter(e => e.children.length === 0 && (e.textContent || '').trim().length > 0);
+  const isYaoTitle = t => /^(初|上)?[九六][一二三四五]?$/.test(t);
+  const isCi = t => t.length >= 5 && /[。，！？；：]/.test(t) && /[一-龥]/.test(t[0]);
+  const pick = e => {
+    const s = getComputedStyle(e);
+    return { t: (e.textContent || '').trim().slice(0, 8), w: s.fontWeight, size: s.fontSize, color: s.color, ls: s.letterSpacing };
+  };
+  const yao = leaves.filter(e => isYaoTitle((e.textContent || '').trim()));
+  const ci = leaves.filter(e => isCi((e.textContent || '').trim()));
+  return { yao: yao.map(pick), ci: ci.map(pick) };
+})()`);
+const tk = textKeys.value || { yao: [], ci: [] };
+check(
+  '（文字样式）爻题叶子够多（≥3）—— 不然这条判据是空转',
+  (tk.yao || []).length >= 3,
+  JSON.stringify(tk.yao),
+);
+check(
+  '★ 爻题**都是粗体**（`font-weight` 按元素生效；源 CSS 是 700）',
+  (tk.yao || []).length >= 3 && (tk.yao || []).every((x) => Number(x.w) >= 700),
+  JSON.stringify(tk.yao),
+);
+check(
+  '爻题的**字号与颜色**也按元素生效（源 CSS：16.5px / #8a2518 = rgb(138, 37, 24)）',
+  (tk.yao || []).length >= 3 &&
+    (tk.yao || []).every((x) => Math.abs(parseFloat(x.size) - 16.5) < 0.01 && x.color === 'rgb(138, 37, 24)'),
+  JSON.stringify(tk.yao),
+);
+check(
+  '★ 爻辞**不是粗体**（同屏两组要真的不同 —— 否则"都粗"或"都没粗"都能骗过上面那条）',
+  (tk.ci || []).length >= 3 && (tk.ci || []).every((x) => Number(x.w) < 700),
+  JSON.stringify((tk.ci || []).slice(0, 4)),
+);
+
 // ── B2. 底部三块是**受控**折叠（`<details>/<summary>` 迁不动，见 MIGRATION.md §2.1）──
 //
 // 为什么这条判据非有不可：原实现用 `<details>` 的**自身状态**，而那两个标签在 moobile
