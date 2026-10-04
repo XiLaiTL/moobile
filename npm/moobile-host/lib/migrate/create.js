@@ -1089,7 +1089,7 @@ function main(argv = process.argv.slice(2)) {
         continue;
       }
       if (f.rel.endsWith('moon.mod')) {
-        const r = rewriteMoonMod(f.text, { newModule: name, moobileDep: `XiLaiTL/moobile@0.4.0` });
+        const r = rewriteMoonMod(f.text, { newModule: name, moobileDep: `XiLaiTL/moobile@0.5.0` });
         // moon.mod 由模板提供（名字/版本已对），这里只把依赖与目标对齐 —— 用模板的更稳妥
         allNotes.push(...r.notes);
         continue;
@@ -1182,7 +1182,7 @@ function main(argv = process.argv.slice(2)) {
     j.name = name;
     // 宿主 npm 包：默认是**给消费者的写法**（registry 版本号）；`--host-dep` 可覆盖。
     // 在库仓库里跑我们自己的应用时要写 `file:../../../npm/moobile-host` ——
-    // 否则会去 registry 拿一个**还没有的版本**（本地 0.4.0 尚未发布，实测安装直接失败）。
+    // 否则会去 registry 拿一个**还没有的版本**（本地 0.5.0 尚未发布，实测安装直接失败）。
     // 仓库里其它应用（todo-app / chat-app / canvas-demo）全是这么写的。
     if (args.hostDep) j.dependencies['moobile-host'] = args.hostDep;
     pkg.text = JSON.stringify(j, null, 2) + '\n';
@@ -1222,7 +1222,7 @@ function main(argv = process.argv.slice(2)) {
     stubbed: stubbedAll,
     notes: notesWithNext,
     profile,
-    moobileDep: 'XiLaiTL/moobile@0.4.0',
+    moobileDep: 'XiLaiTL/moobile@0.5.0',
     written: [...finalFiles.map((f) => f.rel), 'MIGRATION.md', 'migration.generated.json'].sort(),
     // 生成后自查：机械迁移**移不过来**的那两块（根样式 `page()` 没人挂、根上没有滚动容器）。
     // ⚠️ 它在**落盘之后**才算得出来：审计是**读文件**的（`lib/migrate/app-audit.js`），

@@ -30,7 +30,7 @@ npm run web          # 或 npm run android
 ```
 
 > ⚠️ 在本仓库里跑时 `moobile-host` 指的是 `file:../../../npm/moobile-host`（本地包），
-> 因为库自身还没发 `0.4.0`。生成给**别人**的项目里那一条是 registry 版本号。
+> 因为库自身还没发 `0.5.0`。生成给**别人**的项目里那一条是 registry 版本号。
 
 ## 验收（真浏览器，99 项）
 

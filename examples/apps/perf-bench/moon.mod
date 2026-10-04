@@ -22,5 +22,5 @@ description = "moobile 性能基准负载（D1/D2 用；N 由宿主注入，见 
 preferred_target = "js"
 
 import {
-  "XiLaiTL/moobile@0.4.0",
+  "XiLaiTL/moobile@0.5.0",
 }

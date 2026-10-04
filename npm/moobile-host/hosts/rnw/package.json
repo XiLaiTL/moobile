@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@react-native-windows/find-dotnet-tools": "0.0.0",
-    "moobile-host": "^0.4.0",
+    "moobile-host": "^0.5.0",
     "react": "19.2.0",
     "react-native": "0.83.10",
     "react-native-svg": "^15.15.5",

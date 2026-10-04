@@ -16,10 +16,30 @@
 
 | 东西 | registry 上的 | 工作区里的 | 差异 |
 |---|---|---|---|
-| 月亮包 `XiLaiTL/moobile` | ✅ **`0.4.0`**（**2026-10-03 发布**；`moon publish` 回 `Server status: 200 OK`；API 复核 `latest = 0.4.0`） | `0.4.0` | **已对齐** ✅ |
-| 宿主包 `moobile-host`（npm） | ✅ **`0.4.0`**（**2026-10-03 发布**；复核 `dist-tags.latest = 0.4.0`、`versions = ['0.2.0','0.3.0','0.4.0']`） | `0.4.0` | **已对齐** ✅ |
-| **契约版本** | 两边都是 `2` | 两边都是 `2` | **已自洽** —— `0.4.0` 契约不变 |
+| 月亮包 `XiLaiTL/moobile` | `0.4.0`（2026-10-03 发布，核过） | **`0.5.0`（已抬版，⏳ 待发布）** | ⏳ **待发** |
+| 宿主包 `moobile-host`（npm） | `0.4.0`（2026-10-03 发布，核过） | **`0.5.0`（已抬版，⏳ 待发布）** | ⏳ **待发** |
+| **契约版本** | 两边都是 `2` | 两边都是 `2` | **已自洽** —— `0.5.0` 契约不变 |
 
+> ⏳ **2026-10-04：`0.5.0` 正在发**（**月亮包先、宿主包后**）。抬版动的 20 个文件与发布前读数：
+>
+> - **抬版范围**（`0.4.0` → `0.5.0`）：`moon.mod` · `npm/moobile-host/package.json` ·
+>   `hosts/rnw` 与 `hosts/webview` 的 `"moobile-host"` · `lib/migrate/create.js`（两处）·
+>   `README.md`（两条）· **11 个** `examples/apps/*/moon.mod` · `examples/apps/template/package.json` ·
+>   `tools/scaffold_probe/app/moon.mod` · `tools/template/deltas.txt`；另加**重新生成**的生成物
+>   （`libgen` 两侧 + `check_npm_fresh` 的 **13 份宿主副本**先刷过）。
+> - **发布前自检（2026-10-04 实跑）**：离线全集 **34 / 34**；白盒测试 `moon test --target js`
+>   **110 / 110**；`node tools/package_check.mjs` **10 / 10**；
+>   `readme_probe --zip _build/publish/XiLaiTL-moobile-0.5.0.zip` ✓；泄漏自检 ✓
+>   （`tools/check_public_leaks.py`）；`moon publish --dry-run` → `Server status: 202 Accepted`
+>   （**月亮包的 token 是好的**）；`publish.sh --dry-run` ✓（读出 `moobile-host@0.5.0`）。
+> - ⚠️ **宿主包这边有个已知阻塞**：`npm whoami --registry=https://registry.npmjs.org/` → **`E401`**
+>   （与 `0.4.0` 那次同一个坑的**前置信号**：未认证的 `PUT` 会回 404，看着像包名不对）。
+>   ⇒ 发 npm 之前必须先 `npm login --registry=https://registry.npmjs.org/`（**别用默认镜像**），
+>   发布时还要 6 位 OTP。
+> - ⚠️ **GitHub 推不上去**（与发版无关，但记一笔）：`git push` 走 `http.proxy=127.0.0.1:7890`
+>   而**代理没开**（直连则 `Connection was reset`）⇒ 工作树已提交、**推送待代理恢复**。
+>   提交：`e54cead`（折叠箭头那一处排版修复 + `FINDINGS` 第三十一轮）。
+>
 > ✅ **2026-10-03：`0.4.0` 两个包都已发布**（**月亮包先、宿主包后**，顺序不能反的理由见 `CHANGELOG.md`）。
 > 下面三条是这一版发布时**踩到的**，都留下 —— 因为它们都是"会再犯"的那一类。
 >
