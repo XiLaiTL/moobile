@@ -1049,6 +1049,116 @@ section("文字样式（fontWeight）");
   );
 }
 
+// ── 5g) 边框的**线型**（虚线还是实线）—— "web 绿、真机红"的又一例 ──────────────
+//
+// 源 CSS 里 `.m-yao { border-bottom: 1px dashed var(--paper-3) }`（爻行之间的分隔线是**虚线**）。
+// 迁到 RN 之后它变成 `borderBottomStyle` —— 而**原生 RN 只有四边共用的 `borderStyle`**
+// （`tools/style_platform_check.mjs` 那张表里的 6 个"原生不认"的键之一）⇒ 真机上按默认的
+// **solid** 画：web 是虚线、真机是实线，而 web 那 107 条判据**看不出**这件事。
+//
+// 本轮的正解是**生成器自动折叠**（`planBorderStyleFold`：几条"有宽度的边"共用同一个 style 时，
+// 发一次四边共用的 `borderStyle` 是等价的），判据在 `tools/border_fold_check.mjs`。
+// 这条真机判据量的是**折完到底画成了什么**（生成器的判据只能证明"产物里写了什么"）。
+//
+// 怎么量：纸色是 `#f6efe0`、这条边框色是 `--paper-3 = #d9c69f` ⇒ 按**颜色**找线
+// （比亮度阈值稳：文字是深色，抗锯齿会一路经过中间色）。x 取 `[440,1035]`（爻行那条线的跨度），
+// 一行命中 ≥80px 才算"一条线"，同一条线会连着 2~3 行命中 ⇒ 按 y 相邻合并成一条。
+// 判据两条（**一正一反**，就是同一次扫描里的两类线）：
+//   · **折得动的**（`.m-yao` 的下边框）⇒ 真机上应当是**虚线**（段数 ≥ 6）；
+//   · **折不动的**（`.m-weny-box` 上虚线 + 左实线，两条带宽度的边 style 不同）⇒ 必须**还是实线**
+//     （段数 = 1、一条连续 ≥300px）—— ⚠️ 它是**反例控制**：能挡住"把所有边框都折成虚线/乱折"这种假修。
+section("边框样式（虚线）");
+{
+  adb("shell", "am", "force-stop", PKG);
+  adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1");
+  await waitFor((x) => uiTexts(x).includes("八卦罗盘"), 90000);
+  const cv = measureCanvas();
+  let onDetail = false;
+  if (cv) {
+    adb("shell", "input", "tap", String(Math.round(cv.cx + (cv.side * 260) / 720)), String(Math.round(cv.cy)));
+    const d = await waitFor((x) => /第\d{1,2}卦/.test(uiTexts(x)), 25000);
+    onDetail = /第\d{1,2}卦/.test(uiTexts(d));
+  }
+  check("（边框线型）能走到卦的详情页", onDetail, onDetail ? "" : "点外环没进详情页");
+
+  /** 纸色 `#f6efe0` 上的浅棕 `#d9c69f`：容差 22 之内就算"这条线的颜色"。 */
+  const isTan = (r, g, b) => Math.abs(r - 217) < 22 && Math.abs(g - 198) < 22 && Math.abs(b - 159) < 22;
+  /** 沿一行数"段"（段 = 连续命中；断开要 ≥2px 空白，免得抗锯齿把虚线缝起来）。 */
+  const runsAlong = (img, y, x1, x2) => {
+    const runs = [];
+    let run = 0;
+    let gap = 0;
+    for (let x = x1; x < x2; x++) {
+      const i = (y * img.w + x) * img.bpp;
+      if (isTan(img.px[i], img.px[i + 1], img.px[i + 2])) {
+        if (gap >= 2 && run) {
+          runs.push(run);
+          run = 0;
+        }
+        gap = 0;
+        run++;
+      } else {
+        if (run) {
+          runs.push(run);
+          run = 0;
+        }
+        gap++;
+      }
+    }
+    if (run) runs.push(run);
+    return runs;
+  };
+  const lines = [];
+  if (onDetail) {
+    let lastY = -99;
+    for (let step = 0; step < 9; step++) {
+      const img = decodePng(
+        execFileSync("adb", ["exec-out", "screencap", "-p"], {
+          env: { ...process.env, MSYS_NO_PATHCONV: "1" },
+          maxBuffer: 64 * 1024 * 1024,
+        }),
+      );
+      for (let y = 180; y < img.h - 8; y++) {
+        let n = 0;
+        for (let x = 440; x < 1035; x++) {
+          const i = (y * img.w + x) * img.bpp;
+          if (isTan(img.px[i], img.px[i + 1], img.px[i + 2])) n++;
+        }
+        if (n <= 80) continue;
+        if (y - lastY <= 3) {
+          lastY = y;
+          continue; // 同一条线连着几行命中：只记一次
+        }
+        lastY = y;
+        const runs = runsAlong(img, y, 440, 1035);
+        lines.push({ y, runs: runs.length, longest: Math.max(...runs) });
+      }
+      adb("shell", "input", "swipe", "540", "1700", "540", "1100", "250");
+      await sleep(900);
+    }
+  }
+  // ⚠️ 前提自查：一条线都没量到（页不对 / 颜色判据过期）时，别让下面两条"空过"
+  check(
+    "（边框线型）量到了浅棕横线（≥3 条，不然这条判据是空转）",
+    lines.length >= 3,
+    `量到 ${lines.length} 条：${lines.map((l) => `y=${l.y}(${l.runs}段)`).join(" ")}`,
+  );
+  const dashed = lines.filter((l) => l.runs >= 6);
+  const solid = lines.filter((l) => l.runs === 1 && l.longest >= 300);
+  check(
+    "★ 折得动的边框在真机上**是虚线**（`.m-yao` 的下边框：源 CSS `border-bottom:1px dashed`；标定：折叠前段数=1、折叠后段数≥6）",
+    dashed.length >= 3,
+    `虚线 ${dashed.length} 条 / 实线 ${solid.length} 条 —— ` +
+      `虚线样本：${dashed.slice(0, 4).map((l) => `${l.runs}段`).join(",") || "（无）"}；` +
+      `实线样本：${solid.slice(0, 4).map((l) => `${l.longest}px`).join(",") || "（无）"}`,
+  );
+  check(
+    "★ 折**不动**的那条边框**仍是实线**（`.m-weny-box`：左 2px 实线 + 上 1px 虚线，两条边都有宽度 ⇒ 折不了）",
+    solid.length >= 1,
+    `实线 ${solid.length} 条（≥300px 连续）—— 反例控制：它挡住"把所有边框都折成虚线"这种假修`,
+  );
+}
+
 // ── 6) 没有原生崩溃 ──────────────────────────────────────────────────────────
 section("稳定性");
 let logcat = "";

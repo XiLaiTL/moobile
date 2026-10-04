@@ -225,6 +225,136 @@ function mapped(calls, notes = []) {
 }
 
 /**
+ * ★ **把分边的 `border-*-style` 折成四边共用的 `borderStyle`**（2026-10-23 新增）。
+ *
+ * 为什么要有：原生 RN **只有**四边共用的 `borderStyle`，没有 `borderTopStyle` 这些
+ * （登记表实测：`tools/style_platform_check.mjs`）⇒ `border-top: 1px dashed …` 迁过来之后
+ * 在真机上**按默认的 `solid` 画**（web 上是对的，因为 RNW 当 CSS 照收）。
+ * 而"有宽度的那些边共用同一个 style"时，发一次 `borderStyle` 是**等价**的
+ * （没宽度的边画不出线，它的 style 是什么都不影响）⇒ 可以自动折。
+ *
+ * ⚠️ **不能折的情形必须留着**：`border-left: 2px solid` + `border-top: 1px dashed`
+ * 这两条边**都有宽度、style 不同** ⇒ 四边共用的那个键**表达不了**它（真机上必然有一边画错）。
+ * 这时候**不许折**，照旧发分边的调用 + 一句"这条在真机上不生效"的说明（让人知道要看这里）。
+ *
+ * 返回值：
+ *   · `null` —— 没有可折的东西（没有分边 style，或者折了等于没折）；
+ *   · `{ folded: true, expr, replace: Set, carrier, note }` —— 折得动：
+ *     `replace` 里的属性**只去掉它的分边 style 调用**（shorthand 的宽度/颜色照旧发），
+ *     `carrier` 那个属性把 `.border_*_style(…)` **就地换成** `.border_style(expr)`；
+ *     ⚠️ 若四边共用的那个键**已经是同一个值**，则 `expr === null`、只删不补（纯去冗余）。
+ *   · `{ folded: false, reason }` —— 看得见分边 style，但**不满足**折叠条件（要留说明）。
+ *
+ * @param {Map<string, any>} decls 这一格的声明（prop → {value,…}）
+ */
+function planBorderStyleFold(decls) {
+  // ⚠️ 两个**只为判据门存在**的开关（`tools/border_fold_check.mjs` 的证伪用；默认都关）。
+  //    别在产物生成里用它们 —— 打开 `ALL` 会把"折不动"的那些也折掉（那正是要防的假修）。
+  if (process.env.MOBILE_NO_BORDER_FOLD === '1') return null;
+  const SIDES = ['top', 'right', 'bottom', 'left'];
+  const pxOf = (v) => {
+    const m = String(v).trim().match(/^(-?(?:\d+\.?\d*|\.\d+))px$/);
+    return m ? Number(m[1]) : null;
+  };
+  /** 一条 `border[-side]` 简写里认出 px 宽度与 style 枚举。 */
+  const parseShorthand = (v) => {
+    const out = { width: null, style: null };
+    for (const p of String(v).split(/\s+/).filter(Boolean)) {
+      const n = pxOf(p);
+      if (n !== null && out.width === null) {
+        out.width = n;
+        continue;
+      }
+      const e = ENUMS['border-style'][p.toLowerCase()];
+      if (e && out.style === null) out.style = e;
+    }
+    return out;
+  };
+  // 四边基准（`border-style` / `border` 简写）
+  const baseProp = decls.has('border-style') ? 'border-style' : decls.has('border') ? 'border' : null;
+  const baseStyle = baseProp
+    ? baseProp === 'border-style'
+      ? ENUMS['border-style'][String(decls.get(baseProp).value).trim().toLowerCase()] || null
+      : parseShorthand(decls.get(baseProp).value).style
+    : null;
+  const baseWidth = decls.has('border-width')
+    ? pxOf(decls.get('border-width').value)
+    : decls.has('border')
+      ? parseShorthand(decls.get('border').value).width
+      : null;
+
+  const info = {};
+  for (const s of SIDES) {
+    const long = `border-${s}-style`;
+    const short = `border-${s}`;
+    let style = null;
+    let carrier = null;
+    if (decls.has(long)) {
+      style = ENUMS['border-style'][String(decls.get(long).value).trim().toLowerCase()] || null;
+      carrier = style ? long : null;
+    } else if (decls.has(short)) {
+      style = parseShorthand(decls.get(short).value).style;
+      carrier = style ? short : null;
+    }
+    let width = baseWidth;
+    if (decls.has(`border-${s}-width`)) width = pxOf(decls.get(`border-${s}-width`).value);
+    if (decls.has(short)) {
+      const w = parseShorthand(decls.get(short).value).width;
+      if (w !== null) width = w;
+    }
+    info[s] = { style, carrier, width: width === null ? 0 : width };
+  }
+  const styled = SIDES.filter((s) => info[s].style !== null);
+  if (!styled.length) return null; // 一条分边 style 都没有：不关这条规则的事
+
+  // 每边的"有效 style"：分边声明的 > 四边共用的 > 原生默认（solid）
+  const SOLID = ENUMS['border-style'].solid;
+  const eff = (s) => info[s].style || baseStyle || SOLID;
+  const bearing = SIDES.filter((s) => info[s].width > 0);
+  // ⚠️ "这几条边都没有宽度"是**独立的一种情形**：画不出线 ⇒ 分边 style 折与不折**外观一样**，
+  //    但它**也折不成**（`borderStyle` 是四边共用的，而这里几条边的 style 可能不同）。
+  //    以前这里会掉进下面那条"不生效"的通用说明 —— 那是一句**会吓人的假话**（明明什么都没画）。
+  //    （2026-10-23 写判据时想到的：判据要能把"没影响"与"画错了"分开。）
+  if (!bearing.length) {
+    return {
+      folded: false,
+      reason:
+        '⚠️ 这几条分边 style **都没有宽度**（`border-*-width` 缺省是 0）⇒ **画不出线**，' +
+        `分边 style 折与不折**外观一样**（${styled.map((s) => s).join(' / ')}）—— 这条不是缺陷，只是记一笔。` +
+        '判据：`tools/border_fold_check.mjs`',
+    };
+  }
+  const targets = [...new Set(bearing.map(eff))];
+  if (targets.length > 1 && process.env.MOBILE_BORDER_FOLD_ALL !== '1') {
+    return {
+      folded: false,
+      reason:
+        `⚠️ 分边的 style 在原生 RN 上没有对应物（只有四边共用的 \`borderStyle\`），而这几边**都带宽度、style 不同**` +
+        `（${bearing.map((s) => `${s}=${eff(s).replace('@style.BorderStyle::', '')}`).join(' / ')}）` +
+        '⇒ **折不成**四边共用的那个键 ⇒ **真机上这些分边 style 不生效**（按默认的 `solid` 画）。' +
+        '（要修只能改设计：把这几边改成同一个 style，或者在 Model 里换成别的画法。）判据：`tools/border_fold_check.mjs`',
+    };
+  }
+  const target = targets[0];
+  const dropStyling = new Set(styled.map((s) => info[s].carrier));
+  const carrier = styled.map((s) => info[s].carrier).find((p) => p.startsWith('border-') && p.split('-').length === 3 && p.endsWith('-style'))
+    || styled.map((s) => info[s].carrier)[0];
+  const pureDrop = baseStyle === target; // 四边共用那个键已经是这个值 ⇒ 只删不补
+  return {
+    folded: true,
+    expr: pureDrop ? null : target,
+    carrier,
+    replace: dropStyling,
+    note:
+      `分边 style 折成四边共用的 \`borderStyle(${target.replace('@style.BorderStyle::', '')})\`` +
+      `（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**）` +
+      (pureDrop ? ' —— 四边共用那个键**已经是这个值**，所以分边那条是**纯冗余**，删掉不丢东西。' : '。') +
+      '判据：`tools/border_fold_check.mjs`',
+  };
+}
+
+
+/**
  * ★ **原生 RN 不认 / 只有 iOS 的样式键**（2026-10-23 实测，逐条在真 RN 的登记表上核过）——
  * 把事实与"**对应物**"写进**生成的产物里**（函数头 + 报告），而不只是写在文档里。
  *
@@ -241,8 +371,9 @@ function mapped(calls, notes = []) {
 const BORDER_SIDE_NOTE = (key) =>
   `⚠️ 原生 RN 只有**四边共用**的 \`borderStyle\`，没有分边的 \`${key}\` ⇒ **真机上这一条不生效**` +
   '（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的' +
-  '（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。' +
-  '判据：`tools/style_platform_check.mjs`';
+  '（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— **这种情形现在会被自动折叠**' +
+  '（`planBorderStyleFold`），所以走到这条说明就说明**折不动**（几条带宽度的边 style 不同）。' +
+  '判据：`tools/border_fold_check.mjs`';
 
 const NATIVE_GAP_NOTES = {
   'white-space':
@@ -809,6 +940,7 @@ function mapBorderRadius(prop, v) {
 
 module.exports = {
   mapDeclaration,
+  planBorderStyleFold,
   dim,
   num,
   unitless,

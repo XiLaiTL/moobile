@@ -520,12 +520,18 @@ function mapClass(entry) {
   /** ★ "算成已映射、却一条调用都没有"的声明（见下面那个 `silentEmpty.push`）。 */
   const silentEmpty = [];
   const props = new Set(entry.decls.keys());
+  // ★ 分边 `border-*-style` 能不能折成四边共用的 `borderStyle`（原生 RN 只有那一个键）——
+  //   要看**整格**的声明（宽度在哪一边），所以先算一个"折叠计划"，再逐个属性套用。
+  //   见 `style-map.js` 的 `planBorderStyleFold`；判据在 `tools/border_fold_check.mjs`。
+  const fold = map.planBorderStyleFold(entry.decls);
   // `display:flex` 要不要补 `flex_direction(Row)`，取决于这一条里**有没有**显式写方向
   const hasExplicitDirection = props.has('flex-direction');
   // em 字距/行高要靠同一样式里的 font-size 换算
   const hasFontSize = props.has('font-size');
   let emitted = 0;
   let lost = 0;
+  /** "折不动"的理由只挂一次（一格里往往有好几条分边 style，重复四遍没人看）。 */
+  let foldReasonPushed = false;
 
   // 同属性的去重已经在 applyDecls 里做掉（后者胜），这里保留**最后一次出现**的顺序：
   // 先按 order 出现的位置排，被覆盖过的属性沿用最初的位置（对样式结果无影响，对 diff 稳定有影响）。
@@ -546,11 +552,44 @@ function mapClass(entry) {
       continue;
     }
     emitted++;
+    let callsOfProp = r.calls || [];
+    // ── ★ 分边 style 的折叠（2026-10-23 新增）────────────────────────────────
+    //
+    // `fold.folded` 时：`fold.replace` 里那些属性**只去掉它的分边 style 调用**
+    // （`border-top: 1px dashed #x` 这种简写里的宽度与颜色照旧发），
+    // 由 `fold.carrier` 那个属性**就地换成** `.border_style(expr)`。
+    // ⚠️ 每一步都要给**一句说明**：这条链上"少了一条调用"必须能解释得清，
+    //    否则就被 `silentEmpty`（"算成已映射却零调用零说明"）记成静默丢键 —— 那是**对的**，
+    //    折叠本来就该说明自己去哪了（判据：`tools/migrate_ledger_check.mjs`）。
+    let foldNote = null;
+    let mappedNotes = r.notes || [];
+    if (fold && fold.folded && fold.replace.has(prop)) {
+      callsOfProp = callsOfProp.filter((c) => !/^\.border_(top|right|bottom|left)_style\(/.test(c));
+      // ⚠️ `mapDeclaration` / `mapBorderShorthand` 给分边 style 挂的那句"原生不生效"，
+      //    在**折成功之后就是过期信息**（折完就生效了）⇒ 必须一起去掉，否则产物里会同时出现
+      //    "折成了四边共用"与"这条真机不生效"两句自相矛盾的话。
+      mappedNotes = mappedNotes.filter((n) => !n.includes('原生 RN 只有**四边共用**'));
+      if (prop === fold.carrier && fold.expr) callsOfProp.push(`.border_style(${fold.expr})`);
+      foldNote =
+        prop === fold.carrier
+          ? fold.note
+          : `\`${prop}\` 的分边 style **并进了四边共用的 \`borderStyle\`**（没宽度的边画不出线 ⇒ 等价）。` +
+            '判据：`tools/border_fold_check.mjs`';
+    } else if (fold && !fold.folded && /^border-(top|right|bottom|left)(-style)?$/.test(prop)) {
+      // 折不动：`mapDeclaration` / `mapBorderShorthand` 挂的那句通用说明（"原生不生效、对应物是
+      // 四边共用的那个键"）在这里是**半截话**（它没说为什么这次没折）⇒ 换成带读数的完整理由，
+      // 且**只挂一次**（一条规则里往往有好几条分边 style，理由重复四遍没人看）。
+      mappedNotes = mappedNotes.filter((n) => !n.includes('原生 RN 只有**四边共用**'));
+      if (!foldReasonPushed) {
+        foldNote = fold.reason;
+        foldReasonPushed = true;
+      }
+    }
     if (prop === 'display' && hasExplicitDirection) {
       // 显式方向优先：只发 display，别补 Row
-      calls.push(...r.calls.filter((c) => !c.includes('flex_direction')));
+      calls.push(...callsOfProp.filter((c) => !c.includes('flex_direction')));
     } else {
-      calls.push(...r.calls);
+      calls.push(...callsOfProp);
     }
     // ── ★ "声称已映射，却一条调用都没发、也一句说明都没有"（2026-10-23 新增）──────
     //
@@ -567,7 +606,8 @@ function mapClass(entry) {
     // ⚠️ 为什么这也**不 throw**：抛掉就看不见是哪几条了。这里只把它记进账本，
     //    由 `tools/migrate_ledger_check.mjs` 断言"真实应用上必须是 0"，
     //    并让报告把它印出来（`create.js` 的 §2）。
-    const propNotes = [...(r.notes || [])];
+    const propNotes = [...mappedNotes];
+    if (foldNote) propNotes.push(foldNote);
     if (
       prop === 'grid-template-columns' &&
       (entry.gridBasis !== undefined || entry.gridCellBasis !== undefined)
@@ -577,7 +617,9 @@ function mapClass(entry) {
           '容器自身没有对应调用 —— 这不是丢失',
       );
     }
-    if ((r.calls || []).length === 0 && propNotes.length === 0) {
+    // ⚠️ 这里判的是**这一格真的发出去多少调用**（`callsOfProp`，折叠之后的那份），
+    //    不是 `mapDeclaration` 原始吐出来的那一份 —— 否则"折掉一条调用"就查不出来了。
+    if (callsOfProp.length === 0 && propNotes.length === 0) {
       silentEmpty.push({ prop, value, file, line });
     }
     notes.push(...propNotes);

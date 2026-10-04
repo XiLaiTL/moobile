@@ -169,15 +169,15 @@ pub fn details_m_more() -> @style.Style {
 
 ///|
 /// `class="details.m-more>div.m-more-body"` —— backend/index.html:456 （另见 backend/index.html:456、backend/index.html:456）
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · 分边 style 折成四边共用的 `borderStyle(Dashed)`（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**）。判据：`tools/border_fold_check.mjs`
 pub fn details_m_more_div_m_more_body() -> @style.Style {
   @style.Style::new()
     .padding_top(@style.px(4.0))
     .padding_horizontal(@style.px(22.0))
     .padding_bottom(@style.px(18.0))
     .border_top_width(1.0)
-    .border_top_style(@style.BorderStyle::Dashed)
     .border_top_color("#d9c69f")
+    .border_style(@style.BorderStyle::Dashed)
 }
 
 ///|
@@ -436,7 +436,7 @@ pub fn div_hex_card_span_xiang() -> @style.Style {
 ///|
 /// `class="div.hex-index"` —— backend/index.html:45
 ///   · background 简写只取到了颜色那一部分
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · 分边 style 折成四边共用的 `borderStyle(Solid)`（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**） —— 四边共用那个键**已经是这个值**，所以分边那条是**纯冗余**，删掉不丢东西。判据：`tools/border_fold_check.mjs`
 pub fn div_hex_index() -> @style.Style {
   @style.Style::new()
     .background_color("#f6efe0")
@@ -444,7 +444,6 @@ pub fn div_hex_index() -> @style.Style {
     .border_style(@style.BorderStyle::Solid)
     .border_color("#d9c69f")
     .border_top_width(3.0)
-    .border_top_style(@style.BorderStyle::Solid)
     .border_top_color("#8a2518")
     .padding_top(@style.px(24.0))
     .padding_horizontal(@style.px(28.0))
@@ -551,7 +550,7 @@ pub fn div_m_bottom() -> @style.Style {
 ///|
 /// `class="div.m-cite"` —— backend/index.html:411
 ///   · background 简写只取到了颜色那一部分
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderLeftStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · 分边 style 折成四边共用的 `borderStyle(Solid)`（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**）。判据：`tools/border_fold_check.mjs`
 pub fn div_m_cite() -> @style.Style {
   @style.Style::new()
     .margin_top(@style.px(6.0))
@@ -559,8 +558,8 @@ pub fn div_m_cite() -> @style.Style {
     .padding_vertical(@style.px(6.0))
     .background_color("#e6d8bc")
     .border_left_width(2.0)
-    .border_left_style(@style.BorderStyle::Solid)
     .border_left_color("#b8902f")
+    .border_style(@style.BorderStyle::Solid)
     .font_size(13.0)
     .color("#4a3b2e")
 }
@@ -806,8 +805,7 @@ pub fn div_m_tags_span_m_tag() -> @style.Style {
 ///|
 /// `class="div.m-weny-box"` —— backend/index.html:405 （另见 backend/index.html:405）
 ///   · background 简写只取到了颜色那一部分
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderLeftStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · ⚠️ 分边的 style 在原生 RN 上没有对应物（只有四边共用的 `borderStyle`），而这几边**都带宽度、style 不同**（top=Dashed / left=Solid）⇒ **折不成**四边共用的那个键 ⇒ **真机上这些分边 style 不生效**（按默认的 `solid` 画）。（要修只能改设计：把这几边改成同一个 style，或者在 Model 里换成别的画法。）判据：`tools/border_fold_check.mjs`
 ///   · grid 子项：补 min_width(116.0) + flex_grow(1.0) —— 列宽取自源 CSS 的 minmax 那一档
 pub fn div_m_weny_box() -> @style.Style {
   @style.Style::new()
@@ -828,7 +826,7 @@ pub fn div_m_weny_box() -> @style.Style {
 ///|
 /// `class="div.m-yao"` —— backend/index.html:354
 ///   · display:grid 降级成 flex(row) + flex_wrap(wrap)：RN 没有 grid；列宽由子项的 min_width + flex_grow 表达（见 mapClass 的 isGridCell）
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderBottomStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · 分边 style 折成四边共用的 `borderStyle(Dashed)`（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**）。判据：`tools/border_fold_check.mjs`
 ///   · TODO(migrate) grid-template-columns:160px 1fr —— RN 没有 grid 布局（`@style` 只有 flex）。这一条认不出列宽（只支持 repeat(auto-fill|auto-fit, minmax(<N>px, 1fr))），降级策略要人定  （backend/index.html:355）
 pub fn div_m_yao() -> @style.Style {
   @style.Style::new()
@@ -840,8 +838,8 @@ pub fn div_m_yao() -> @style.Style {
     .padding_horizontal(@style.px(0.0))
     .padding_vertical(@style.px(13.0))
     .border_bottom_width(1.0)
-    .border_bottom_style(@style.BorderStyle::Dashed)
     .border_bottom_color("#d9c69f")
+    .border_style(@style.BorderStyle::Dashed)
 }
 
 ///|
@@ -1071,7 +1069,7 @@ pub fn div_div_container() -> @style.Style {
 
 ///|
 /// `class="div>div.footer"` —— backend/index.html:282
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderTopStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · 分边 style 折成四边共用的 `borderStyle(Solid)`（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**）。判据：`tools/border_fold_check.mjs`
 pub fn div_div_footer() -> @style.Style {
   @style.Style::new()
     .text_align(@style.TextAlign::Center)
@@ -1080,8 +1078,8 @@ pub fn div_div_footer() -> @style.Style {
     .font_size(12.5)
     .letter_spacing_em(0.1)
     .border_top_width(1.0)
-    .border_top_style(@style.BorderStyle::Solid)
     .border_top_color("#d9c69f")
+    .border_style(@style.BorderStyle::Solid)
 }
 
 ///|
@@ -1105,7 +1103,7 @@ pub fn div_div_footer_div_seal() -> @style.Style {
 /// `class="div>div.topnav"` —— backend/index.html:27
 ///   · display:flex 补写了 flex_direction(Row)：CSS 的默认主轴是 row，RN 的默认是 column
 ///   · background 简写只取到了颜色那一部分
-///   · ⚠️ 原生 RN 只有**四边共用**的 `borderStyle`，没有分边的 `borderBottomStyle` ⇒ **真机上这一条不生效**（那边按默认的 `solid` 画）。对应物：当"有宽度的那些边"共用同一个 style 时，发一次 `borderStyle` 是等价的（`border-top: 1px dashed …` 这类只有一边有宽度的写法，合成是安全的）—— ⚠️ 目前**没有自动合成**。判据：`tools/style_platform_check.mjs`
+///   · 分边 style 折成四边共用的 `borderStyle(Solid)`（原生 RN 只有四边共用那一个键；没宽度的边画不出线、style 不影响 ⇒ **等价**）。判据：`tools/border_fold_check.mjs`
 ///   · TODO(migrate) position:sticky —— `@style` 只有 Relative / Absolute；sticky / fixed 在 RN 上没有对应物  （backend/index.html:31）
 pub fn div_div_topnav() -> @style.Style {
   @style.Style::new()
@@ -1117,8 +1115,8 @@ pub fn div_div_topnav() -> @style.Style {
     .padding_vertical(@style.px(10.0))
     .background_color("#f6efe0")
     .border_bottom_width(1.0)
-    .border_bottom_style(@style.BorderStyle::Solid)
     .border_bottom_color("#d9c69f")
+    .border_style(@style.BorderStyle::Solid)
     .top(@style.px(0.0))
     .z_index(10.0)
 }
