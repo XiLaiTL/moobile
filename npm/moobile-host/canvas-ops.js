@@ -147,6 +147,34 @@ function arcToSvg(cx, cy, r, start, end, anticlockwise, cur) {
  * `save/translate/rotate/scale/restore` 是 canvas 的**可变状态**，而 Skia 元素树是**声明式**的：
  * 这里把当前累积变换挂到**每个元素自己的 `transform` prop** 上（RN Skia 的绘制节点都接受它），
  * 于是 `save/restore` 退化成"存/取快照"，树保持扁平。
+ *
+ * ## ⚠️★ 一个变换项**只许有一个键**（2026-10-23 真机实测踩到，代价见下）
+ *
+ * RN Skia 的 `processTransform3d`（`@shopify/react-native-skia/lib/module/skia/types/Matrix4.js`）
+ * 是这么读的：
+ *
+ * ```js
+ * return transforms.reduce((acc, val) => {
+ *   const key = Object.keys(val)[0];        // ← 只取**第一个键**
+ *   if (key === "translateX") return multiply4(acc, translate(val, 0, 0));   // ← Y 被丢掉
+ *   if (key === "scaleX")     return multiply4(acc, scale(val, 1, 1));       // ← Y 被丢掉
+ *   …
+ * ```
+ *
+ * 所以 `{translateX: x, translateY: y}` 在 RN Skia 上**只平移 x**、`{scaleX: k, scaleY: k}`
+ * **只缩放 x** —— 第二个键**静默作废**。
+ *
+ * 后果（真机上量到的，`examples/apps/zhouyi-reader` 的罗盘）：
+ *   · `scale(k,k)`（k=369/720）只缩了 x ⇒ **正圆画成了横扁的椭圆**：
+ *     实测最外圈横向半轴 489.5px、纵向半轴 955.2px，**比值 0.512 ≈ k**（椭圆拟合 RMS 0.3px）；
+ *   · 旋转用的 `translate(cx,cy) … translate(-cx,-cy)` 只平移了 x
+ *     ⇒ 旋转的那些圈绕**错的圆心**转 ⇒ 外圈（不随盘转）与内圈**对不上**。
+ *
+ * 为什么以前没被发现：三个后端里**只有这一条**走"元素树 + transform 数组"——
+ * `canvas-web.js` 直接重放原始 op（DOM 自己管 CTM）✅、`canvas-svg.js` 把两个键都读 ✅，
+ * 而当时的 CanvasKit 回放（`examples/apps/canvas-spike/host/play.mjs`）也**两个键都读**。
+ * 判据那边更糟：`verify.mjs` 把 `[{translateX, translateY}]` 这个**错形状**写成了期望值。
+ * ⇒ 现在多了一条"**按 RN Skia 的规则重放 == 按 canvas 的规则重放**"的对账判据，这类洞不会再溜过去。
  */
 export function opsToTree(ops, options = {}) {
   const width = options.width ?? 720;
@@ -249,13 +277,16 @@ export function opsToTree(ops, options = {}) {
         break;
       }
       case 'translate':
-        transforms.push({ translateX: o[1], translateY: o[2] });
+        // ⚠️★ **拆成两个单键项**：`{translateX, translateY}` 在 RN Skia 上只生效 x
+        //    （`processTransform3d` 只读第一个键）—— 见 `opsToTree` 上方那段实测。
+        transforms.push({ translateX: o[1] }, { translateY: o[2] });
         break;
       case 'rotate':
         transforms.push({ rotate: o[1] });
         break;
       case 'scale':
-        transforms.push({ scaleX: o[1], scaleY: o[2] });
+        // 同上：`{scaleX, scaleY}` 只会缩 x，正圆会变成横扁的椭圆（真机实测比值 ≈ k）。
+        transforms.push({ scaleX: o[1] }, { scaleY: o[2] });
         break;
       default:
         throw new Error(`canvas-ops: 未处理的 op \`${tag}\`（词汇表加了新 op 却忘了映射）`);

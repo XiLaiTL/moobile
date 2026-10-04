@@ -21,6 +21,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OPS, OP_TAGS, decode, encode, usedTags, opsToTree, treeStats } from '../../../../npm/moobile-host/canvas-ops.js';
+// ★ "两份变换语义"的重放器：用来做"按 RN Skia 的规则 == 按 canvas 的规则"那条对账判据。
+import { applyAsRnSkia, applyAsCanvas, IDENTITY_MATRIX } from './play.mjs';
 import { COLORS, ringDraw, ringItems } from './compass.mjs';
 import { loadCanvasKit, pickTypeface, pixelAt, readPixels, replay, savePng, hexToRgb } from './play.mjs';
 // ★ 对账用的镜像程序：与 MoonBit 的 `spike.mbt` 是同一条规格的两个实现
@@ -183,14 +185,51 @@ const texts = t([
 const first = texts.children[0];
 const second = texts.children[1];
 check(
-  '3d `save/translate/rotate/fill_text/restore` → Text 带 [{translateX},{rotate}]，字号取自 font 简写',
+  '3d `save/translate/rotate/fill_text/restore` → Text 带 [{translateX},{translateY},{rotate}]，字号取自 font 简写',
   first.type === 'Text' &&
-    JSON.stringify(first.props.transform) === JSON.stringify([{ translateX: 100, translateY: 200 }, { rotate: 1.5 }]) &&
+    // ⚠️★ 期望值是 `{translateX}` 与 `{translateY}` **两项**（2026-10-23 改）：
+    //    以前这里钉的是 `{translateX:100, translateY:200}` 这个**两项合一**的形状，
+    //    而 RN Skia 的 `processTransform3d` **只读每项的第一个键** ⇒ 那样写只平移 x。
+    //    **这条判据当时把错形状钉住了** —— 真机上"内外圈对不上"就是这么活下来的。
+    JSON.stringify(first.props.transform) ===
+      JSON.stringify([{ translateX: 100 }, { translateY: 200 }, { rotate: 1.5 }]) &&
     first.props.font.size === 12 &&
     first.props.font.family === 'Kaiti TC' &&
     first.props.color === '#8a2518',
   JSON.stringify({ t: first.props.transform, f: first.props.font }),
 );
+
+// ── ★ 新增两条：给"真机那条路"设的（2026-10-23 实测踩到之后补的）───────────────
+//
+// 为什么必须补：上面那条只断言"我们产出的形状长这样"，而**真正的消费方**是 RN Skia 的
+// `processTransform3d` —— 它每项只读第一个键。判据与消费方之间**没有对账**，
+// 于是"形状自洽、消费方只认一半"这种洞看得见却没人看（真机上表现为正圆变椭圆）。
+check(
+  '★ 变换项**每项只有一个键**（RN Skia 的 `processTransform3d` 只读第一个键，多写的会静默作废）',
+  texts.children.flatMap((c) => c.props.transform || []).every((x) => Object.keys(x).length === 1),
+  JSON.stringify(texts.children.map((c) => c.props.transform)),
+);
+
+// ★ 对账：同一串变换，"按 RN Skia 的规则"与"按 canvas 的规则"必须算成**同一个矩阵**。
+{
+  const seq = [{ scaleX: 0.5 }, { scaleY: 0.5 }, { translateX: 100 }, { translateY: 200 }, { rotate: 0.3 }];
+  const a = applyAsRnSkia(IDENTITY_MATRIX, seq);
+  const b = applyAsCanvas(IDENTITY_MATRIX, seq);
+  const same = a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+  check(
+    '★ 对账：按 RN Skia 的规则重放 == 按 canvas 的规则重放（不等 ⇒ 真机上会画歪）',
+    same,
+    same ? '' : `RN Skia ${JSON.stringify(a.map((v) => +v.toFixed(4)))} / canvas ${JSON.stringify(b.map((v) => +v.toFixed(4)))}`,
+  );
+  // 证伪：把两个键合回一项 ⇒ 两种规则**必须**分道扬镳（否则上面那条就是空转的）
+  const mergedCanvas = applyAsCanvas(IDENTITY_MATRIX, [{ translateX: 100, translateY: 200 }]);
+  const mergedSkia = applyAsRnSkia(IDENTITY_MATRIX, [{ translateX: 100, translateY: 200 }]);
+  check(
+    '★ 证伪：把 `{translateX,translateY}` 合成一项 ⇒ 两种规则**必须**算出不同结果（说明上面那条会红）',
+    mergedCanvas.some((v, i) => Math.abs(v - mergedSkia[i]) > 1e-9),
+    `canvas ${JSON.stringify(mergedCanvas)} / RN Skia ${JSON.stringify(mergedSkia)}`,
+  );
+}
 check(
   '3d′ `restore()` 之后画的文字**不继承**那次变换（变换是可变状态，不是全局设置）',
   second.props.transform === undefined && second.props.x === 0,

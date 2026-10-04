@@ -64,12 +64,77 @@ function makePaint(ck, { color, style, strokeWidth }) {
 }
 
 function applyTransform(canvas, transform) {
+  // ⚠️ 变换项**每项只有一个键**（`{translateX}` / `{translateY}` / `{scaleX}` / `{scaleY}` / `{rotate}`）——
+  //    2026-10-23 真机实测之后改的：RN Skia 的 `processTransform3d` **只读每项的第一个键**，
+  //    所以 `canvas-ops.js` 不再产出"两项合一"的形状（那会让它只生效 x：正圆画成横扁的椭圆）。
+  //    这段是"按 **canvas 的语义**"重放，所以拆开的项要合起来读回一个完整的平移/缩放。
   for (const t of transform || []) {
-    if (t.translateX !== undefined) canvas.translate(t.translateX, t.translateY || 0);
+    if (t.translateX !== undefined) canvas.translate(t.translateX, 0);
+    else if (t.translateY !== undefined) canvas.translate(0, t.translateY);
     else if (t.rotate !== undefined) canvas.rotate(t.rotate, 0, 0);
-    else if (t.scaleX !== undefined) canvas.scale(t.scaleX, t.scaleY ?? t.scaleX);
+    else if (t.scaleX !== undefined) canvas.scale(t.scaleX, 1);
+    else if (t.scaleY !== undefined) canvas.scale(1, t.scaleY);
     else throw new Error(`play: 不认识的 transform 项 ${JSON.stringify(t)}`);
   }
+}
+
+// ── 两份"变换语义"的重放器（判据用；见 `verify.mjs` 的对账那一条）──────────────
+//
+// 2D 仿射：[a,b,c,d,e,f]，x' = a x + c y + e，y' = b x + d y + f
+const matMul = (m, n) => [
+  m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1],
+  m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+  m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
+];
+const translateMat = (x, y) => [1, 0, 0, 1, x, y];
+const scaleMat = (x, y) => [x, 0, 0, y, 0, 0];
+const rotateMat = (r) => [Math.cos(r), Math.sin(r), -Math.sin(r), Math.cos(r), 0, 0];
+export const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
+
+/**
+ * ⚠️★ **按 RN Skia 的规则**重放同一串变换 —— "两份实现对账"的那一半。
+ *
+ * RN Skia 的 `processTransform3d`（`Matrix4.js`）写的是 `Object.keys(val)[0]`：
+ * **每项只认第一个键，其余静默作废**。这里刻意**照抄那份规则**（不是照抄 canvas 的语义），
+ * 于是我们产出的变换串能在两种规则下各算一遍 —— 结果不一致就是 bug。
+ * （2026-10-23 的"正圆变椭圆 + 内外圈对不上"就是这么来的。）
+ */
+export function applyAsRnSkia(matrix, transform) {
+  for (const t of transform || []) {
+    const key = Object.keys(t)[0];
+    if (key === 'translateX') matrix = matMul(matrix, translateMat(t.translateX, 0));
+    else if (key === 'translateY') matrix = matMul(matrix, translateMat(0, t.translateY));
+    else if (key === 'scaleX') matrix = matMul(matrix, scaleMat(t.scaleX, 1));
+    else if (key === 'scaleY') matrix = matMul(matrix, scaleMat(1, t.scaleY));
+    else if (key === 'rotate') matrix = matMul(matrix, rotateMat(t.rotate));
+    else throw new Error(`applyAsRnSkia: 不认识的 transform 项 ${JSON.stringify(t)}`);
+  }
+  return matrix;
+}
+
+/** 按 **canvas（DOM 2D / CanvasKit）的语义**重放同一串变换。 */
+export function applyAsCanvas(matrix, transform) {
+  for (const t of transform || []) {
+    // ⚠️ 写法有两种，语义差别**正是**那条对账判据要抓的东西（第一版这里写错了，判据当场红了）：
+    //   · **合并写法**（`{translateX, translateY}` / `{scaleX, scaleY}`）：canvas 的语义读**两个**键；
+    //   · **拆开写法**（每项一个键）：与 RN Skia 一致（一项一个分量）。
+    //   所以这里在"同一个键对象里还有另一个键"时才读第二个 —— 而不是无条件回退
+    //   （无条件回退会把 `{scaleX: 0.5}` 误读成等比 0.5，于是与 RN Skia 的 `scale(0.5, 1)` 分家）。
+    if (t.translateX !== undefined) {
+      matrix = matMul(matrix, translateMat(t.translateX, 'translateY' in t ? t.translateY : 0));
+    } else if (t.translateY !== undefined) {
+      matrix = matMul(matrix, translateMat(0, t.translateY));
+    } else if (t.rotate !== undefined) {
+      matrix = matMul(matrix, rotateMat(t.rotate));
+    } else if (t.scaleX !== undefined) {
+      matrix = matMul(matrix, scaleMat(t.scaleX, 'scaleY' in t ? t.scaleY : 1));
+    } else if (t.scaleY !== undefined) {
+      matrix = matMul(matrix, scaleMat(1, t.scaleY));
+    } else {
+      throw new Error(`applyAsCanvas: 不认识的 transform 项 ${JSON.stringify(t)}`);
+    }
+  }
+  return matrix;
 }
 
 /**

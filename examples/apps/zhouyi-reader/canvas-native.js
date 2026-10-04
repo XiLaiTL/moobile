@@ -36,9 +36,17 @@ import { matchFont } from '@shopify/react-native-skia';
  * 做法：用**系统字体管理器**按族名要一个 typeface（`FontMgr.System().matchFamilyStyle`），
  * 再按指令里的字号造 `Font`。绘制指令里的 `font` 形如 `12px Kaiti TC`，
  * 宿主侧的 `parseFont` 已经把它拆成 `{ size, family }`。
- * 系统里没有那个族名时会回落（`matchFamilyStyle` 返回 null 时用默认 typeface）——
- * 中文在 Android 上通常落到 Noto Sans CJK，与桌面/浏览器里的衬线体不同，
- * 这是**排版要重新验**的那一类差异（不是 bug，但别以为三端字形一样）。
+ *
+ * ⚠️★ **2026-10-23 真机实测：下面原来那句"中文在 Android 上通常落到 Noto Sans CJK"是错的。**
+ *    探针读数：`Kaiti TC` / `serif` / `sans-serif` / `Noto Sans CJK SC` / `System` 对「乾」
+ *    **全部 glyph=0**；而设备上 33 个字体族里**没有一个**能画中文
+ *    （对照：拉丁 `A` 在同一探针下 = 38 ⇒ 探针本身没问题）。
+ *    真因：**Android 的中文字形只走系统字体回退链**，而 RN Skia 的 `<Text font=` 用单个
+ *    `SkFont`、**不做回退**（`FontMgr` 也只暴露 `matchFamilyStyle`，没有按字符找字体的 API）。
+ *    ⇒ 画布上的中文在真机上**一个都画不出来**；而 web 走 DOM `fillText`、浏览器自己会回退，
+ *    所以 web/桌面全绿 —— 又一个"web 绿、真机红"。
+ *    详见 `docs/FINDINGS.md` 第二十四轮。正解方向是改用 `Skia.ParagraphBuilder`（SkParagraph
+ *    走字体回退），那是**下一件**；本轮只把它变成**会响的**（见宿主侧的 glyph 覆盖检查）。
  */
 export function registerNativeCanvas() {
   const makeFont = (f) => {

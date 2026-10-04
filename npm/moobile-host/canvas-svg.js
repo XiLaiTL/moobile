@@ -41,10 +41,15 @@ function radToDeg(rad) {
 /**
  * 把 op 层的变换数组翻成 SVG 的 `transform` 字符串。
  *
- * ⚠️ **形状是 React Native 的样式变换**（`canvas-ops.js` 的 `push({translateX, translateY})` 那一族），
+ * ⚠️ **形状是 React Native 的样式变换**（`canvas-ops.js` 的 `{translateX}` / `{translateY}` 那一族），
  *    不是 `{type: 'translate'}` —— 第一版就是照后者写的，跑起来报
  *    `不认识的变换 undefined`（每个元素都带一个 `undefined` 的变换项）。写映射前先看**真源**，
  *    别照自己脑子里的形状写。
+ *
+ * ⚠️★ 2026-10-23：那一族是**每项一个键**的写法了（`{translateX}` `{translateY}` 两项），
+ *    因为 RN Skia 的 `processTransform3d` **只读每项的第一个键** ⇒ 两项合一会让它只生效 x
+ *    （真机上表现为"正圆变椭圆 + 内外圈对不上"）。本文件两种写法都能读
+ *    （下面用 `|| 0` / `?? 1` 兜底），所以拆开之后语义不变。
  *
  * 语义核对：`translate(cx cy) rotate(θ) translate(-cx -cy)` 这种"绕点旋转"在 SVG 里
  * 与 RN/Skia 的数组顺序**一致**（都是从左往右施加），所以直接顺序拼字符串即可。
