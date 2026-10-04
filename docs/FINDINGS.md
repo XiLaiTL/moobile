@@ -6339,3 +6339,34 @@ return transforms.reduce((acc, val) => {
 2. ★ **同一个"web 绿、真机红"能在同一天里出现两次**（椭圆与文字），而且两次的机制完全不同
    （一次是**变换被消费方吃掉一半**，一次是**字体回退没人做**）。
    ⇒ 这类洞不是"运气差"，是**这条通道缺少真机判据**的必然产物。
+
+### 六、廿四续：正解比预想的贵 —— `ParagraphBuilder` 要的是**字体提供者**，不是系统 FontMgr
+
+动手之前先探了一轮（探针 4，"离屏画一遍数墨点"），两条读数把正解的成本量出来了：
+
+```text
+PARA_PROBE 对照-拉丁-无provider  ERR TypeError: c.drawParagraph is not a function
+PARA_PROBE 中文-系统FontMgr     ERR Error: Expected TypefaceFontProvider but got different type
+```
+
+- 第二条是**硬事实**（JSI 类型检查）：`Skia.ParagraphBuilder.Make(style, provider)` 的第二个参数
+  必须是 **`SkTypefaceFontProvider`**，**不能**直接塞 `FontMgr.System()`。
+  而 `TypefaceFontProvider` 是"**你自己往里注册字体**"的东西 —— 也就是说：
+  **SkParagraph 不会自动用系统字体回退，回退要靠你先把字体喂给它**。
+- 于是"改用 SkParagraph"这件事**并不解决字体来源**：还得先有一个**能画中文的 typeface**。
+  而拿到它这一轮全试过了：33 个族名一个都不行、`matchFamilyStyle('Noto Sans CJK SC')` 不行、
+  `Data.fromURI('/system/fonts/NotoSansCJK-Regular.ttc')` 报 `Expected Data but got different type`。
+
+⇒ **结论（写清楚，别让人以为"换个组件就行"）**：要真机上画出中文，必须先决定**字体从哪来**，
+这是个**产品/设计决定**，不是纯技术修补。至少三条路，各有代价：
+
+| 路 | 做法 | 代价 |
+|---|---|---|
+| ① 应用自带 CJK 字体 | 把一份中文子集字体打进 APK，`Typeface.MakeFreeTypeFaceFromData` 注册进 provider | 体积（一个常用汉字子集 ~1–3 MB）+ 字体授权 + 要自己裁剪子集 |
+| ② 宿主加"读系统字体"的能力 | 给宿主包加一个读 `/system/fonts/*.ttc` 的能力（RN 侧要文件读取通道） | 新能力 = 新契约 + 要在 CI/真机两侧验；路径与文件名随 Android 版本变 |
+| ③ 老实说"画布上不画字" | 把方位/卦名那些标签从画布挪到 DOM（RN `<Text>` 会走系统回退 ✅） | 布局与命中判定要重做（那些标签现在是"跟着盘转"的） |
+
+⚠️ 本轮**一条都没做** —— 这一节的价值是**把"下一件"的成本从"换个组件"修正成"要先拍字体来源"**。
+
+（顺带：第一条读数 `c.drawParagraph is not a function` 是**探针自己**的问题 —— 离屏 surface 的
+canvas 上没这个方法。要验"离屏画字"得换 API；但既然字体来源就没解决，先不追。）
