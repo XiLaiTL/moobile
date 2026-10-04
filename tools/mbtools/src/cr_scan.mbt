@@ -19,7 +19,11 @@ const LF : Int = 10
 ///|
 /// 文本扩展名白名单（含无扩展名的点文件特例）。
 let exts : Array[String] = [
-  "mbt", "mbti", "md", "json", "js", "jsx", "ts", "sh", "ps1", "py", "txt", "pkg", "mod", "patch",
+  // ⚠️ `mjs` / `cjs` 必须单列（2026-10-23 补）：白名单里原来只有 `js` / `jsx` / `ts`，
+  //    而本仓库的**工具全是 `.mjs`** ⇒ `tools/*.mjs` 与各应用的 `verify.mjs` 从来没被这条门扫过。
+  //    实测代价：`examples/apps/zhouyi-reader/verify.mjs` 带着 CRLF 一路绿着进门，
+  //    于是它的 diff 被撑成 **2098 行**（真实改动只有 76 行），白读了一遍完整 diff 才发现。
+  "mbt", "mbti", "md", "json", "js", "mjs", "cjs", "jsx", "ts", "sh", "ps1", "py", "txt", "pkg", "mod", "patch",
   "yml", "yaml", "toml", "css", "html", "xml", "gradle", "properties", "lock", "gitignore",
   "moonignore", "gitattributes",
 ]

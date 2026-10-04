@@ -50,11 +50,19 @@ const KNOWN = [
 ];
 
 function parseArgs(argv) {
-  const out = { out: 'registry.generated.js', check: false };
+  const out = { out: 'registry.generated.js', check: false, diff: false, json: false, sync: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out' && argv[i + 1]) out.out = argv[++i];
     else if (a === '--check') out.check = true;
+    // `--styles` 是"样式层再生成"的那一半（见 lib/migrate/regen-diff.js 的文件头）：
+    //   --styles --diff   只看"生成物 vs 磁盘"逐函数差在哪（不落盘）
+    //   --styles --sync   把生成物写回去（**先看 diff 再 sync**，别反过来）
+    //   --styles --check  判据模式：有"只在磁盘上"的函数（孤儿）就非零退出
+    else if (a === '--styles') out.styles = true;
+    else if (a === '--diff') out.diff = true;
+    else if (a === '--sync') out.sync = true;
+    else if (a === '--json') out.json = true;
   }
   return out;
 }
@@ -62,6 +70,65 @@ function parseArgs(argv) {
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const cwd = process.cwd();
+  // ── 样式层那一半（迁移生成的应用才有；手写应用直接跳过）────────────────────
+  if (args.styles) {
+    const { diffApp } = require('./migrate/regen-diff.js');
+    const r = diffApp({ appDir: cwd });
+    if (!r.ok) {
+      console.error(`moobile-host regen --styles: ${r.reason}`);
+      process.exit(2);
+    }
+    if (args.json) {
+      console.log(JSON.stringify({ counts: r.counts, changed: r.groups.changed.map((c) => c.name), added: r.groups.added.map((c) => c.name), orphan: r.groups.orphan.map((c) => c.name) }, null, 1));
+    } else {
+      console.log(`样式层：源 ${r.srcRoot}`);
+      console.log(`  函数 ${r.counts.diskFns} 个（磁盘）/ ${r.counts.genFns} 个（生成器）`);
+      console.log(`  一致 ${r.counts.same} · 有差异 ${r.counts.changed} · 新增 ${r.counts.added} · **孤儿 ${r.counts.orphan}**`);
+      for (const c of r.groups.changed) console.log(`    ~ ${c.name}`);
+      for (const c of r.groups.added) console.log(`    + ${c.name}`);
+      for (const c of r.groups.orphan) console.log(`    ! ${c.name}  ← 只在磁盘上（人加的，或生成器不再产它了）`);
+      // **逐行 diff**：只列函数名是不够的 —— 要判断"这处差异是我的生成器改动引起的，
+      // 还是有人手工改的"，必须看到那几行本身。默认就把差异打出来（差异一般只有几处）。
+      const { lineDiff } = require('./migrate/regen-diff.js');
+      for (const c of [...r.groups.changed, ...r.groups.added, ...r.groups.orphan]) {
+        const lines = lineDiff(c.gen, c.disk);
+        if (!lines.length) continue;
+        console.log(`
+  ── ${c.name} ${'─'.repeat(Math.max(0, 46 - c.name.length))}`);
+        for (const l of lines) console.log('    ' + l);
+      }
+    }
+    if (args.sync) {
+      const fsx = require('fs');
+      // **覆盖前先把"要覆盖什么"说出来**：这个动作会吃掉人工改动，
+      // 所以它必须是"看得见的一步"。实测上一次是 3 处改动（都是我改生成器引起的），
+      // 但那句话是"这次运气好"，不是机制 —— 说出来才成机制。
+      const touched = r.counts.changed + r.counts.added + r.counts.orphan;
+      if (touched) {
+        console.log('');
+        console.log(
+          `即将覆盖 ${touched} 处（有差异 ${r.counts.changed} / 新增 ${r.counts.added} / 孤儿 ${r.counts.orphan}）—— 上面已经逐行列出`,
+        );
+      } else {
+        console.log('无需覆盖：生成物与磁盘逐字一致');
+      }
+      fsx.writeFileSync(r.diskPath, r.gen.source);
+      console.log(`已同步：${r.diskPath}`);
+      process.exit(0);
+    }
+    if (args.check) {
+      const bad = r.counts.orphan > 0 || r.counts.added > 0 || r.counts.changed > 0;
+      if (bad) {
+        console.error(
+          'moobile-host regen --styles --check: 生成物与磁盘不一致 —— 先看 `--styles --diff`，确认没有人工改动之后再 `--sync`',
+        );
+        process.exit(1);
+      }
+      console.log('moobile-host regen --styles --check: 一致（逐函数）');
+      process.exit(0);
+    }
+    process.exit(0);
+  }
   const pkgPath = path.join(cwd, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     console.error(`moobile-host regen: 在 ${cwd} 找不到 package.json（请在应用根目录跑）`);

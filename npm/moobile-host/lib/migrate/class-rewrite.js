@@ -274,6 +274,36 @@ function scanSites(text, file = '<inline>') {
                 own: { tag: owner.tag, classes: own.split(' ') },
                 chain,
                 keyStart: i,
+                // 这一处 `class=` 是不是写在**循环体**里（`for … {` 之内）？
+                //
+                // 为什么要这个位（2026-10-23 实测）：源 CSS 里 `display:grid` 的**子元素**
+                // 常常是循环里攒进容器的（`let card = button(...)` + `shang.push(card)`），
+                // 于是这个元素在源码里的**祖先链是空的** —— 样式层无法判断"它属于哪个网格"。
+                // 实测：144 条用法里恰好只有 `hex-card` 一条是空的。
+                //
+                // 判据（刻意保守）：从 `class=` 往回找最近的一行"缩进更浅、且以 `for` 开头"的语句。
+                // 找不到就不是循环体 —— **宁可不判**，也不猜。
+                inLoop: (() => {
+                  // 判据刻意保守：从**本行行首**往回，找最近的一行"缩进更浅、且以 for 开头"的语句。
+                  //
+                  // ⚠️ 两个实测细节（都踩过）：
+                  //   ① `keyStart` 可能落在行**中间**（`let card = div(class=…)` 里 `class=` 前
+                  //      那一小段只剩 `"    let card = div("`）⇒ 必须从**上一个换行**起算整行，
+                  //      否则缩进算错、判据永远为假（实测：127 条用法 `inLoop` 全 0）；
+                  //   ② 认不出就返回 false —— **宁可不判**，也不猜。
+                  const head = text.slice(Math.max(0, i - 1200), i);
+                  const nl = head.lastIndexOf(String.fromCharCode(10));
+                  const lines = (nl >= 0 ? head.slice(0, nl) : '').split(String.fromCharCode(10));
+                  const lastIndent = (head.slice(nl + 1).match(/^\s*/) || [''])[0].length;
+                  for (let k = lines.length - 1; k >= 0; k--) {
+                    const l = lines[k];
+                    const ind = (l.match(/^\s*/) || [''])[0].length;
+                    if (ind >= lastIndent && l.trim() !== '') continue;
+                    if (/^\s*for\b/.test(l)) return true;
+                    if (l.trim() !== '' && !/^[)\]},]*$/.test(l.trim())) return false;
+                  }
+                  return false;
+                })(),
                 valueStart,
                 valueEnd: v.end,
                 kind: v.kind,

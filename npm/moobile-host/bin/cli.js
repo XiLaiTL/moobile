@@ -30,6 +30,9 @@ const USAGE = `moobile-host —— moobile 的宿主侧工具
                   [--host expo|rnw]              用哪个宿主（默认 expo；rnw = 裸 RN + RNW 桌面）
   moobile-host build [--release] [--out <文件>]  把 MoonBit 产物搬到宿主目录
   moobile-host regen [--out <文件>] [--check]    生成 / 核对能力注册表
+  moobile-host regen --styles --diff             迁移应用的**样式层**：生成物 vs 磁盘逐函数差在哪
+                              --sync             （确认过没有人工改动之后）把生成物写回去
+                              --check            判据模式：不一致就非零退出（离线门用的就是它）
 
 常用选项：
   -h, --help        这条帮助
