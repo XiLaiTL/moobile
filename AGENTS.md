@@ -18,7 +18,7 @@
 ## 2. 验证入口（只记这一条）
 
 ```bash
-bash tools/verify_all.sh              # 离线 25 项（⚠️ 项数会随门增长，以它自己打的汇总行为准）（编译 / **白盒测试（`moon test`，行为层）** / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物（native_rn_check，19 项）** / **能力包平台矩阵** / antd 试金石 / **组件库生成器（libgen 假包探针，24 项）** / **SSE 试金石** / **chat-app：生成物一致 + 无头 23 项** / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度 / **F1 迁移动检对账：JS 与 MoonBit 两份实现逐 finding 逐 hit 一致** / **宿主矩阵生成器（expo / rnw / webview，32 项）** / **生成物自查：根样式 `page()` 与根上的滚动容器（迁移移不过来的两块，13 项）** / **F1 新规则 `click.on-view`（诱饵 + 两侧对账，13 项）**）
+bash tools/verify_all.sh              # 离线 32 项（⚠️ 项数会随门增长，以它自己打的汇总行为准）（编译 / **白盒测试（`moon test`，行为层）** / 行尾 / 链接 / 泄漏 / vendor 一致 / 外部模块 / 转发包一致 / **lockfile 的 resolved URL** / **宿主平台替代物（native_rn_check，19 项）** / **能力包平台矩阵** / antd 试金石 / **组件库生成器（libgen 假包探针，24 项）** / **SSE 试金石** / **chat-app：生成物一致 + 无头 23 项** / **脚手架三条门：模板 / 承载真应用 / 同源 T1** / 注册表一致 / 副本新鲜度 / **F1 迁移动检对账：JS 与 MoonBit 两份实现逐 finding 逐 hit 一致** / **宿主矩阵生成器（expo / rnw / webview，32 项）** / **生成物自查：根样式 `page()` 与根上的滚动容器（迁移移不过来的两块，13 项）** / **F1 新规则 `click.on-view`（诱饵 + 两侧对账，13 项）** / **按下态组装顺序（`press`：常态/hover 三段先后，含两组证伪，10 项）** / **样式源侧账本（每条源声明一个桶 + 零调用兜底，含证伪，21 项）** / **样式键的平台矩阵（库能产出的键 vs 原生 RN 的登记表，含证伪，8 项）** / **机器可读迁移事实（`migration.generated.json` 的 `facts` 块与重算一致，含证伪，5 项）** / **画布通道（canvas 试金石：指令→树→真 Skia 回放，含两组变换对账，35 项）** / **样式层再生成同步（`regen --styles`，含证伪）** / **观感缺口扫描（motion-gap，含证伪）**）
 bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端 3 项（需要 Metro + 后端）
 python3 tools/verify_android.py       # 真机 27 项（当前 25/27，两条挂在既有问题上，见 docs/STATUS.md §2.2/§4-6；需要模拟器 + APK）
 ```
@@ -58,8 +58,9 @@ moon ide peek-def <symbol>        # 定义 + 上下文
 | "`moon build` 的 JS 产物路径可以写死" | ⚠️ **不能**：它取决于**模块在构建根里的身份** —— 工作区成员是 `_build/js/<profile>/build/<作者>/<模块>/<模块>.js`，独立模块（空目录里 `moon new`）是平铺的 `_build/js/<profile>/build/<模块>.js`。所以搬运一律走 `moobile-host build`（**发现**产物），别写死 `cp`（实测见 FINDINGS 的 E 轨道补记） |
 | "`files` 白名单里写了就一定会发出去" | ⚠️ **`.gitignore` 是例外**：`npm pack` 永远不打它（即使列了 `template/`）→ 所以 `files` 里必须单独列 `template/.gitignore`。⚠️ **但列了也不够**（2026-09-21 实测）：`npm install` 解包时会把包里的 `.gitignore` **改名成 `.npmignore`**，所以用户 `init` 出来的项目**还是没有 `.gitignore`** —— 这条我们这边复现不出来，只有"真打包 + 真安装 + 用装好的 CLI 生成"才看得见（`tools/package_check.mjs`，发布前必跑）。收口在 `lib/init.js`：它**永远写出 `.gitignore`** |
 | "web 上验过 = 真机也能跑" | ❌ **手势通道上三次栽在这条**（详见 `docs/FINDINGS.md` 的手势边界补记）：① Android 的 `onPanResponderGrant` 会被 RN **投机调用**（拿它的布尔返回值当判断，被拒时那个 `grant` 已经跑过了）—— web 宿主只在允许转移时才调，所以浏览器上**看不见**；② 原生的 `locationX/locationY` 是"手指底下**最深**那个 view"的、而且**会中途换**，契约要的"元素内坐标"得自己量原点；③ `onShouldBlockNativeResponder` 默认 `true` 会挡住原生 `ScrollView`。**改这条通道，web 与真机两套判据都要跑** |
-| "改了 `npm/moobile-host/**` 就完了" | ⚠️ 仓库里有 **7 份** `file:` 装出来的副本。改完**先** `bash tools/refresh_host_copies.sh`（不刷新的话门会红，更糟的是**验证脚本会悄悄测旧代码** —— 真发生过，表现是"两次跑出来一模一样"） |
+| "改了 `npm/moobile-host/**` 就完了" | ⚠️ 仓库里有 **多份** `file:` 装出来的副本（2026-10-23 实测 **13** 份 —— 别抄这个数，`node tools/check_npm_fresh.mjs` 自己会数）。改完**先** `bash tools/refresh_host_copies.sh`（不刷新的话门会红，更糟的是**验证脚本会悄悄测旧代码** —— 真发生过，表现是"两次跑出来一模一样"） |
 | "本机全绿 = CI 会绿" | ❌ **CI 每次运行都是一个新鲜克隆**：没有 `vendor/`（gitignore 的生成物）、没有各应用的 `node_modules`、没有 `_build`。所以本机绿**不构成**证据 —— CI 的判据是"新鲜克隆 + 按文档的配方"。实测：`.github/workflows/ci.yml` 漏了 `vendor_sync.sh --apply` 这一步，于是从落地起**永远不可能绿**（详见 `docs/FINDINGS.md` 的 CI 补记）。另：公开仓库的 **job log 走 API 要认证**（403）—— 但 **annotation 不用**，`python3 tools/ci_status.py <sha>` 就是读它的 |
+| "RN 的 `transform` 数组一项可以写多个键" | ❌ **RN Skia 只读每项的**_第一个键_ （`processTransform3d` 里的 `Object.keys(val)[0]`）⇒ `{translateX, translateY}` **只平移 x**、`{scaleX, scaleY}` **只缩放 x**，第二个键**静默作废**。实测代价：罗盘的 `scale(k,k)` 只缩了 x ⇒ **正圆画成横扁的椭圆**（a/b = k = 0.512），而旋转那段的 `translate(cx,cy)` 只移 x ⇒ 内外圈对不上。⇒ 变换一律**每项一个键**；判据在 `examples/apps/canvas-spike/host/verify.mjs`（已进离线全集）。见 `docs/FINDINGS.md` 第二十三轮 |
 | "同步逻辑里 id 随便生成" | ⚠️ 本地新建必须是**负 id**（"服务器还不知道"的标记）。曾经用 `MIN(id)-1` 算成正 id → 被当成"服务器已有的行"去 PATCH → 404 |
 
 ## 4. 干活时的习惯
