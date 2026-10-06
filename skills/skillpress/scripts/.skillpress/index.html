@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>moobile · SKILL</title>
+    <!-- 空 data: 图标 —— 省掉浏览器那条 favicon 404，判据里"控制台不许有 error"才干净 -->
+    <link rel="icon" href="data:," />
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      /* ⚠️ `#root` 必须是 flex 容器（不只是「有高度」）：原生 RN 里"根视图 = 屏幕大小"是内置前提，搬进浏览器要手工补这一步。
+         漏了它：应用根是弹性项（flex:1），块盒里没有可分配的 flex 空间 ⇒ 长到内容高 ⇒
+         滚的是整个页面、顶栏跟着滚出去（实测数据见 PLAN.md / 宿主模板的注释）。 */
+      #root {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- RN 的根节点：`AppRegistry.runApplication({ rootTag })` 挂的就是它 -->
+    <div id="root"></div>
+    <script src="./bundle.js"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+// 站点内容包 —— **生成物**（`XiLaiTL/skillpress` 的引擎产出：`cmd/skillpress gen-file <内容根>`）。
+//
+// 只有数据（`Home` / `Section` / `Doc` / `Kid` / `Block` / `Span`）与两个入口
+// （`home()` 官网首页、`skills()` 文档区），没有任何渲染逻辑 ——
+// 渲染在包 `XiLaiTL/skillpress/shell` 里。这样"内容"与"怎么画"分开：
+// 换一个投影（比如以后的静态 HTML 预览、`--check` 的 diff 展示）不用动渲染代码。
+//
+// ⚠️ **P6 起类型不在这个包里**：它们在 `@shell`（`shell/types.mbt` 是唯一声明处），
+//    所以生成物里的每个构造器都带 `@shell.` 前缀 —— 这个包因此必须 import `shell`。
+//    （裸 `Txt(...)` 在这里编不过；为什么，见引擎里 `engine/content/emit.mbt` 的 `REC` 注释。）
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/skillpress/shell" @shell,
+}

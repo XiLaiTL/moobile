@@ -1,0 +1,25 @@
+{
+  "name": "skillpress-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "skillpress 的站点**实例**：一个「用 skillpress」的 MoonBit 工程 —— 内容源是同一份仓库里的 skills/**",
+  "scripts": {
+    "press": "node \"${SKILLPRESS_ENGINE:-../../../../../skillpress}\"/tools/press.mjs",
+    "press:check": "node \"${SKILLPRESS_ENGINE:-../../../../../skillpress}\"/tools/press.mjs --check",
+    "build": "moon build --target js && moobile-host build && node build-web.mjs",
+    "bundle": "node build-web.mjs",
+    "serve": "node serve-web.mjs",
+    "verify": "node verify.mjs",
+    "regen": "moobile-host regen"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "moobile-host": "file:../../../../../npm/moobile-host",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native-web": "^0.21.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

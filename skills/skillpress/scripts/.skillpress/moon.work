@@ -1,0 +1,10 @@
+// 工作区：把**站点实例**与**引擎包**连起来，让实例直接吃本地源码（未发布也能编）。
+//
+// 成员路径是**相对**的 —— 与这个工程里其它跨仓库引用同一套约定
+// （`package.json` 的 `SKILLPRESS_ENGINE:-../../../../../skillpress`、
+//  `verify.mjs` 的 `../../../skillpress/lib/verify-site.mjs`）：
+// 前提是 `interest/skillpress` 与 `interest/moobile` 是**兄弟**目录。
+members = [
+  ".",
+  "../../../../../skillpress",
+]
