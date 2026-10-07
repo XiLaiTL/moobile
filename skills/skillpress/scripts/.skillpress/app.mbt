@@ -13,5 +13,7 @@ pub fn app() -> @moobile.JsValue {
     home: @content.home(),
     docs: @content.skills(),
     find_page: @content.find_page,
+    // 页脚要交代的出处（许可 / 生成时间 / 内容根指纹）—— 见 `shell/types.mbt` 的 `Footer`。
+    footer: @content.footer(),
   })
 }

@@ -1,0 +1,58 @@
+# llms.txt
+
+> 给 Agent 的整站索引：每一份 skill 一段，`原文` 就是它的路径（逐字节等于内容源那份文件）。
+
+## 首页（skillpress —— 把一堆 skill 印成一个站点）
+- 原文: skills/skillpress/WEBSITE.md
+
+## moobile 应用开发：从零一个应用、加一个页面 (moobile-app-development)
+- 用 moobile 写应用侧代码（不改库）的入口：TEA 四件套 + 单导出 app()、首帧入口、@html DSL…
+- 原文: skills/moobile-app-development/SKILL.md
+- 事件与订阅：要"真实值"就得挑对通道：skills/moobile-app-development/references/events-and-subs.md
+- 宿主侧接入、产物搬运与能力边界：skills/moobile-app-development/references/host-and-capabilities.md
+- 页面、滚动容器与长列表：skills/moobile-app-development/references/pages-and-lists.md
+- 应用骨架：模块、出口名字、首帧入口、update 是纯的：skills/moobile-app-development/references/structure.md
+- 样式：唯一通道是 @style，没有 CSS：skills/moobile-app-development/references/styles.md
+
+## moobile-custom-component —— 开发你自己的组件 (moobile-custom-component)
+- 给 moobile 写一个库里没有的组件：在宿主侧实现一个 React 组件、用 registerLibrary 注册…
+- 原文: skills/moobile-custom-component/SKILL.md
+- 事件与 children：两条最容易白干的通道：skills/moobile-custom-component/references/events-and-children.md
+- 身份、缺参数的处置与写完自查：skills/moobile-custom-component/references/identity-and-selfcheck.md
+- 注册：一次调用、两种形状，以及顺序与幂等：skills/moobile-custom-component/references/registration.md
+
+## moobile 库开发 (moobile-library-development)
+- 在 moobile 仓库里改库本体的操作规程：一条能力该进库 / 生成器 / 应用的三条判据、改动与必须跑的验证之间的…
+- 原文: skills/moobile-library-development/SKILL.md
+- 一条能力该写在哪：库 / 生成器 / 应用：skills/moobile-library-development/references/capability-levels.md
+- 改完必须跑什么（隐藏耦合）：skills/moobile-library-development/references/gates-coupling.md
+- 发版顺序与禁区：skills/moobile-library-development/references/release-and-rules.md
+- vendor fork、宿主包与生成物：skills/moobile-library-development/references/vendor-host-and-generated.md
+- 写东西的规矩与工具链：skills/moobile-library-development/references/writing-and-tooling.md
+
+## 从既有 rabbita 项目迁移到 moobile（A6） (moobile-migrate-from-rabbita)
+- 把一份既有的 rabbita（MoonBit TEA）项目搬成 moobile 项目的作业规程 —— 判据是「报告零遗…
+- 原文: skills/moobile-migrate-from-rabbita/SKILL.md
+- 迁移入口与三件产物：skills/moobile-migrate-from-rabbita/references/entry-and-artifacts.md
+- 迁移器自己的门，各守什么：skills/moobile-migrate-from-rabbita/references/gates.md
+- 实测教训与"未验 / 别当已支持"：skills/moobile-migrate-from-rabbita/references/lessons-and-unverified.md
+- 迁移纪律：不许自作聪明、什么许自动改、迁不过去怎么办：skills/moobile-migrate-from-rabbita/references/migration-discipline.md
+- 报告怎么读：两个区、四类去向、生成后自查：skills/moobile-migrate-from-rabbita/references/report-and-audit.md
+
+## moobile-pitfalls —— 「不报错但错」的门禁 (moobile-pitfalls)
+- moobile 里「编译过了、也渲染了，但行为或外观不对」时先看的那份门禁：最贵的六条雷与禁区；逐条清单在 refer…
+- 原文: skills/moobile-pitfalls/SKILL.md
+- 两条"通道"：第三方组件库与画布：skills/moobile-pitfalls/references/channels.md
+- 事件：点了没反应，而且什么都不说：skills/moobile-pitfalls/references/events.md
+- 平台与数据：静默给错值的那一类最贵：skills/moobile-pitfalls/references/platform.md
+- 样式：写了不报错，就是没效果：skills/moobile-pitfalls/references/styles.md
+- 标签与布局：机械迁移最先撞的几处：skills/moobile-pitfalls/references/tags-and-layout.md
+
+## moobile-react-library —— 用现成的 React / RN 组件库 (moobile-react-library)
+- 把别人已经写好的 React / React Native 组件库（antd、markdown 渲染器这类）接进 mo…
+- 原文: skills/moobile-react-library/SKILL.md
+- 机制：一条命名空间直通的窄通道：skills/moobile-react-library/references/channel.md
+- 接入顺序、过不来的通道与纪律：skills/moobile-react-library/references/integration.md
+- libgen：一份配置 + 一条命令，以及它猜不出来的三件事：skills/moobile-react-library/references/libgen.md
+- registerLibrary：一个决定，四个面：skills/moobile-react-library/references/register-library.md
+

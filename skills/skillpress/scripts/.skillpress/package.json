@@ -4,9 +4,10 @@
   "private": true,
   "description": "skillpress 的站点**实例**：一个「用 skillpress」的 MoonBit 工程 —— 内容源是同一份仓库里的 skills/**",
   "scripts": {
-    "press": "node \"${SKILLPRESS_ENGINE:-../../../../../skillpress}\"/tools/press.mjs",
-    "press:check": "node \"${SKILLPRESS_ENGINE:-../../../../../skillpress}\"/tools/press.mjs --check",
+    "press": "node engine.mjs press",
+    "press:check": "node engine.mjs press --check",
     "build": "moon build --target js && moobile-host build && node build-web.mjs",
+    "build:dev": "moon build --target js && moobile-host build && node build-web.mjs --dev",
     "bundle": "node build-web.mjs",
     "serve": "node serve-web.mjs",
     "verify": "node verify.mjs",

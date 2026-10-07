@@ -6,6 +6,12 @@
 //
 // ⚠️ 路径穿越要挡住：`path.resolve` 之后必须仍在 `dist/` 里（不然 `GET /../package.json`
 //    就能读到工程里的任何文件）。
+//
+// ⚠️⚠️ **调 `createStaticServer(<目录>)` 时传绝对路径**（本仓实测踩过两次，两次的表现都是
+//    一片 404 "not found"，而服务是好的）：
+//      · 传相对路径（`'./dist'`）：那条防穿越的检查按 cwd 与解析结果比，对不上就一律 404；
+//      · 传**混合分隔符**（`app + '/dist'`，Windows 上 `app` 是反斜杠）：同样对不上。
+//    ⇒ 用 `path.join(...)` / `path.resolve(...)` 拼，别用字符串拼。
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';

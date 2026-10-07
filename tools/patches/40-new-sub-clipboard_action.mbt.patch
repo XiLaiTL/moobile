@@ -1,0 +1,92 @@
+--- /dev/null
++++ b/sub/clipboard_action.mbt
+@@ -0,0 +1,89 @@
++// vendor/rabbita/sub/clipboard_action.mbt —— 「把一段文字写进剪贴板」：**动作型**能力的又一条。
++//
++// ## 为什么放在 `sub/`（与 `url_action.mbt` 同一个理由）
++//
++// 形状属于"能力通道"（`invoke` 那一类），但**实现**要用 `@dom`，而 `cmd/moon.pkg` 没有 import `dom`；
++// `sub` 本来就把 `dom` + `cmd` 都 import 了，而且它的职责正是"运行时与宿主之间那层"。
++//
++// ## 为什么不用 `vendor/rabbita/clipboard` 那个包（它就在仓里）
++//
++// 那个包的 `copy(item)` 走的是 **`op` → 宿主实现**那条路。本仓实测过：`op` 那条通道
++// **在宿主侧没有实现**（`@nav.push_url` 就是这样静默 no-op 的；见 `url_action.mbt` 的文件头）。
++// 更直接的证据：**它在根上没有转发包**（`ls` 一下就知道）⇒ 消费者 import 不到它。
++// ⇒ 这一条按"能力通道 + DOM 回退"重做，与 `url.push` / `node.scrollTo` 同形。
++//
++// ## ⚠️ 这条动作**不承诺成功**（与其它动作不一样，写在最显眼处）
++//
++// `navigator.clipboard.writeText()` 返回 **Promise**，而且**可能被拒**（非安全上下文、
++// 权限被拒、页面没焦点）。而 `@cmd` 是个同步返回值的地方，没有"等它回执"的位置
++// ⇒ 本实现**只承诺"试过了"**，失败**打到控制台**（用 `console.error`，不静默），
++// **不 abort**（"没权限"不是"通道不通"，炸掉整个应用是错的取舍）。
++// ⚠️ 想要真回执（成功/失败回到 Model）得等宿主能力登记 `clipboard.write` 的**回包**——
++// 那时这条 ① 分支就有意义了（今天没有任何宿主登记它）。
++//
++// ## 取值顺序（与 `url_action` / `node` 那两套同一套）
++//
++// ① **宿主动作优先**：`clipboard` 能力的 `invoke("write", text)`；
++// ② **有 DOM 就自己来**：`navigator.clipboard.writeText(text)`（受 `host_has_dom()` 保护 ——
++//    RN 上 `navigator` 不存在，直接读会抛）；
++// ③ **两头都没有 ⇒ `abort`**（与 `on_scroll` 同一条取舍：宁可在开发期炸一次）。
++
++///|
++/// 把 `text` 写进剪贴板。
++///
++/// **平台**：Web ✅（`navigator.clipboard`，需要安全上下文 —— `http://127.0.0.1` 与 `file://`
++/// 在本仓的判据里都算）· RN **未实现** ⇒ `abort`（要接得让宿主登记 `clipboard` 能力的 `invoke`）。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
++pub fn copy_text(text : String) -> @cmd.Cmd {
++  @cmd.custom_cmd(fn(_sched) {
++    let mut done = false
++    // ① 宿主动作优先（RN 侧将来登记；`cap.invoke` 不是函数 ⇒ `None` = **没实现**）
++    match @cmd.host_capability("clipboard") {
++      Some(cap) =>
++        match cap.invoke("write", text) {
++          Some(_) => done = true
++          None => ()
++        }
++      None => ()
++    }
++    // ② 有 DOM 就自己来（Web）
++    if !done && @cmd.host_has_dom() {
++      write_clipboard_ffi(@dom.window().navigator().clipboard(), text)
++      done = true
++    }
++    // ③ 两头都没有：不静默失败
++    if !done {
++      abort(
++        "moobile/sub: `copy_text` 写不了剪贴板 —— 宿主没登记 `clipboard` 能力，运行时也没有 DOM。\n" +
++        "  Web 需要 `host_has_dom()`；RN 需要宿主登记 `clipboard.invoke(\"write\", text)`。",
++      )
++    }
++  })
++}
++
++///|
++/// 真正去写的那一步 —— **一发既走**（见文件头"不承诺成功"那一节）。
++///
++/// 为什么自己写这个 extern 而不用 `@dom.Clipboard::write_text`（它返回 `@js.Promise`）：
++/// 本仓钉的 `@js.Promise` 公开面只有 `wait`（`async fn`）与 `from_async`，
++/// **没有 `then` / `catch`** ⇒ 在这里拿不到"失败"这个分支。所以退回一层：
++/// 在 JS 里挂 `.catch(...)` 把失败**打到控制台**，而不是让它变成一个没人看的 rejected promise。
++extern "js" fn write_clipboard_ffi(clip : @dom.Clipboard, text : String) -> Unit =
++  #| (clip, text) => {
++  #|   const w = clip && clip.writeText;
++  #|   if (typeof w !== "function") {
++  #|     console.error(
++  #|       "moobile/sub: clipboard.writeText 不可用（需要安全上下文或浏览器支持）—— 这一条**没有**写成。",
++  #|     );
++  #|     return;
++  #|   }
++  #|   try {
++  #|     const p = w.call(clip, text);
++  #|     if (p && typeof p.catch === "function") {
++  #|       p.catch((e) => console.error("moobile/sub: clipboard.writeText 被拒：", e));
++  #|     }
++  #|   } catch (e) {
++  #|     console.error("moobile/sub: clipboard.writeText 抛了：", e);
++  #|   }
++  #| }

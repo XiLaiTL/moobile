@@ -45,6 +45,7 @@ pub fn skills() -> Array[@shell.Doc] {
   [
     {
       slug: "moobile-app-development",
+      title: "moobile 应用开发：从零一个应用、加一个页面",
       desc: "用 moobile 写应用侧代码（不改库）的入口：TEA 四件套 + 单导出 app()、首帧入口、@html DSL…",
       full_desc: "用 moobile 写应用侧代码（不改库）的入口：TEA 四件套 + 单导出 app()、首帧入口、@html DSL、@style 是类型化样式的唯一通道、事件真实值走哪条通道、Cmd/Sub、加页面与滚动容器、长列表 memo 的键契约、宿主侧最小接入与产物搬运命令。",
       when: "要新建一个 moobile 应用、给已有 moobile 应用加页面/改视图/加样式、用 memo_list 写长列表，或第一次把它接到 Expo 宿主上（init / build / 在浏览器或模拟器里跑起来）时用。改库本身、接第三方 React 组件库、环境与门红了排错、从 rabbita 迁移——用别的 skill。",
@@ -57,7 +58,7 @@ pub fn skills() -> Array[@shell.Doc] {
         @shell.Table([[@shell.Txt("线")], [@shell.Txt("错了会怎样")], [@shell.Txt("细则")]], [[[@shell.Txt("应用必须是"), @shell.Bold("独立模块"), @shell.Txt("（自己的 "), @shell.Code("moon.mod"), @shell.Txt("）")], [@shell.Txt("塞进库的 "), @shell.Code("moon.mod"), @shell.Txt(" 等于让所有使用者下载你的依赖")], [@shell.Code("references/structure.md")]], [[@shell.Txt("出口名 "), @shell.Code("app"), @shell.Txt(" 必须在 "), @shell.Code("moon.pkg"), @shell.Txt(" 的 "), @shell.Code("exports"), @shell.Txt("、"), @shell.Code("App.js"), @shell.Txt(" 的 import 三处一致")], [@shell.Bold("编译器不报"), @shell.Txt("，宿主挂不起来")], [@shell.Code("references/structure.md")]], [[@shell.Txt("样式只能走 "), @shell.Code("Attrs::styles"), @shell.Txt("，没有 CSS")], [@shell.Code("class="), @shell.Txt(" / "), @shell.Code("style=\"…\""), @shell.Txt(" 能写、能编译、"), @shell.Bold("在 RN 上没有任何效果")], [@shell.Code("references/styles.md")]], [[@shell.Txt("整页要包一层 "), @shell.Code("scroll"), @shell.Txt(" 伪标签")], [@shell.Txt("手机上超过一屏够不着，"), @shell.Bold("浏览器里完全看不出来")], [@shell.Code("references/pages-and-lists.md")]], [[@shell.Txt("首帧入口不能塞进模块初始化，也不能塞进 "), @shell.Code("view")], [@shell.Txt("那时宿主还没装 "), @shell.Code("MOBILE_HOST"), @shell.Txt("；"), @shell.Code("view"), @shell.Txt(" 每帧都跑")], [@shell.Code("references/structure.md")]]]),
         @shell.H2([@shell.Txt("三、骨架与出口")]),
         @shell.P([@shell.Txt("文件构成、"), @shell.Code("moon.pkg"), @shell.Txt(" 要写什么、import 路径照谁抄 → "), @shell.Code("references/structure.md"), @shell.Txt("。")]),
-        @shell.Code("moonbit", "pub fn app() -> @moobile.JsValue {\n  @moobile.handlers(model=initial(), update~, view~, subscriptions~)\n}", [("pub", 1), (" fn app", 0), ("()", 9), (" ", 0), ("->", 9), (" ", 0), ("@moobile", 7), (".JsValue ", 0), ("{", 9), ("\n  ", 0), ("@moobile", 7), (".handlers", 0), ("(", 9), ("model", 0), ("=", 9), ("initial", 8), ("(),", 9), (" ", 0), ("update", 5), ("~", 0), (",", 9), (" ", 0), ("view", 5), ("~", 0), (",", 9), (" ", 0), ("subscriptions", 5), ("~", 0), (")", 9), ("\n", 0), ("}", 9)]),
+        @shell.Code("moonbit", "pub fn app() -> @moobile.JsValue {\n  @moobile.handlers(model=initial(), update~, view~, subscriptions~)\n}", [("pub", 5), (" fn app", 0), ("()", 9), (" ", 0), ("->", 9), (" ", 0), ("@moobile", 7), (".JsValue", 5), (" ", 0), ("{", 9), ("\n  ", 0), ("@moobile.handlers", 5), ("(", 9), ("model", 8), ("=", 9), ("initial", 8), ("(),", 9), (" ", 0), ("update", 5), ("~", 0), (",", 9), (" ", 0), ("view", 5), ("~", 0), (",", 9), (" ", 0), ("subscriptions", 5), ("~", 0), (")", 9), ("\n", 0), ("}", 9)]),
         @shell.Ul([(0, "", [@shell.Txt("首帧"), @shell.Bold("之前"), @shell.Txt("要干的事（读本地库、发第一个请求）走 "), @shell.Code("handlers_with_init(init=..., update~, view~)"), @shell.Txt("：")])]),
         @shell.P([@shell.Code("init"), @shell.Txt(" 返回的命令由运行时排队执行，不阻塞挂载。")]),
         @shell.Ul([(0, "", [@shell.Txt("⚠️ 那个初始化函数"), @shell.Bold("不能叫 `init`"), @shell.Txt("（MoonBit 的保留形状，必须无参无返回值）—— todo-app 叫 "), @shell.Code("init_app"), @shell.Txt("。")]), (0, "", [@shell.Code("update"), @shell.Txt(" 是"), @shell.Bold("纯"), @shell.Txt("的：写库、发请求都返回 "), @shell.Code("Cmd"), @shell.Txt("，结果作为一条 "), @shell.Code("Msg"), @shell.Txt(" 回来；顺序型副作用用")])]),
@@ -148,7 +149,7 @@ pub fn skills() -> Array[@shell.Doc] {
             @shell.Code("moonbit", "@html.node(\"scroll\", attrs(@style.Style::new().flex(1.0)), [ r1_view() ])", [("@html", 7), (".node", 6), ("(", 9), ("\"scroll\"", 2), (",", 9), (" ", 0), ("attrs", 6), ("(", 9), ("@style.Style", 5), ("::", 9), ("new", 6), ("()", 9), (".flex", 6), ("(", 9), ("1.0", 4), (")),", 9), (" ", 0), ("[", 9), (" ", 0), ("r1_view", 6), ("()", 9), (" ", 0), ("])", 9)]),
             @shell.Ul([(0, "", [@shell.Txt("不套的话手机上超过一屏的内容用户"), @shell.Bold("够不着"), @shell.Txt("，而"), @shell.Bold("浏览器里完全看不出来"), @shell.Txt("（DOM 自己会滚）。")]), (0, "", [@shell.Txt("从别的项目迁过来的"), @shell.Bold("根样式"), @shell.Txt("同理。")])]),
             @shell.H2([@shell.Txt("三、长列表：用 "), @shell.Code("@moobile.memo_list"), @shell.Txt("，键必须"), @shell.Bold("完备")]),
-            @shell.Code("moonbit", "@html.div(\n  attrs=attrs(@style.Style::new()),\n  @moobile.memo_list(model.items, by=item_key, f=t => item_row(t, emit)),\n)", [("@html", 7), (".div", 6), ("(", 9), ("\n  attrs", 0), ("=", 9), ("attrs", 6), ("(", 9), ("@style.Style", 5), ("::", 9), ("new", 6), ("()),", 9), ("\n  ", 0), ("@moobile", 7), (".memo_list", 6), ("(", 9), ("model.items", 8), (",", 9), (" by", 0), ("=", 9), ("item_key", 8), (",", 9), (" f", 0), ("=", 9), ("t", 8), (" ", 0), ("=>", 9), (" item_row", 0), ("(", 9), ("t", 0), (",", 9), (" ", 0), ("emit", 8), (")),", 9), ("\n", 0), (")", 9)]),
+            @shell.Code("moonbit", "@html.div(\n  attrs=attrs(@style.Style::new()),\n  @moobile.memo_list(model.items, by=item_key, f=t => item_row(t, emit)),\n)", [("@html.div", 5), ("(", 9), ("\n  ", 0), ("attrs", 8), ("=", 9), ("attrs", 0), ("(", 9), ("@style.Style", 5), ("::", 9), ("new", 0), ("()),", 9), ("\n  ", 0), ("@moobile.memo_list", 5), ("(", 9), ("model", 8), (".items", 0), (",", 9), (" ", 0), ("by", 8), ("=", 9), ("item_key", 8), (",", 9), (" ", 0), ("f", 8), ("=", 9), ("t ", 0), ("=>", 9), (" ", 0), ("item_row", 5), ("(", 9), ("t", 8), (",", 9), (" ", 0), ("emit", 8), (")),", 9), ("\n", 0), (")", 9)]),
             @shell.Ul([(0, "", [@shell.Bold("契约"), @shell.Txt("：键相同必须蕴含\"这一行的 HTML 与 handler 等价\"。")])]),
             @shell.P([@shell.Txt("行里用到的每一个会变的东西（"), @shell.Code("id"), @shell.Txt(" / 文案 / 勾选 / handler 捕获的值）都要进键。")]),
             @shell.Ul([(0, "", [@shell.Txt("三种踩法：")])]),
@@ -169,7 +170,7 @@ pub fn skills() -> Array[@shell.Doc] {
             @shell.P([@shell.Txt("分工与理由见 "), @shell.Code("examples/apps/template/README.md"), @shell.Txt("。")]),
             @shell.Ul([(0, "", [@shell.Bold("应用必须是独立模块"), @shell.Txt("（自己的 "), @shell.Code("moon.mod"), @shell.Txt("）：库的 "), @shell.Code("moon.mod"), @shell.Txt(" 随发布包发出去，应用塞进去等于让所有使用者下载你的依赖。")]), (0, "", [@shell.Txt("import 路径"), @shell.Bold("照抄模板"), @shell.Txt("：库本体 + "), @shell.Code("style"), @shell.Txt(" + "), @shell.Code("vendor/rabbita/{html,cmd,sub}"), @shell.Txt("。⚠️ 模板注释里那句\"写 "), @shell.Code("XiLaiTL/moobile/html"), @shell.Txt(" 是"), @shell.Bold("错的"), @shell.Txt("\""), @shell.Bold("已过期"), @shell.Txt(" —— 根上的短路径（"), @shell.Code("README.md"), @shell.Txt(" §1.1）现在也解析得到，两条都能编。")])]),
             @shell.H2([@shell.Txt("二、出口只有一个名字："), @shell.Code("app")]),
-            @shell.Code("moonbit", "pub fn app() -> @moobile.JsValue {\n  @moobile.handlers(model=initial(), update~, view~, subscriptions~)\n}", [("pub", 1), (" fn app", 0), ("()", 9), (" ", 0), ("->", 9), (" ", 0), ("@moobile", 7), (".JsValue ", 0), ("{", 9), ("\n  ", 0), ("@moobile", 7), (".handlers", 0), ("(", 9), ("model", 0), ("=", 9), ("initial", 8), ("(),", 9), (" ", 0), ("update", 5), ("~", 0), (",", 9), (" ", 0), ("view", 5), ("~", 0), (",", 9), (" ", 0), ("subscriptions", 5), ("~", 0), (")", 9), ("\n", 0), ("}", 9)]),
+            @shell.Code("moonbit", "pub fn app() -> @moobile.JsValue {\n  @moobile.handlers(model=initial(), update~, view~, subscriptions~)\n}", [("pub", 5), (" fn app", 0), ("()", 9), (" ", 0), ("->", 9), (" ", 0), ("@moobile", 7), (".JsValue", 5), (" ", 0), ("{", 9), ("\n  ", 0), ("@moobile.handlers", 5), ("(", 9), ("model", 8), ("=", 9), ("initial", 8), ("(),", 9), (" ", 0), ("update", 5), ("~", 0), (",", 9), (" ", 0), ("view", 5), ("~", 0), (",", 9), (" ", 0), ("subscriptions", 5), ("~", 0), (")", 9), ("\n", 0), ("}", 9)]),
             @shell.Ul([(0, "", [@shell.Txt("导出名 "), @shell.Code("app"), @shell.Txt(" 必须与 "), @shell.Code("moon.pkg"), @shell.Txt(" 的 "), @shell.Code("exports"), @shell.Txt("、"), @shell.Code("App.js"), @shell.Txt(" 的 import "), @shell.Bold("三处一致"), @shell.Txt(" —— 不一致编译器不报，宿主挂不起来。")])]),
             @shell.H2([@shell.Txt("三、首帧之前要干的事："), @shell.Code("handlers_with_init")]),
             @shell.Ul([(0, "", [@shell.Txt("读本地库、发第一个请求走 "), @shell.Code("handlers_with_init(init=..., update~, view~)"), @shell.Txt("："), @shell.Code("init"), @shell.Txt(" 返回的命令由运行时排队执行，"), @shell.Bold("不阻塞挂载"), @shell.Txt("（范例 "), @shell.Code("examples/apps/todo-app/main.mbt"), @shell.Txt("）。")]), (0, "", [@shell.Bold("别塞进模块初始化"), @shell.Txt("（那时宿主还没装 "), @shell.Code("MOBILE_HOST"), @shell.Txt("），也"), @shell.Bold("别塞进 `view`"), @shell.Txt("（"), @shell.Code("view"), @shell.Txt(" 每帧都跑）。")]), (0, "", [@shell.Txt("⚠️ 那个初始化函数"), @shell.Bold("不能叫 `init`"), @shell.Txt(" —— MoonBit 里 "), @shell.Code("init"), @shell.Txt(" 是保留形状（必须无参无返回值），报错是")])]),
@@ -209,6 +210,7 @@ pub fn skills() -> Array[@shell.Doc] {
     },
     {
       slug: "moobile-custom-component",
+      title: "moobile-custom-component —— 开发你自己的组件",
       desc: "给 moobile 写一个库里没有的组件：在宿主侧实现一个 React 组件、用 registerLibrary 注册…",
       full_desc: "给 moobile 写一个库里没有的组件：在宿主侧实现一个 React 组件、用 registerLibrary 注册成「命名空间:组件名」，再在 MoonBit 视图里当普通标签用。",
       when: "你要给 moobile 加一个**库里没有的**组件（自家原生视图、要包一层的宿主侧组件、画布那类后端、或一个现成 RN 组件但它要裸字符串数据），需要写宿主侧 React 实现并注册进 `MOBILE_HOST.components`，然后在 MoonBit 里用「命名空间:组件名」调用时；也用于审一份手写的 `registerLibrary` 注册代码（顺序、`platforms` 闸门、`events` 落点、`jsonProps` 白名单）。",
@@ -349,6 +351,7 @@ pub fn skills() -> Array[@shell.Doc] {
     },
     {
       slug: "moobile-library-development",
+      title: "moobile 库开发",
       desc: "在 moobile 仓库里改库本体的操作规程：一条能力该进库 / 生成器 / 应用的三条判据、改动与必须跑的验证之间的…",
       full_desc: "在 moobile 仓库里改库本体的操作规程：一条能力该进库 / 生成器 / 应用的三条判据、改动与必须跑的验证之间的隐藏耦合、vendor fork 与宿主包的纪律、发版顺序与禁区。",
       when: "任务落在 moobile 仓库内且要求「改这个库」时加载：加能力、修 bug、提 PR、动 `vendor/rabbita` fork、改 `npm/moobile-host` 宿主包、改生成器、发版。用库写应用（不改库）时不要用这份——那用 `moobile-app-development`。",
@@ -497,6 +500,7 @@ pub fn skills() -> Array[@shell.Doc] {
     },
     {
       slug: "moobile-migrate-from-rabbita",
+      title: "从既有 rabbita 项目迁移到 moobile（A6）",
       desc: "把一份既有的 rabbita（MoonBit TEA）项目搬成 moobile 项目的作业规程 —— 判据是「报告零遗…",
       full_desc: "把一份既有的 rabbita（MoonBit TEA）项目搬成 moobile 项目的作业规程 —— 判据是「报告零遗漏」，不是「自动改对了多少」。",
       when: "用户说\"把老项目 / rabbita 项目搬到 moobile\"\"跑 `create --from-rabbita`\"\"MIGRATION.md 怎么读\"\"迁移后样式没了 / 点击点不动\"\"重跑 create 会不会冲掉我的改动\"时加载；也用于判断某处改写该自动做还是必须留给人。要改库本身、要接第三方 React 组件库、要从零新建应用——用别的 skill。",
@@ -683,6 +687,7 @@ pub fn skills() -> Array[@shell.Doc] {
     },
     {
       slug: "moobile-pitfalls",
+      title: "moobile-pitfalls —— 「不报错但错」的门禁",
       desc: "moobile 里「编译过了、也渲染了，但行为或外观不对」时先看的那份门禁：最贵的六条雷与禁区；逐条清单在 refer…",
       full_desc: "moobile 里「编译过了、也渲染了，但行为或外观不对」时先看的那份门禁：最贵的六条雷与禁区；逐条清单在 references/。",
       when: "你要写、改或审 moobile 的视图 / 样式 / 宿主 / 组件库接入代码，或者撞上「编过了、界面也出来了，但行为或外观不对」的时候；也用于动手前自查，避免重踩已记录的坑。",
@@ -762,6 +767,7 @@ pub fn skills() -> Array[@shell.Doc] {
     },
     {
       slug: "moobile-react-library",
+      title: "moobile-react-library —— 用现成的 React / RN 组件库",
       desc: "把别人已经写好的 React / React Native 组件库（antd、markdown 渲染器这类）接进 mo…",
       full_desc: "把别人已经写好的 React / React Native 组件库（antd、markdown 渲染器这类）接进 moobile 应用 —— libgen 一条命令与它的四份产物、`--check` 判据、registerLibrary 的四个面，以及三处「类型定义在撒谎」必须由人声明（`content` / `defaultExports` / `platforms`）。",
       when: "你要在 moobile 应用里用一个现成的第三方 React / RN 组件库（antd、antd-mobile、@ant-design/react-native、react-native-markdown-display…），要写 `libgen.config.json`、跑 `libgen`、接生成物，或排查「真机启动即抛」「组件渲染成空盒子」「回调不触发」时用。要自己**写**一个组件（宿主侧 React 实现 + 注册）是另一件事，用 `moobile-custom-component`。",
@@ -919,3 +925,16 @@ pub fn find_page(key : String) -> (Int, Int, Int) {
   }
   (-1, -1, -1)
 }
+
+///| 页脚要交代的出处（DESIGN-site.md §5）：许可 / 生成时间 / 内容根指纹。
+///
+/// ⚠️ 空串 = 拿不到 ⇒ 页脚那一项**不画**（不写「许可 —」这种占位）。
+///    三个字段各自为什么可能空，写在 `shell/types.mbt` 的 `Footer` 里（一处定义）。
+pub fn footer() -> @shell.Footer {
+  {
+    license: "Apache-2.0",
+    generated_at: "",   // 由宿主构建脚本注入（内容包必须逐字节可复现）
+    root_fingerprint: "dc19ed9658fad160cff26f2574278e27fdb1f60dacfd79367659e8855da59026",
+  }
+}
+

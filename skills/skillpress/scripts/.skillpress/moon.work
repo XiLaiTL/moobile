@@ -7,4 +7,10 @@
 members = [
   ".",
   "../../../../../skillpress",
+  // ⚠️ **本地 moobile 源码**（2026-10-07 加）：站点的界面（`shell/`）用了 moobile 的
+  //    节点寻址 / 容器级滚动订阅 / `Style::transform` / `copy_text`，而那几个 API
+  //    **还没发布** —— 只吃 registry 上那份 0.5.0 会编不过（`Style has no method transform`）。
+  //    `../../../..` 就是**这个仓自己的根**（内容仓 = moobile）⇒ 内容侧改库立刻在这里生效。
+  //    等 moobile 发出带这些 API 的版本之后：抬 `moon.mod` 里的版本锚点，然后删掉这一条。
+  "../../../..",
 ]

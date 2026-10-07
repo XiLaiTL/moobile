@@ -7457,3 +7457,38 @@ React 提交 ⇒ 紧接着发滚动命令会滚到**旧内容**上。
   只有它能当信号。
 - 判词：`node_exists` 回答的是「**能确认它现在就在吗**」；RN（宿主没登记 `node` 能力）**恒 false**
   ⇒ 依赖它的重试会走到"超时后报错"那条路 —— **刻意**如此（恒假让调用方**明着失败**，而不是静默不滚）。
+
+
+## 补记（内容仓那份**站点实例**落后了三处，2026-10-07 一次还清）
+
+**怎么发现的**：想在内容仓里给站点打一次 prod 产物，结果 `npm run build` 连着报三个**不同**的错，
+每修一个就露出下一个 —— 也就是说这份实例的落后是**分层**的，而且**没有任何一条门在盯它**：
+
+| # | 落后在哪 | 症状（原样） | 修法 |
+|---|---|---|---|
+| 1 | `build-web.mjs` 是**旧版**（74 行 vs 模板 109 行）—— 缺 ⑦ 的"把 `llms.txt` / `md/**` 拷进 `dist/`"与"构建戳注入" | `dist/` 里**没有** `llms.txt`、没有 `md/`，页脚那句"构建于"永远是空的 | 用模板覆盖（`template/instance/` 是真源） |
+| 2 | `content/content.generated.mbt` 是**契约升级之前**生成的（`Doc` 没有 `title` 字段） | `Record fields title are undefined for type shell.Doc` | `npm run press` 重跑（顺带把 `llms.txt` + 34 份原文也生成出来） |
+| 3 | `app.mbt` 少 `footer` 那一格 | `Record fields footer are undefined for type shell.Ctx` | 同 1，用模板覆盖（实例 `app.mbt` 只有 19 行接线） |
+
+**外加两件**（做这件事的过程里撞到的，都不是"实例落后"，是**工具本身**的问题）：
+
+1. ⚠️ **`npm run press` 在 Windows 上从来跑不通**：模板里写的是 POSIX 的参数展开
+   `"node \"${SKILLPRESS_ENGINE:-{{ENGINE_REL}}}\"/tools/press.mjs"`，而 **npm 在 Windows 上用
+   `cmd.exe` 跑 script** ⇒ 那串东西原样传给 node，报
+   `Cannot find module '…\skillpress}	ools\press.mjs'`（注意那个多余的 `}`）。
+   ⇒ 修法是把"找程序根"放进 **Node**：新增 `engine.mjs`（`SKILLPRESS_ENGINE` 仍优先，
+   否则用生成时算好的相对路径；找不到**直接报错不猜**），`package.json` 改成 `node engine.mjs press`。
+2. ⚠️ 这份实例的 `moon.work` **只连了程序根、没连本地 moobile** ⇒ 站点界面用了**未发布**的 API
+   （节点寻址 / 容器滚动订阅 / `Style::transform` / `copy_text`）时会编不过。
+   加一条 `../../../..`（就是这个仓自己的根）之后，**内容侧改库立刻在站点生效** —— 这也是本仓
+   一贯的取舍：开发期吃本地源码，等发布之后再抬版本锚点、删掉那一行。
+
+**读数**（内容仓实例，2026-10-07）：
+- `npm run build` ⇒ **prod 档**：`dist/bundle.js 829 KB · moobile.js 1392 KB · sha256 fae25cb027de4135…`；
+- `dist/index.html` 里 `generatedAt:"2026-10-07 19:48"`（构建戳**在**了）；
+- 静态服务取一次：`/index.html` → **200** · `/llms.txt` → **200** · `/md/moobile-app-development/SKILL.md` → **200**；
+- `npm run press:check` ⇒ **三处一致**（内容包 / `llms.txt` 58 行 / `md/` 34 份**逐字节相同**）+ 同源自证（31 个 title 不漏）。
+
+⚠️ **为什么没有门盯住这份实例**（值得记）：站点实例在**内容仓**里，而内容仓的门（`verify_all.sh`）
+   管的是库与示例；程序仓的门管的是自己那份实例。⇒ 两边都以为对方会跑它。
+   这一条本轮**只修了实例本身**，"加一条能盯住它的门"留着（要么进内容仓的门，要么进 `attach` 的自查）。

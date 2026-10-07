@@ -74,6 +74,7 @@ const PUBLIC_API = {
     // ② 它只有"滚"、没有"量"；③ 它不经能力通道（RN 无 DOM ⇒ 抛），而这组走 `node` 能力的 `invoke`。
     // ⚠️ `push` / `load` / `reload` 那几个 op 才是真没实现（落 `_ => raise Unhandled`）。
     scroll_to_node: { rn: 'host-cap', note: '**动作**：`node` 能力的 `invoke("scrollTo", {"node":"…","block":"start|center|end|nearest"})`，回包 `{"ok":bool,"why":""}`（`ok:false` = 宿主自己找不到那个节点，与"没实现"（回 null）分开）→ 没有宿主登记时**有 DOM 就自己来**（`getElementById` + `scrollIntoView`）；**两头都没有 ⇒ abort**。Web ✅（node-spike 真 Chrome 实测）· RN 待宿主登记' },
+    copy_text: { rn: 'web-only', note: '**动作**：把一段文字写进剪贴板。① 宿主能力 `clipboard` 的 `invoke("write", text)`（**今天没有任何宿主登记它**）→ ② 有 DOM 就 `navigator.clipboard.writeText`（受 `host_has_dom` 保护）→ ③ 两头都没有 ⇒ **abort**。⚠️ **与别的动作不同：它不承诺成功** —— `writeText` 返回 Promise 且**可能被拒**（非安全上下文 / 权限 / 页面没焦点），而 `@cmd` 没有"等回执"的位置 ⇒ 失败**打到控制台**（不静默）、**不 abort**（"没权限"不是"通道不通"，炸掉应用是错的取舍）。⚠️ 也不用仓里 `vendor/rabbita/clipboard` 那个包：它走 `op` 通道（宿主侧没实现）而且**根上没有转发包**' },
     node_exists: { rn: 'web-only', note: '**问"现在在不在"而不报错**（`node_rect` 找不到会 abort，那是对的；但"还没渲染出来"是正常过程，不能用报错表达）。用途：站点跨页跳锚点时**等新页面挂上**（切页与渲染之间隔着一次 React 提交）。⚠️ 判词是"**能确认它现在就在吗**"：RN（宿主没登记 `node` 能力）**恒 false** ⇒ 依赖它的重试会走到"超时后报错"那条路 —— 刻意如此，恒假会让调用方**明着失败**而不是静默不滚' },
     node_rect: { rn: 'host-cap', note: '读一次（同步）节点矩形，**视口坐标系**：`invoke("measure", {"node":"…"})` 回 `{"x","y","width","height"}` → 问不到回退 DOM（`getBoundingClientRect`）→ 两端都没有 ⇒ **None**（不猜、不给全 0）。⚠️ 节点**不在 DOM 里**会 abort（那是 bug，不是"这个平台没有"）⇒ 不能在 `initial` 里调' },
     node_scroll_top: { rn: 'host-cap', note: '读一次（同步）某个具名节点的 `scrollTop`：`invoke("scrollTop", {"node":"…"})` 回 `{"value":Double}` → 回退 DOM（`element.scrollTop`）→ 否则 **None**。用途：站点正文栏那种**自己滚**的容器 —— `on_scroll` 报的是**文档级**滚动，语义不同。⚠️ **只有一次性读，订阅还没做**' },
@@ -137,6 +138,9 @@ const DOM_INVENTORY = {
     'window': { cls: 'raw', rnFails: 'ok', note: '接收者本身 —— RN 做了 `global.window = global`，拿得到' },
     'window.set_interval': { cls: 'ok', rnFails: 'ok', note: 'every（globalThis.setInterval）' },
     // 节点滚动订阅的"补一次初始值"用的一发定时器（2026-10-07）：RN 上也是 globalThis 的两个方法。
+    // 剪贴板（2026-10-07，`sub/clipboard_action.mbt`）：`copy_text` 的 Web 那条路。
+    // RN 上 `navigator` 不存在 ⇒ 会抛；但那条路**受 `host_has_dom()` 保护**，RN 上压根走不到。
+    'window.clipboard': { cls: 'guard', rnFails: 'throw', note: '`sub.copy_text` 的 Web 实现（`navigator.clipboard.writeText`）：受 host_has_dom 保护；RN 且宿主没登记 `clipboard.invoke("write")` ⇒ **abort**（不静默）。⚠️ 写失败（被拒/没权限）只打**控制台**，不回 Model —— 见 `copy_text` 的账' },
     'window.set_timeout': { cls: 'ok', rnFails: 'ok', note: 'on_node_scroll 装载后补初始值的有界重试（globalThis.setTimeout）' },
     'window.clear_timeout': { cls: 'ok', rnFails: 'ok', note: '同上（退订时清掉待跑的那一发）' },
     'window.clear_interval': { cls: 'ok', rnFails: 'ok', note: 'every' },
