@@ -28,6 +28,10 @@
 /// 三个小节的 id（与 `view` 里写下的、以及驱动脚本里读的**同一串**）。
 /// ⚠️ 这里**不能用 `const`**：`Array[String]` 不是合法常量类型
 ///（常量只允许不可变基本类型 —— 2026-10-07 实测报 "Array[String] is not a valid constant type"）。
+///| 外链的地址（试金石用一条固定的：驱动脚本断言"记录器收到的就是这一条"）。
+const EXT_URL : String = "https://example.com/moobile-ext-link"
+
+///|
 fn sections() -> Array[String] {
   ["sec-1", "sec-2", "sec-3"]
 }
@@ -72,6 +76,10 @@ priv enum Msg {
   ReadTopNow
   /// **订阅**推上来的一次滚动（`@sub.on_node_scroll("pane", …)`，载荷 = 当前 scrollTop）
   ScrollEv(Double)
+  /// 点「OPEN-EXT」：走 `@sub.open_url`（**动作型**：外链开新窗口）。
+  /// ⚠️ 站点那边今天**内容里没有外链** ⇒ 这条分支在站点上**没有端到端读数**，
+  ///    所以它的读数落在这个试金石上（驱动脚本把 `window.open` 换成记录器）。
+  OpenExt
 }
 
 ///|
@@ -120,6 +128,7 @@ fn update(m : Model, msg : Msg, _emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
       { ..m, n_measure: m.n_measure + 1, rect: rect_line(node, @sub.node_rect(node)), rect_node: node, note: "量了 \{node}" },
       @cmd.none,
     )
+    OpenExt => (m, @sub.open_url(EXT_URL))
     ReadTop => (
       { ..m, n_top: m.n_top + 1, top: num(@sub.node_scroll_top("pane")) },
       @cmd.none,
@@ -232,7 +241,11 @@ fn view(m : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.div(attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Row)), measures),
       @html.div(
         attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Row)),
-        [button("read-top", "READ-TOP", ReadTopNow, emit)],
+        [
+          button("read-top", "READ-TOP", ReadTopNow, emit),
+          // 外链动作（`@sub.open_url`）：点了应当**调一次 window.open**、载荷是 EXT_URL
+          button("open-ext", "OPEN-EXT", OpenExt, emit),
+        ],
       ),
       @html.div(attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Column)), rows),
       // ── 变换（`Style::transform`）：**顺序敏感**那一条要在浏览器里证 ----

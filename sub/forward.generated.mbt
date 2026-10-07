@@ -10,4 +10,4 @@
 // 转发 XiLaiTL/moobile/vendor/rabbita/sub 的公开面。
 pub using @vendor {type NodeRect, type RunningSub, type Scope, type Sub, type SubLoader, batch, copy_text, current_url, current_viewport, custom_sub, every, node_exists}
 pub using @vendor {node_rect, node_scroll_top, none, on_animation_frame, on_key_down, on_key_up, on_mouse_move, on_node_scroll, on_resize, on_scroll, on_url_changed, on_url_request}
-pub using @vendor {on_visibility_change, push_url, replace_url, scroll_to_node}
+pub using @vendor {on_visibility_change, open_url, push_url, replace_url, scroll_to_node}

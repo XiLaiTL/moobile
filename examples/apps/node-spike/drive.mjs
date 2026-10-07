@@ -355,6 +355,23 @@ async function main() {
   say(close(C, [0, 1, -1, 0, 0, 0], 0.01), `rotate(90deg) ⇒ matrix(0,1,-1,0,0,0)（实测 ${mats && mats['tf-c']}）`);
   rows.push(['⑥ Style::transform', '真浏览器', `a=${JSON.stringify(A)}`, `b=${JSON.stringify(B)}`]);
 
+  // ── ⑦ `@sub.open_url`：外链动作（把 `window.open` 换成记录器）────────────────────
+  //
+  // ⚠️ 站点那边今天**内容里没有外链** ⇒ 这条分支在站点上**没有端到端读数**，
+  //    所以它落在这儿：断言"**调用发生了、载荷是那一条 URL**"。
+  //    （与剪贴板那条同一个口径：证的是**我们这一侧**，不是"浏览器真的开了个标签页"。）
+  console.log('');
+  console.log('⑦ `@sub.open_url`：点了之后 `window.open` 收到了什么');
+  await evalJs('(() => { window.__opened = []; window.open = (u, t) => { window.__opened.push({ u, t }); return {}; }; return "ok"; })()');
+  const opened = await clickById('open-ext');
+  await sleep(600);
+  const got = JSON.parse((await evalJs('JSON.stringify(window.__opened)')) || '[]');
+  say(opened !== 'missing', '点到了 OPEN-EXT 那个按钮');
+  say(got.length === 1, '**调了一次 window.open**（实测 ' + got.length + ' 次）');
+  say(got.length === 1 && got[0].u === 'https://example.com/moobile-ext-link', `载荷是那一条 URL（实测 ${JSON.stringify(got[0] && got[0].u)}）`);
+  say(got.length === 1 && got[0].t === '_blank', `开的是**新窗口**（target = ${JSON.stringify(got[0] && got[0].t)}）`);
+  rows.push(['⑦ @sub.open_url', '真鼠标', `window.open × ${got.length}`, `${got[0] ? got[0].u : '-'}`]);
+
   // ── 报告 ────────────────────────────────────────────────────────────────────
   console.log('\n───── 读数表 ─────');
   for (const r of rows) console.log('  ' + r.join('  |  '));

@@ -7492,3 +7492,48 @@ React 提交 ⇒ 紧接着发滚动命令会滚到**旧内容**上。
 ⚠️ **为什么没有门盯住这份实例**（值得记）：站点实例在**内容仓**里，而内容仓的门（`verify_all.sh`）
    管的是库与示例；程序仓的门管的是自己那份实例。⇒ 两边都以为对方会跑它。
    这一条本轮**只修了实例本身**，"加一条能盯住它的门"留着（要么进内容仓的门，要么进 `attach` 的自查）。
+
+
+## 补记（正文链接那一轮逮到的两条，2026-10-07）
+
+### 一、⚠️ **"改了没生效"的真因：launcher 读到的是旧 js 产物**（而且 `moon build` 还说 "no work to do"）
+
+站点做"正文链接可点"时，引擎源码改了（`Span` 加 `Link`）、`moon build` 也报"编过了"，
+但生成物里**一条 `Link` 都没有**。排查结果：
+
+1. **js 产物路径随"模块在构建根里的身份"变**（本仓 `AGENTS.md` 早写过这条）：
+   程序仓加了 `moon.work`（要吃本地 moobile 源码）之后，程序根成了**工作区成员**，
+   产物从 `_build/js/debug/build/cmd/skillpress/skillpress.js`
+   挪到了 `_build/js/debug/build/<作者>/<模块>/cmd/skillpress/skillpress.js`；
+2. 而 `launcher/skillpress.mjs` **写死**了不带前缀的那条 ⇒ 它读的是**上一次留下的旧产物**，
+   一声不吭继续跑；`moon build` 按**新**路径判新鲜度 ⇒ 报 "no work to do"（两边各说各话）。
+
+⇒ 修法：launcher **两处都找、取 mtime 最新的那份**（"取最新"正是"改了没生效"的解药）；
+一条都没有才报错并给出怎么编。⚠️ 这一类"判据读的是旧代码"在本仓有前科（`fresh-clone-check.sh`
+的文件头就是为它写的），这次是**新形态**：不是缓存脏，而是**路径假设过期**。
+
+### 二、`span`（RN 的 `Text`）上的 `on_click` **接得住** —— 与 `div` 不同，值得写清
+
+`skills/moobile-pitfalls/SKILL.md` 那张"最贵的六条"表里写着「`div` / `span` 挂 `on_click`：点不动、
+无警告 ⇒ 换标签成 `button`」。这一轮实测把话说准了：
+
+| 标签 | 落到什么 | `on_click` 在 web 上 |
+|---|---|---|
+| `div` | RN `View` → RNW `div` | ❌ **死处理器**（事件映射成 `onPress`，`View` 不认） |
+| `span` | RN `Text` → RNW `span` | ✅ **接得住**：RNW 的 `Text` 自己把 `onPress` 转成 `onClick`（源码 `exports/Text/index.js` 里就有这一支），并在 props 里带上 `cursor: pointer` |
+| `button` / `a` | `Pressable` | ✅ |
+
+⇒ 行内链接**必须**用 `span`（`Text`）：`Pressable` 是 View，塞进 `Text` 里会把那一行拆成两个 flex item
+（本仓最贵的那条坑）。实测读数见站点 `_scratch/link-check.mjs`：点一条正文链接 ⇒ 地址栏变、
+**页面没重新加载**、落地页大标题正是那条链接的标签。
+（那张表里的说法是**标签表**层面的口径 —— 它没否认 `Text` 自己的 `onPress`；这次把边界写清。）
+
+### 三、`@sub.open_url`（外链动作）与它的读数
+
+正文里的**外链**走它：① 宿主 `url` 能力的 `invoke("open", url)` → ② 有 DOM 就
+`window.open(url, "_blank", "noopener")` → ③ 两头都没有 ⇒ `abort`。
+⚠️ 同 `copy_text`：**不承诺成功**（`window.open` 可能被弹窗拦截）。
+**读数**（`examples/apps/node-spike/`，把 `window.open` 换成记录器）：点一下 ⇒
+**调用 1 次**、载荷 `https://example.com/moobile-ext-link`、`target="_blank"` ✅。
+⚠️ **站点那边今天内容里没有外链**（`grep '](http'` 一条都没有）⇒ 站点侧的"外链分支"**没有端到端读数**，
+读数落在本仓这个试金石上 —— 别把两者混着读。

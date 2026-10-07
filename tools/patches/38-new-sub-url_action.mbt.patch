@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/sub/url_action.mbt
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,151 @@
 +// vendor/rabbita/sub/url_action.mbt —— 「动作型」能力的库侧入口：**让宿主去做一件事**。
 +//
 +// ## 为什么放在 `sub/` 而不是 `DESIGN-ROUTER §6.5` 里写的 `cmd/`
@@ -99,3 +99,56 @@
 +pub fn replace_url(url : String) -> @cmd.Cmd {
 +  url_action("replace", url, fn(u) { @dom.window().replace_url(u) })
 +}
++
++///|
++/// **在新窗口/新标签里打开一条外部地址**（站点正文里的外链用它）。
++///
++/// 取值顺序与 `push_url` 同一套：
++/// ① **宿主动作优先**：`url` 能力的 `invoke("open", url)`（RN 侧将来登记成 `Linking.openURL`）；
++/// ② **有 DOM 就自己来**：`window.open(url, "_blank", "noopener")`；
++/// ③ **两头都没有 ⇒ `abort`**。
++///
++/// ⚠️ 与 `copy_text` 同一条取舍：**不承诺成功** —— `window.open` 可能被**弹窗拦截**
++/// （不是用户手势触发时最常见），而那既不是"通道不通"也不该炸掉应用 ⇒ 失败**打到控制台**。
++/// ⚠️ 站内链接**不该**走这一条（那会把 SPA 甩出去）：站内跳页请用 `Msg::Go`（站点侧由
++/// `find_page` 判"这条链接是不是站内的"）。
++pub fn open_url(url : String) -> @cmd.Cmd {
++  @cmd.custom_cmd(fn(_sched) {
++    let mut done = false
++    // ① 宿主动作优先（RN 侧将来登记）
++    match @cmd.host_capability("url") {
++      Some(cap) =>
++        match cap.invoke("open", url) {
++          Some(_) => done = true
++          None => ()
++        }
++      None => ()
++    }
++    // ② 有 DOM 就自己来（Web）
++    if !done && @cmd.host_has_dom() {
++      open_window_ffi(@dom.window(), url)
++      done = true
++    }
++    // ③ 两头都没有：不静默失败
++    if !done {
++      abort(
++        "moobile/sub: `open_url` 打不开 —— 宿主没登记 `url` 能力的 `open` 动作，运行时也没有 DOM。 " +
++        "  Web 需要 `host_has_dom()`；RN 需要宿主登记 `url.invoke(\"open\", url)`。",
++      )
++    }
++  })
++}
++
++///|
++/// 真去开窗口的那一步（**一发既走**，理由同 `copy_text` 的 `write_clipboard_ffi`）。
++extern "js" fn open_window_ffi(w : @dom.Window, url : String) -> Unit =
++  #| (w, url) => {
++  #|   try {
++  #|     const handle = w.open(url, "_blank", "noopener");
++  #|     if (handle === null) {
++  #|       console.error("moobile/sub: window.open 被拦了（弹窗拦截器）—— 这一条没有打开：", url);
++  #|     }
++  #|   } catch (e) {
++  #|     console.error("moobile/sub: window.open 抛了：", e);
++  #|   }
++  #| }

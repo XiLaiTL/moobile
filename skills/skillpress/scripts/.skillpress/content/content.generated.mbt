@@ -29,7 +29,7 @@ pub fn home() -> @shell.Home {
         @shell.Quote([@shell.Txt("这一栏是"), @shell.Bold("纯链接节"), @shell.Txt("（标题本身是一个链接）：点它不会换一栏正文，而是"), @shell.Bold("直接渲染那个目标页"), @shell.Txt("。 目标是书架上的 "), @shell.Code("moobile-app-development"), @shell.Txt(" —— 六份里该先读的那一份。")]),
       ] },
       { title: [@shell.Txt("四、去哪看")], link: "", nav: [{ label: "moobile-app-development", key: "moobile-app-development" }, { label: "moobile-custom-component", key: "moobile-custom-component" }, { label: "moobile-library-development", key: "moobile-library-development" }, { label: "moobile-pitfalls", key: "moobile-pitfalls" }], blocks: [
-        @shell.Ul([(0, "", [@shell.Txt("moobile-app-development"), @shell.Code("moobile-app-development/SKILL.md")]), (0, "", [@shell.Txt("moobile-custom-component"), @shell.Code("moobile-custom-component/SKILL.md")]), (0, "", [@shell.Txt("moobile-library-development"), @shell.Code("moobile-library-development/SKILL.md")]), (0, "", [@shell.Txt("moobile-pitfalls"), @shell.Code("moobile-pitfalls/SKILL.md")])]),
+        @shell.Ul([(0, "", [@shell.Link("moobile-app-development", "moobile-app-development", true), @shell.Code("moobile-app-development/SKILL.md")]), (0, "", [@shell.Link("moobile-custom-component", "moobile-custom-component", true), @shell.Code("moobile-custom-component/SKILL.md")]), (0, "", [@shell.Link("moobile-library-development", "moobile-library-development", true), @shell.Code("moobile-library-development/SKILL.md")]), (0, "", [@shell.Link("moobile-pitfalls", "moobile-pitfalls", true), @shell.Code("moobile-pitfalls/SKILL.md")])]),
         @shell.P([@shell.Txt("上面这个列表每一项"), @shell.Bold("整条是一个链接"), @shell.Txt("、目标都是已收录的页 ⇒ 它就是这一栏的"), @shell.Bold("下拉菜单"), @shell.Txt(" （鼠标悬停出来，触摸点一下展开）。两处特判（纯链接节 / 下拉菜单）的判据写在 "), @shell.Code("skills/skillpress/references/site-pipeline.md"), @shell.Txt(" 里。")]),
       ] },
       { title: [@shell.Txt("五、门与判据")], link: "", nav: ([] : Array[@shell.NavItem]), blocks: [
@@ -693,6 +693,7 @@ pub fn skills() -> Array[@shell.Doc] {
       when: "你要写、改或审 moobile 的视图 / 样式 / 宿主 / 组件库接入代码，或者撞上「编过了、界面也出来了，但行为或外观不对」的时候；也用于动手前自查，避免重踩已记录的坑。",
       blocks: [
         @shell.P([@shell.Bold("只解决一件事"), @shell.Txt("：编译器不管、运行时不喊的那些错。这一份是"), @shell.Bold("门禁"), @shell.Txt(" —— 最贵的几条写在这里， 每条一句话说清「现象 → 真因 → 处置」；"), @shell.Bold("逐条清单与证据在 `references/`"), @shell.Txt("（按主题分，按需读）。")]),
+        @shell.Quote([@shell.Txt("还没上手过？先看 "), @shell.Link("moobile 应用开发：从零一个应用、加一个页面", "moobile-app-development", false), @shell.Code("moobile-app-development/SKILL.md"), @shell.Txt(" —— 那一份讲\"怎么写\"，这一份讲\"写完为什么不响\"。 （这条交叉引用也是"), @shell.Bold("站点正文里的一条真链接"), @shell.Txt("：它验证\"正文里的链接可点、点了站内跳页\"。）")]),
         @shell.P([@shell.Txt("动手前先把门跑一遍，确认你看到的结果是"), @shell.Bold("这一版"), @shell.Txt("代码的：")]),
         @shell.Code("bash", "bash tools/verify_all.sh", [("bash", 6), (" tools/verify_all.sh", 0)]),
         @shell.H2([@shell.Txt("最贵的六条（错了要付大代价，而且没人会告诉你）")]),
@@ -934,7 +935,7 @@ pub fn footer() -> @shell.Footer {
   {
     license: "Apache-2.0",
     generated_at: "",   // 由宿主构建脚本注入（内容包必须逐字节可复现）
-    root_fingerprint: "dc19ed9658fad160cff26f2574278e27fdb1f60dacfd79367659e8855da59026",
+    root_fingerprint: "d163f5a3926605d02f491da750eeca3e0915ca89df04f4798d9b852618ffb125",
   }
 }
 
