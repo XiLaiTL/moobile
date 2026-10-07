@@ -16,9 +16,20 @@
 
 | 东西 | registry 上的 | 工作区里的 | 差异 |
 |---|---|---|---|
-| 月亮包 `XiLaiTL/moobile` | ✅ **`0.5.0`**（**2026-10-04 发布**；`moon publish` 回 `Server status: 200 OK`；外部视角复核见下） | `0.5.0` | **已对齐** ✅ |
-| 宿主包 `moobile-host`（npm） | `0.4.0`（2026-10-03 发布，核过） | **`0.5.0`（已抬版、已过发布前自检，⏳ 待发）** | ⏳ **待发** |
-| **契约版本** | 月亮包 `2` / 宿主包 `2`（宿主包还是 0.4.0 那一份） | 两边都是 `2` | 待宿主包发完再终判 |
+| 月亮包 `XiLaiTL/moobile` | ✅ **`0.6.0`**（**2026-10-07**；`moon publish` 回 **409 duplicate** ⇒ 已在线上；**从 registry 装下来逐个核过**：`("img","Image")` + `src → source` 改写 / `Style::transform` / `scroll_to_node` / `node_rect` / `node_scroll_top` / `node_exists` / `on_node_scroll` / `copy_text` / `open_url` **全在**） | `0.6.0` | **已对齐** ✅ |
+| 宿主包 `moobile-host`（npm） | `0.5.0`（2026-10-04 发布，核过） | **`0.6.0`（已抬版；`publish.sh --dry-run` **打包形态门 10/10**；⏳ 待发 —— 本机 npm token 已失效 `E401`）** | ⏳ **待发** |
+| **契约版本** | 月亮包 `2` / 宿主包 `2` | 两边都是 `2` | 待宿主包发完再终判 |
+
+> ⚠️ **发完宿主包要做的两件事**（别漏）：① `bash npm/moobile-host/publish.sh <6位OTP>`（npm 回 202 是**异步受理**，
+> 约 6 分钟才可见 —— **别拿"刚发完查不到"当"没发出去"**）；② 复核 `npm view moobile-host version --registry=https://registry.npmjs.org/`。
+> 站点那边（`skillpress` 的实例模板）钉的是 `moobile-host: ^0.6.0` —— ⚠️ **0.x 的 `^` 只到下一个 minor**，
+> 所以 npm 上没有 0.6.0 时，新用户 `npm install` 会拿不到宿主（图片那条通道会报"宿主没有注册组件 Image"）。
+
+> ⚠️ **2026-10-07 的一条读数方式（值得抄）**：`moon publish` 报 409 时**不要**去改版本号重发 ——
+> 那说明那一版**已经在线上**了。要判断"线上那版有没有我要的东西"，做法是**从 registry 装下来核**
+> （空 `moon.mod` → `moon add XiLaiTL/moobile@0.6.0` → `moon check` → 在 `.mooncakes/` 里 grep 那几个名字）。
+> ⚠️ 本机 git 代理没开时索引拉不下来，报的却是 `no version satisfies requirement`（像"没发布"）⇒
+> 先 `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.proxy GIT_CONFIG_VALUE_0= moon update` 再装。
 
 > ✅ **2026-10-04：月亮包 `0.5.0` 已发布，并**从外部视角**复核过**（`bash tools/check_published.sh`）：
 > · 从 registry **装得下来**（`XiLaiTL/moobile@0.5.0`，当外部模块用、`moon check --target js` **0 错误**）；
