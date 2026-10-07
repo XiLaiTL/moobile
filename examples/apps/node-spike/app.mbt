@@ -31,6 +31,10 @@
 ///| 外链的地址（试金石用一条固定的：驱动脚本断言"记录器收到的就是这一条"）。
 const EXT_URL : String = "https://example.com/moobile-ext-link"
 
+///| 试金石用的图片：**内联的 data: URI**（2×2 的红点 PNG，base64）。
+/// 用内联而不是外部文件：判据不依赖任何外部资源，且它**真的能被解码**（驱动读 `naturalWidth`）。
+const PIC_DATA : String = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8z8Dwn4GBgYGJAQ0AAB0jAgHnPmcSAAAAAElFTkSuQmCC"
+
 ///|
 fn sections() -> Array[String] {
   ["sec-1", "sec-2", "sec-3"]
@@ -248,6 +252,21 @@ fn view(m : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ],
       ),
       @html.div(attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Column)), rows),
+      // ── **图片**（`img → RN Image`）：内容侧写标准 markdown，两端各自落到自己的组件上 ----
+      //    src 用 **data: URI**（1×1 的 GIF/PNG）：不引外部资源 ⇒ 判据只依赖产物自己，
+      //    而且 `naturalWidth` 能证明"浏览器**真的解码**了它"（不只是一个空的 <img> 壳）。
+      line("图片：img → RN 的 Image（src 改写成一个结构化 source）", 13.0, "#5b4f3f"),
+      @html.img(
+        attrs=attrs(
+          @style.Style::new()
+          .width(@style.px(24.0))
+          .height(@style.px(24.0))
+          .margin_bottom(@style.px(8.0)),
+        )
+        .id("pic-1"),
+        src=PIC_DATA,
+        alt="一张试金石图",
+      ),
       // ── 变换（`Style::transform`）：**顺序敏感**那一条要在浏览器里证 ----
       //    tf-a 与 tf-b 的动作**一样、顺序不同**：先移后缩 ⇒ 位移**不被缩放**；
       //    先缩后移 ⇒ 位移**被缩放**（40 → 80）。两个矩阵必须不同，否则说明顺序被丢了。

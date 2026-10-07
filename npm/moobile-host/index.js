@@ -2,7 +2,11 @@
 //
 // 这个文件现在是薄薄一层：**契约的装配都在 `core.js`**（平台无关），
 // 这里只负责三件 RN 特有的事：
-//   1. 组件表用 RN 的 5 个基础组件（`View` / `Text` / `Pressable` / `TextInput` / `ScrollView`）；
+//   1. 组件表用 RN 的 6 个基础组件（`View` / `Text` / `Pressable` / `TextInput` / `ScrollView` / `Image`）；
+//      ⚠️ `Image` 是 2026-10-07 加的（对标表 #10 图片）：`img` 在 `render.mbt` 的标签表里
+//      映射到它，而**没登记的名字会在渲染时点名报错**（这正是那条约定的价值：不静默）。
+//      ⚠️ 加一个键**不是**"顺手多放一个组件"：`Image` 在 RN 与 RNW 都是核心导出 ✓，
+//      两端都认 `source={{uri}}` ✓ —— 这两条是它能进内置表的前提（别的标签要按这条自查）。
 //   2. 后端地址的默认值按平台给（RN 里没有"同源"这回事）；
 //   3. 平台名取自 `Platform.OS`。
 //
@@ -19,6 +23,7 @@ import {
   Pressable,
   TextInput,
   ScrollView,
+  Image,
   Platform,
 } from 'react-native';
 import {
@@ -54,13 +59,53 @@ export {
 };
 
 /**
- * 标签表的值域：`render.mbt` 的 42 条标签全部映射到这 5 个组件名上。
+ * 标签表的值域：`render.mbt` 的标签全部映射到这 6 个组件名上。
  * 少一个，对应标签就会在渲染时**点名报错**（`js_host_component`）。
  *
- * 注意这是**内置的 5 个**，不是全部：`MOBILE_HOST.components` 还装着
+ * 注意这是**内置的 6 个**，不是全部：`MOBILE_HOST.components` 还装着
  * 各组件库的命名空间键（`antd:Button` 之类），那部分由 `registerLibrary` 写入。
  */
-export const COMPONENTS = { View, Text, Pressable, TextInput, ScrollView };
+/**
+ * **Web 上的 `Image`：真正的 `<img>` 元素**（2026-10-07，做站点图片那条通道时加的）。
+ *
+ * ## 为什么不直接用 `react-native-web` 的 `Image`（实测，不是偏好）
+ *
+ * RNW 的 `Image` 的结构是三层：根 `<div>` + 里面一层 **`position:absolute` 的背景图** + 一层
+ * 视觉上藏起来的 `<img>`（无障碍用）。**根自己没有高度** ⇒ RN 的语义要求调用方给
+ * `width` / `height`（RN 上不给尺寸本来也画不出来）。而站点正文里的图**尺寸是内容的事**
+ * （`![alt](x.png)` 里根本不写尺寸）⇒ 实测结果是那一格排出来 **720×0**：
+ * 宽占满一栏、**高为 0** ⇒ 页面上什么都看不见，而 DOM 里"图片元素在"、`naturalWidth` 也对
+ * —— 判据只查"有没有图"的话，这条**会假绿**（这一格就是这么被抓出来的）。
+ *
+ * 真正的 `<img>` 没有这个问题：给 `src` 就有高度（浏览器按原图比例排），`alt` 也是原生的，
+ * 顺带拿到懒加载 / 解码提示 / 右键另存 / 搜索引擎。而这些都是**站点**要的，RN 上一样都没有。
+ *
+ * ⚠️ **只换 web**：原生 RN 上没有 DOM ⇒ 那边仍然是 RN 的 `Image`（`Platform.OS !== 'web'`）。
+ *    代价照写：**原生的 `img` 仍然需要调用方给尺寸**（RN 语义，不是本包的锅）——
+ *    这条记在 `render.mbt` 标签表那一段与 FINDINGS 里，别读成"两端都自适应了"。
+ */
+const WebImage = (props) => {
+  const { source, accessibilityLabel, resizeMode, children, ...rest } = props;
+  // RN 的 `source` 有两种形状：`{uri}`（库侧 `src → source` 的改写结果）与裸字符串。
+  const uri = typeof source === 'string' ? source : (source && source.uri) || undefined;
+  // ⚠️ 这里**黑名单**而不是白名单：白名单会"安静地吃掉"我们不知道的键（比如库将来传的
+  //    `data-*`、`loading`），而多传一个键在 `<img>` 上的代价只是浏览器忽略它。
+  return React.createElement('img', {
+    ...rest,
+    src: uri,
+    alt: props.alt ?? accessibilityLabel ?? '',
+  });
+};
+
+export const COMPONENTS = {
+  View,
+  Text,
+  Pressable,
+  TextInput,
+  ScrollView,
+  // web → 真 `<img>`；原生 → RN 的 `Image`（见上面 WebImage 的说明）
+  Image: Platform.OS === 'web' ? WebImage : Image,
+};
 
 /**
  * 后端地址的默认值。
@@ -80,7 +125,7 @@ export const DEFAULT_API_BASE =
  * ⚠️ **必须在 MoonBit 侧构造应用之前调用** —— `mount` 会立刻求值并排队初始命令，
  * 那时宿主还没装好。`mountApp` 已经按这个顺序做了。
  *
- * `options.components` 会**并到内置 5 个之上**（而不是替换）—— 于是既可以覆盖
+ * `options.components` 会**并到内置 6 个之上**（而不是替换）—— 于是既可以覆盖
  * 基础组件，也可以只加组件库的键。
  */
 export function installHost(options = {}) {
@@ -95,7 +140,7 @@ export function installHost(options = {}) {
   } = options;
   return installHostCore({
     react: React,
-    // ★ 内置 5 个组件**默认包成"手势可用"的版本**（`gesture-rn.js`，PanResponder、零新依赖）。
+    // ★ 内置 6 个组件**默认包成"手势可用"的版本**（`gesture-rn.js`，PanResponder、零新依赖）。
     // 理由（决策点 19 的"库优先"判据第 2 条 = 零配置）：`@gesture.attrs(on_pan=…)` 挂到任意
     // 元素上就该直接有效，不该要求应用自己写 responder 胶水。
     // 没挂手势的元素行为**一字不变**（包装只在真有 `onPan`/`onTap` 时才去抢响应者）；

@@ -12,7 +12,10 @@
 // **npm 在 Windows 上用 `cmd.exe` 跑 script** —— 它不认 `${VAR:-default}`，于是那串东西**原样**
 // 传给 node，报的是：
 //
-//   Error: Cannot find module 'D:\ai_project\interest\moobile\skills\skillpress}\tools\press.mjs'
+//   Error: Cannot find module '<...>}\tools\press.mjs'
+//   ⚠️ 这一行原来把**本机绝对路径**原样抄了进来（`tools/check_public_leaks.py` 当场点名）。
+//      引报错文本里带路径是对的，但**抄进仓库**就等于把某个人的盘符一起发了出去 ⇒
+//      引报错时一律把路径那截写成 `<...>`。
 //
 // （注意那个多余的 `}` —— 一眼就能看出是"shell 写法没被展开"。）
 // ⇒ 也就是说：**文档里写的 `npm run press` 在 Windows 上从来跑不通**，而本仓的主力环境就是 Windows。

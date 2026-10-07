@@ -36,17 +36,17 @@ node ../skillpress/bin/skillpress.mjs verify     # 判据：真 Chrome 无头，
 忽略是"把东西藏起来"的机制，它坏掉的样子是**不报错**的 —— 所以每次跑门或生成，
 都会把"跳过了几份 + 逐条理由"打出来。
 
-## [从哪一份开始](moobile-app-development/SKILL.md)
+## [从哪一份开始](../moobile-app-development/SKILL.md)
 
 > 这一栏是**纯链接节**（标题本身是一个链接）：点它不会换一栏正文，而是**直接渲染那个目标页**。
 > 目标是书架上的 `moobile-app-development` —— 六份里该先读的那一份。
 
 ## 四、去哪看
 
-- [moobile-app-development](moobile-app-development/SKILL.md)
-- [moobile-custom-component](moobile-custom-component/SKILL.md)
-- [moobile-library-development](moobile-library-development/SKILL.md)
-- [moobile-pitfalls](moobile-pitfalls/SKILL.md)
+- [moobile-app-development](../moobile-app-development/SKILL.md)
+- [moobile-custom-component](../moobile-custom-component/SKILL.md)
+- [moobile-library-development](../moobile-library-development/SKILL.md)
+- [moobile-pitfalls](../moobile-pitfalls/SKILL.md)
 
 上面这个列表每一项**整条是一个链接**、目标都是已收录的页 ⇒ 它就是这一栏的**下拉菜单**
 （鼠标悬停出来，触摸点一下展开）。两处特判（纯链接节 / 下拉菜单）的判据写在

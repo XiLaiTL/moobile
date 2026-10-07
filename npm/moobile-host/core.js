@@ -56,8 +56,8 @@ export function detectPlatform() {
  * ⚠️ **必须在 MoonBit 侧构造应用之前调用** —— `mount` 会立刻求值并排队初始命令，
  * 那时宿主还没装好。`mountAppCore` 已经按这个顺序做了。
  *
- * `components` 的键空间是**开放**的：既有内置的 5 个名字（View / Text / Pressable /
- * TextInput / ScrollView），也有命名空间的库组件（`antd:Button`）。
+ * `components` 的键空间是**开放**的：既有内置的 6 个名字（View / Text / Pressable /
+ * TextInput / ScrollView / Image），也有命名空间的库组件（`antd:Button`）。
  * 前者由 `render.mbt` 的标签表映射，后者由标签**直通**（标签里带冒号）。
  */
 export function installHostCore(options = {}) {

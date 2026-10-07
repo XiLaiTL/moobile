@@ -72,6 +72,23 @@ fs.copyFileSync(path.join(HERE, 'index.html'), path.join(DIST, 'index.html'));
   }
 }
 
+// ── 图片资产：`press` 把内容里的图拷到实例根的 `img/`（对标表 #10）────────────────────
+// ⚠️ 为什么必须在**这一步**再拷一次：站点只服务 `dist/`，`img/` 在实例根 ⇒ 不拷，站点上每张图都是 404。
+//    而 404 的 `<img>` **不报错**（一个空框），所以"拷了没有"这件事必须有一条**自己会说话**的判据：
+//    下面按"内容包真的引用了图、但 `img/` 不在"这一种情形报一句 —— 那是真丢东西，不是正常为空。
+{
+  const imgDir = path.join(HERE, 'img');
+  if (fs.existsSync(imgDir)) {
+    fs.cpSync(imgDir, path.join(DIST, 'img'), { recursive: true });
+  } else {
+    const quoted = /@shell\.Image\("/.test(fs.readFileSync(ARTIFACT, 'utf8'));
+    if (quoted) {
+      console.error('build-web.mjs: ✗ 内容包里有图片，但实例根没有 img/（先跑 `press`）—— 站点上的图会 404');
+      process.exit(2);
+    }
+  }
+}
+
 // ── 构建戳：注入 `globalThis.__skillpress_build`（页脚"构建于"那一项的真源）─────────────
 // ⚠️ 为什么由**构建**而不是 `press` 给：内容包必须逐字节可复现（`press --check` 逐行比对），
 //    时间戳进内容包会让那条门每跑必红 ⇒ 只能落在构建这一步（每个实例产物一份，不进内容）。

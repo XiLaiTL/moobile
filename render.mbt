@@ -49,6 +49,17 @@ pub fn tag_table() -> Array[(String, String)] {
     ("fieldset", "View"),
     ("form", "View"),
     // ── 交互类
+    // **图片**（2026-10-07 从 `excluded_tags` 搬进来的）：原来那条理由是
+    // "RN 的 Image 需要结构化 `source={{uri}}`，字符串属性通道表达不了" —— 那句现在**不成立**了：
+    // 翻译放在下面 `render_props` 里（`src` → `source: {uri}`，一个标签专属的属性改写），
+    // 于是**内容侧只写标准 markdown**（`![alt](src)`）、两端各自落到自己那份组件上。
+    // ⚠️ `img` → `Image` 这一条**两端渲染的东西不一样**（2026-10-07 实测）：
+    //    · **web**（`react-native-web` 那条路）：宿主把它渲染成**真正的 `<img>`**
+    //      （`npm/moobile-host/index.js` 的 `WebImage`）⇒ 给 `src` 就有高度；
+    //    · **原生 RN**：是 RN 的 `Image`，而它**要求调用方给尺寸**（不给就是 0 高）。
+    //    内容里的 `![alt](x.png)` **不写尺寸** ⇒ 原生侧今天需要调用方自己补；
+    //    这条是**已知缺口**，别读成"两端都自适应"（见 docs/FINDINGS.md 那一轮的补记）。
+    ("img", "Image"),
     ("button", "Pressable"),
     ("a", "Pressable"),
     ("input", "TextInput"),
@@ -65,7 +76,9 @@ pub fn tag_table() -> Array[(String, String)] {
 /// 想用这些能力，得走 RN 生态的对应组件，而不是假装标签表能覆盖。
 pub fn excluded_tags() -> Array[(String, String)] {
   [
-    ("img", "RN 的 Image 需要结构化 `source={{uri}}`，字符串属性通道表达不了"),
+    // `img` 2026-10-07 起**已支持**（映射到 RN 的 `Image` + `src → source` 翻译；web 宿主把它
+    // 渲染成真 `<img>`）⇒ 从这张表里搬走。
+    // 留一句在这儿免得有人照旧文把 `img` 再排除一次。
     ("video", "要 `expo-av`，且控件语义两端完全不同"),
     ("audio", "同上"),
     ("canvas", "RN 无 canvas —— 接 `react-native-skia`（设计文档阶段 4）"),
@@ -617,6 +630,23 @@ fn render_props(
   let attrs = props.attrs_map()
   if !attrs.is_empty() {
     for k, v in attrs {
+      // ── **图片的属性改写**（`img → RN Image`）────────────────────────────────
+      // RN 的 `Image` 要 `source={{uri}}`（结构化），不认 `src="…"`；而 HTML/CSS 那边要的正是 `src`。
+      // 内容侧只写标准 markdown ⇒ 这层改写是**唯一**要分叉的地方，放在这儿（属性落定之前）。
+      // ⚠️ 用"标签 + 键名"判断，别用"值长什么样"猜（猜错的表现是"图片在某一端静默不画"）。
+      if tag == "img" && k == "src" {
+        let src_obj = js_obj_new()
+        js_obj_set(src_obj, "uri", js_str(v))
+        js_obj_set(o, "source", src_obj)
+        continue
+      }
+      if tag == "img" && k == "alt" {
+        // `alt`：web 认（RNW 会落到 DOM 的 alt），原生侧要的是 `accessibilityLabel`
+        // ⇒ 两个都发。多一个键的代价远小于"读屏软件念不出这张图"。
+        js_obj_set(o, k, js_str(v))
+        js_obj_set(o, "accessibilityLabel", js_str(v))
+        continue
+      }
       js_obj_set(o, k, js_str(v))
     }
   }

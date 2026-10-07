@@ -10,15 +10,18 @@
 // "点了之后真的滚了没有"这个读数才干净；顺带证明那几个按钮**真的可点**
 // （如果点了 `COUNT` 不涨，说明点击没到 —— 这时后面的读数一律不算，脚本会当场说）。
 //
-// ## 四组读数（对应 app.mbt 文件头那张表）
+// ## 八组读数（对应 app.mbt 文件头那张表）
 //
-//   ① `Attrs::id` 落没落到 DOM（地基）
+//   ① `Attrs::id` 落没落到 DOM（地基）；①′ `on_node_scroll` 装载后补的初值对不对
 //   ② 对照：`@nav.scroll_to`（fork 里已有的那个）到底动不动
-//   ③ `@sub.scroll_to_node` 有没有把那一节**顶到容器上沿**（语义，不是"scrollTop>0"）
-//   ④ `node_rect` / `node_scroll_top` 与**浏览器自己量的**对不对得上
+//   ③ `@sub.scroll_to_node` 有没有把那一节**顶到容器上沿**（语义，不是"scrollTop>0"）；③′ 订阅跟不跟得上滚动
+//   ④ `node_rect` / `node_scroll_top` 与**浏览器自己量的**对不对得上；④′ 滚回顶再量（证明读数不是常数）
+//   ⑥ `Style::transform` 的浏览器矩阵（顺序敏感）⑦ `@sub.open_url` 真开了窗口没有
+//   ⑧ `img` → RN `Image`（图片真的解码了 + `alt` 两处都在）
 //
-// ⚠️ ⑥ 那两条**证伪**（把 `.id(...)` 去掉 ⇒ 必须红）不在这里跑：它要改源码重编，
-//    属于"人工证伪"，读数记在 `README.md` 与 `docs/FINDINGS.md`。
+// ⚠️ **证伪**（把 `.id(...)` 去掉 / 把 `Image` 从宿主组件表里拿掉 / 关掉 `src → source` 改写
+//    ⇒ 必须红）不在这里跑：它们要改源码重编，属于"人工证伪"，三组读数与真因都记在
+//    `README.md` 与 `docs/FINDINGS.md`。
 
 import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
@@ -206,7 +209,14 @@ async function main() {
   };
 
   await send('Page.navigate', { url: BASE });
-  if (!(await waitReady())) throw new Error('应用没渲染出来（检查 dist/ 是否 build 过）');
+  if (!(await waitReady())) {
+    // 起不来时先把**页面里的报错**打出来（否则只知道"没渲染"，不知道"为什么"）
+    const probs = problems.length ? problems.slice(0, 3).join(' | ') : '（页面没报错）';
+    const txt = (await evalJs('document.body ? document.body.innerText.slice(0, 120) : ""')) || '';
+    throw new Error(`应用没渲染出来（检查 dist/ 是否 build 过）
+  页面报错：${probs}
+  页面文字：${JSON.stringify(txt)}`);
+  }
   await sleep(500);
 
   console.log('node-spike —— 节点寻址的四组读数（真 Chrome + CDP 真鼠标）\n');
@@ -371,6 +381,41 @@ async function main() {
   say(got.length === 1 && got[0].u === 'https://example.com/moobile-ext-link', `载荷是那一条 URL（实测 ${JSON.stringify(got[0] && got[0].u)}）`);
   say(got.length === 1 && got[0].t === '_blank', `开的是**新窗口**（target = ${JSON.stringify(got[0] && got[0].t)}）`);
   rows.push(['⑦ @sub.open_url', '真鼠标', `window.open × ${got.length}`, `${got[0] ? got[0].u : '-'}`]);
+
+  // ── ⑧ `img`：图片真的画出来了吗（真浏览器）────────────────────────────────────
+  //
+  // ⚠️ 这一段**改过一次判据**，两次都值得记：
+  //   · 第一版按 HTML 的直觉写（"DOM 里有个 `<img>`，读它的 src/naturalWidth/alt"）——
+  //     而当时宿主用的是 `react-native-web` 的 `Image`，它在 DOM 里是
+  //     `div(背景图) + 隐藏 <img>` 三层 ⇒ 判据全红，功能却是好的。**判据要照宿主的事实写，不照直觉写。**
+  //   · 第二版照着那个三层结构写，绿了。可那份绿是**假的**：RNW 的 `Image` **根没有高度**，
+  //     站点正文里那种"不写尺寸的图"排出来是 **720×0**（宽占满、高为零）—— 页面上什么都看不见，
+  //     而"元素在 / naturalWidth 对"两条**照样绿**。真因是 RN 语义要求调用方给尺寸，
+  //     而内容里的 `![alt](x.png)` 根本不写尺寸。
+  //   ⇒ 修法是**宿主侧**的：web 上用**真正的 `<img>`**（`npm/moobile-host/index.js` 的 `WebImage`），
+  //     有 src 就有高度、alt 也原生。原生 RN 那边仍然是 RN 的 `Image`（没有 DOM），
+  //     所以**原生的 `img` 仍然要显式尺寸** —— 这条别读成"两端都自适应了"。
+  //
+  // 判据（五条，各自独立）：① `Attrs::id` 落到那个元素上；② `src` 走到了 `<img src>`；
+  // ③ 浏览器**真的解码**了（`naturalWidth > 0`，空壳也"存在"）；④ `alt` 在（读屏与兜底文案）；
+  // ⑤ 它**真的占了版面**（宽高都 > 0 —— 就是这一条把上面那个 720×0 抓出来的）。
+  console.log('');
+  console.log('⑧ 图片：`img`（`src → source{{uri}}` → web 宿主渲染成真 `<img>`）');
+  const pic = await evalJs('(() => {' +
+    'const el = document.getElementById("pic-1");' +
+    'if (!el) return null;' +
+    'const r = el.getBoundingClientRect();' +
+    'return { tag: el.tagName, src: (el.getAttribute("src") || "").slice(0, 40),' +
+    ' nat: el.complete ? el.naturalWidth : -1, alt: el.getAttribute("alt"),' +
+    ' w: Math.round(r.width), h: Math.round(r.height) };' +
+    '})()');
+  say(!!pic, `\`#pic-1\` 在（${pic ? '落成了 <' + pic.tag.toLowerCase() + '>' : '（没有）'}）`);
+  say(!!pic && pic.src.startsWith('data:image/png'), `它的 \`src\` 是那张图（${pic ? pic.src : '-'}…）`);
+  say(!!pic && pic.nat > 0,
+    `**浏览器真的解码了它**（naturalWidth = ${pic ? pic.nat : '?'}）—— 不是个空壳`);
+  say(!!pic && pic.alt === '一张试金石图', `\`alt\` 在（${pic ? JSON.stringify(pic.alt) : '-'}）`);
+  say(!!pic && pic.w > 0 && pic.h > 0, `它**真的占了版面**（${pic ? pic.w + '×' + pic.h + 'px' : '?'}）`);
+  rows.push(['⑧ img', '真浏览器', `naturalWidth=${pic ? pic.nat : '?'}`, `${pic ? pic.w + '×' + pic.h : '?'}px · alt ✓`]);
 
   // ── 报告 ────────────────────────────────────────────────────────────────────
   console.log('\n───── 读数表 ─────');

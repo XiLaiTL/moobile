@@ -17,6 +17,7 @@
 //    它的那个文件）。不写这一行，从仓库根跑就会红在 `Could not resolve "react-native-web"`，
 //    而 cd 进这个目录跑却是绿的 —— 构建脚本该与 cwd 无关。
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,46 @@ const esbuild = await import('esbuild').catch(() => null);
 if (!esbuild) {
   console.error('build-web.mjs: esbuild 没装 —— 先 `npm install`');
   process.exit(2);
+}
+
+// ── **新鲜度自查**（2026-10-07 加）─────────────────────────────────────────────
+//
+// 这一步是被一次**假绿**逼出来的：证伪 `img` 的 `src → source` 改写时，改了库源码、
+// 跑了 `moon build`、跑了本脚本 —— 图片读数**照样全绿**。真因是 `./moobile.js` 是
+// `moobile-host build` 从 `_build/` **拷**过来的那一份，而 `moon build` 只更新 `_build/`；
+// 少跑一步拷贝 ⇒ 本脚本**悄悄打的是上一版代码**。更坏的是打印的 sha256 也一起是旧的，
+// 于是"两次跑出来一模一样"看着像"改动没影响"。
+//
+// ⇒ 规则：**打完之前先问一句"我手上这份是不是这次的"**。问法是从 `moobile-host` 拿
+//    **真正的**产物路径（`build --print-path`，它自己会做发现），比 mtime。比它旧就中止。
+//    ⚠️ 刻意**不自动替你拷贝**：那会把"少跑一步"这个真问题藏起来（本仓库的负面清单第一条）。
+//    确实想打旧产物（排查用）⇒ `--allow-stale`。
+const CLI = path.join(HERE, 'node_modules', 'moobile-host', 'bin', 'cli.js');
+const ALLOW_STALE = process.argv.includes('--allow-stale');
+if (!ALLOW_STALE) {
+  let real = null;
+  try {
+    real = execFileSync(process.execPath, [CLI, 'build', '--print-path'], { encoding: 'utf8' }).trim();
+  } catch {
+    console.error(
+      'build-web.mjs: 拿不到真正的产物路径（`moobile-host build --print-path` 失败了）。\n' +
+        '  它失败通常意味着 `_build/` 里还没有 JS 产物 —— 先 `moon build --target js`。\n' +
+        '  只是想强行打手上这份旧产物：`node build-web.mjs --allow-stale`。',
+    );
+    process.exit(2);
+  }
+  const mine = fs.statSync(ARTIFACT).mtimeMs;
+  const theirs = fs.existsSync(real) ? fs.statSync(real).mtimeMs : 0;
+  if (theirs > mine) {
+    console.error(
+      'build-web.mjs: **手上这份 `moobile.js` 比 `_build/` 里的旧**，打出来的是上一版代码。\n' +
+        `  _build/ 里的：${path.relative(HERE, real)}（${new Date(theirs).toLocaleString()}）\n` +
+        `  手上这份：  moobile.js（${new Date(mine).toLocaleString()}）\n` +
+        '  ⇒ 跑 `npm run build`（= moon build + moobile-host build + 本脚本），或先 `npx moobile-host build`。\n' +
+        '  ⚠️ 别用"再打一次看看"绕过去：那正是这次假绿的成因。',
+    );
+    process.exit(2);
+  }
 }
 
 const bytes = fs.readFileSync(ARTIFACT);

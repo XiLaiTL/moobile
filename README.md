@@ -96,7 +96,7 @@ import { registry } from './registry.generated.js';  // npx moobile-host regen �
 export default mountApp(app, { registry });
 ```
 
-`MOBILE_HOST` 契约（React、5 个基础组件、调度钩子、后端地址）、契约版本比对、
+`MOBILE_HOST` 契约（React、6 个基础组件、调度钩子、后端地址）、契约版本比对、
 能力注册表都在这个包里。没有能力依赖时 `mountApp(app)` 就够。
 
 ### 1.3 跑起来
