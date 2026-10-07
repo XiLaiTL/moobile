@@ -19,6 +19,16 @@
 // 修法不是"让用户记得先 export"（那还是得靠人记），而是把"找程序根"这件事放进 **Node** 里做：
 // 那边没有 shell 方言问题，`SKILLPRESS_ENGINE` 仍然优先。
 //
+//
+// ## ⚠️ 还有一个"读数指到别人身上"的坑（所以 `package.json` 里写了 `--app .`）
+//
+// `tools/press.mjs` 的**默认** `--app` 是按"程序根旁边的内容仓"算的
+// （`<skills>/skillpress/scripts/.skillpress`）⇒ 在实例里直接 `node <引擎>/tools/press.mjs`
+// 会去**改/查内容仓那份实例**，而不是脚下这一份。实测：在程序仓的实例里跑 `press:check`，
+// 打印出来的路径是 `…/moobile/skills/skillpress/scripts/.skillpress/…`。
+// ⇒ 所以两个 npm script 都显式带 `--app .`（npm 跑 script 时 cwd 就是实例目录）。
+// 这也是本仓那条老规矩的又一例：**读数要能回答"它指的是谁"**。
+//
 // ## 程序根在哪
 //
 // ① 环境变量 `SKILLPRESS_ENGINE`（**优先**，给"引擎搬走了/在别处"用）；
