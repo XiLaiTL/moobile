@@ -7,7 +7,10 @@
 #        （不列 = 包含）。
 #      · 应用、工具、证据、文档这些要排除。
 #
-# 发布范围 = **只发库**：根包（moobile 库本体）+ `style/` + `sqlite/` + `vendor/rabbita/`（fork）
+# 发布范围 = **库 + skills**：根包（moobile 库本体）+ `style/` + `sqlite/` + `vendor/rabbita/`（fork）
+#            + `skills/`（6 份 moobile-* skill：给**用这个库的人**（多半是 AI）看的书面约定；
+#              2026-10-06 起随包发 —— 实测：**普通目录默认就会进包**，点目录（`.agents` `.dsh` `.skillpress`）
+#              默认不进，所以内容根从 `.agents/skills/` 搬到 `skills/` 是"能带进包"的前提）。
 #
 # ⚠️ 实测坑：`/docs/`（锚定 + 尾斜杠）在 moon 里**不生效**，`/docs/**` 才管用。
 
@@ -36,3 +39,9 @@
 
 # 生成的 API 快照：随机器与构建状态变，不进发布包（消费者侧 moon 会自己生成）
 **/pkg.generated.mbti
+
+# ---- skills：随包发给使用者（AI 看的那些）----
+# 普通目录（非点目录）默认就会进包，所以这里**不需要**放行，只要排掉不该走的：
+# 站点实例是"用程序"的 MoonBit 工程（moon.mod + 生成物 + node_modules + _build + dist），
+# 而那份 `skillpress` skill 讲的是**这套工具**、不是 moobile ⇒ 一条规则同时排掉两者。
+/skills/skillpress/**

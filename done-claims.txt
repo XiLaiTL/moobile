@@ -1,0 +1,31 @@
+# done-claims.txt —— 「已落地能力」台账（D6 用）
+#
+# 语义：**当"当前态"文档里出现"未做/没验/不透明"这类缺席说法，而它说的能力已经落地** ⇒ 报 D6。
+#
+# 为什么需要它：D1–D5 只查「能从代码算出来」的事实；而
+# **「README 说未做、源码里早就做了」这一类，机器算不出来** ——
+# 2026-10-04 人工核实就抓到 5 处（载荷、画布真机、桌面宿主、字形真机、fontWeight）。
+# 这份台账就是那类事实的**人工索引**：新增一项能力时补一行，文档再说"未做"就会被点名。
+#
+# 格式（`|` 分隔，三列都不能少）：
+#   关键词（多个用 `+` 连接，**全部命中**才算） | 证据文件（相对 moobile 根，**必须存在**） | 说明
+#
+# 规矩：
+#   · 证据文件不存在 ⇒ 台账自己说谎，门会报 D6-self（比文档漂移更严重）。
+#   · 关键词要够具体（别写"渲染"这种到处都有的词），否则会刷出一堆噪声。
+#   · 这条是**软**判据（警告，不判红）：命中的行可能是在陈述「另一半没做」，需要人看一眼。
+
+# 事件载荷通道：2026-09 落地（on_raw + Payload 提取器），受控组件因此可用
+载荷+不透明 | vendor/rabbita/html/payload.mbt | 事件载荷通道已落地（Attrs::on_raw + @html.Payload）
+受控组件+用不了 | vendor/rabbita/html/payload.mbt | 同上（受控组件已可用）
+
+# 画布在真机上已量到像素级（含"画布上真的有字"的墨点连通块判据）
+组件挂载+真机 | examples/apps/zhouyi-reader/device_check.mjs | 画布的组件挂载已在真机验证
+字形+真机 | docs/evidence/zhouyi-compass-cjk-after.png | 画布文字字形已在真机量到（有像素证据）
+
+# 桌面宿主已提供（--host rnw / --host webview / Electron 底座）
+桌面+宿主 | docs/design/DESKTOP-RNW.md | 桌面宿主已提供，不是"未提供宿主"
+桌面+未提供 | docs/design/DESKTOP-RNW.md | 同上
+
+# 迁移后那 4 个文字键里，fontWeight 已在真机上量过（FINDINGS 第二十七轮）
+fontWeight+未量 | docs/FINDINGS.md | fontWeight 已在真机量过，只剩 fontStyle / textAlign / textTransform

@@ -11,10 +11,15 @@ whenToUse: 你要写、改或审这个仓库的一份 skill（`skills/<name>/` �
 （`../skillpress/`，它自己是一个 git 仓库）：
 
 ```bash
-node ../skillpress/bin/skillpress.mjs check      # 门：skill 自己（G1–G8）
+node ../skillpress/tools/run-js.mjs check        # 通用门：skill 自己（G1–G4 / G7 / G8）—— 新引擎
+node tools/skillpress-gates.mjs                  # 本仓库自己的三道门：G5 / G6 / facts
 node ../skillpress/bin/skillpress.mjs press      # 内容源 → 站点内容包
 node ../skillpress/bin/skillpress.mjs verify     # 判据：真 Chrome 无头
 ```
+
+> ⚠️ **两半门**（D18 / R5 定的）：**通用**那几道跟着程序走（谁的内容仓都该有），
+> **只对 moobile 有意义**的三道（G5 读 `.mbt` 源码、G6 读 `docs/**`、facts 查 docs 撒谎）
+> 住**本仓库**的 `tools/skillpress-gates.mjs`。`check` 那条已经换成新引擎（它不需要 tree-sitter）。
 
 > **角色分工**（别混）：**程序**在旁边的 `skillpress/`（引擎 + 门 + 语法资产；
 > 它单独一个仓库，将来发 npm / moonbit 包）；
@@ -69,15 +74,20 @@ skills/<name>/
 | G2 | 体量预算 + **行尾必须 LF**（CRLF 会让 frontmatter 静默失效） |
 | G3 | 反引号里的**仓库内路径**必须存在（按仓库根 / **这个 skill 自己的目录**查） |
 | G4 | 命令里引用的脚本路径必须存在（`examples/**`、`tools/**`、`scripts/**`…） |
-| G5 | `@html.` / `@style.` / `@cmd.` / `@sub.` 的 API 名必须在 moobile 源码里存在 |
-| G6 | `docs/**.md` 这类链接的 `§N` 节号必须真的存在 |
+| G5 | `@html.` / `@style.` / `@cmd.` / `@sub.` 的 API 名必须在 moobile 源码里存在 —— **住本仓库** |
+| G6 | `docs/**.md` 这类链接的 `§N` 节号必须真的存在 —— **住本仓库** |
 | G7 | 禁语表（程序的 `claims.txt`）出现即红：不许把"未做"写成"已支持" |
 | G8 | 体量 / 条目数指纹变了就红：**复核**这次变化，然后 `--update-lock <名字>` |
 
+> ⚠️ **G1–G4 / G7 / G8 是"通用门"**（住在程序里，谁的内容仓都该有）；
+> **G5 / G6 加上 `facts`（查 `docs/**` 有没有撒谎）只对 moobile 有意义** —— 它们读的是这个仓库的
+> `.mbt` 源码与 `docs/**`，别人的仓库没有 ⇒ 按 D18 住在**本仓库**的 `tools/skillpress-gates.mjs`。
+> 前台那条 `check` 只跑通用门（顺带一提：它**不需要 tree-sitter**，门不碰高亮）。
+
 ```bash
-node ../skillpress/bin/skillpress.mjs check --selftest   # 门自己的判据：诱饵必须全被点名
-node ../skillpress/bin/skillpress.mjs facts             # 另一道门：查事实来源（docs 有没有撒谎）
-node ../skillpress/bin/skillpress.mjs audit             # 上色的闸门：召回率 / 漏色比例
+node tools/skillpress-gates.mjs --selftest       # 三道门自己的证伪：造夹具，必须全被点名
+node tools/skillpress-gates.mjs --gate facts     # 单跑一道；`--strict` 把 facts 的软项也算不合格
+node ../skillpress/bin/skillpress.mjs audit      # 上色的闸门：召回率 / 漏色比例
 ```
 
 > 被 `skillpress.ignore.md` 列上的那份 skill，**门也跳过**（R4）—— 但它每次都会被点名
