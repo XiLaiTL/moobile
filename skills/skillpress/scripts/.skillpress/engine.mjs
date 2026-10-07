@@ -54,12 +54,23 @@ if (!tool) {
   console.error('engine.mjs：用法 `node engine.mjs <工具名> [参数…]`（例：`node engine.mjs press --check`）');
   process.exit(2);
 }
-const file = path.join(engine, 'tools', tool + '.mjs');
+// ⚠️ 工具住在两处，**先看随包发的那一处**（2026-10-07 加）：
+//    · `launcher/`  —— **随包发**（`press` 就住这儿）：用户装下来的包里只有它；
+//    · `tools/`     —— 开发期脚本（`.moonignore` 排掉了 `/tools/`）。
+//    原来只找 `tools/` ⇒ 从 registry 装的包生成出来的站点工程跑 `npm run press` 会报
+//    「在程序根里找不到工具 —— <包>/tools/press.mjs」（用户那边根本没有 `tools/`）。
+//    两处都找、**先 launcher**，并让错误信息把"找过哪两处"打出来（不猜、也不装作只有一处）。
+const candidates = [
+  path.join(engine, 'launcher', tool + '.mjs'),
+  path.join(engine, 'tools', tool + '.mjs'),
+];
+const file = candidates.find((c) => fs.existsSync(c));
 if (!fs.existsSync(file)) {
   console.error(
-    `engine.mjs：在程序根里找不到工具 —— ${file}\n` +
-      `  程序根是按这条算的：${engine}\n` +
-      `  用 SKILLPRESS_ENGINE=<程序根> 显式指一条（不猜）。`,
+    `engine.mjs：在程序根里找不到工具 —— ${tool}.mjs\n` +
+    `  找过：\n${candidates.map((c) => '    ' + c).join('\n')}\n` +
+    `  程序根是按这条算的：${engine}\n` +
+    `  用 SKILLPRESS_ENGINE=<程序根> 显式指一条（不猜）。`,
   );
   process.exit(2);
 }
