@@ -195,7 +195,21 @@ const RULES = [
     id: 'canvas.api',
     auto: '半自动',
     why: 'canvas 在标签表里是**明确排除**的（RN 无 canvas）。',
-    next: '**画布通道已落地**（`@canvas.OpCtx`，32 项判据）：方法名与 `CanvasRenderingContext2D` 逐字相同，迁移是换类型；真机也验过（`canvas-spike` 7/7、`canvas-demo` 12/12）。⚠️ 仍差**文字字形**（`makeFont`）与 **`devicePixelRatio` 换算**（T3.5）。',
+    // ⚠️ 这一格必须与 `tools/mbtools/src/migrate_scan.mbt` 的同一条**逐字相同** ——
+    //    门 `node tools/migrate_scan_reconcile.mjs` 会逐 finding 对账（比到 `next`）。
+    // 更正原文三处过期（原写"32 项判据"+"仍差文字字形"+"仍差 dpr 换算"）—— 起因见下：
+    //   ① 条数：`cd examples/apps/canvas-spike/host && node verify.mjs` 实跑 **通过 41 / 失败 0 / 跳过 0**
+    //      （32 是更早的读数，条数一直在长 —— 别在这里抄数，跑一遍看它自己的汇总行）。
+    //   ② **字形已验**（原文说没验，是错的）：第二十四轮查出真机上一个中文都画不出来（Skia 不做字体回退）、
+    //      第二十五轮改成"按文件读系统 CJK 字体"之后**画出来了** —— 证据图
+    //      `docs/evidence/zhouyi-compass-cjk-{before,after}.png`，真机判据在
+    //      `examples/apps/zhouyi-reader/device_check.mjs` 的「★ 画布上真的有字」（连通块 ≥1500，无字 790 / 有字 2191）。
+    //   ③ **仍未验**的是"真机字形与 web/桌面**差多少**"（真机回退 NotoSansCJK、源 CSS 想要的是楷体，
+    //      差异**没有量过**）与画布侧的 `devicePixelRatio` 换算（T3.5）。②与③不矛盾：**画得出来 ≠ 两端一样**，
+    //      别把"画得出来"当成"差异也量过了"。
+    // 另：`renderReport` 印这一格时用 `slice(0, 160)` 截断 ⇒ 全文压在 160 字符内，
+    //     否则 MIGRATION.md 里那句"仍未验什么"会被**静默砍掉**（读起来像全都验过了）。
+    next: '**画布通道已落地**（`@canvas.OpCtx`，41 项判据）：方法与 `CanvasRenderingContext2D` 同名；真机验过（`canvas-spike` 7/7、`canvas-demo` 12/12、字形已验）。⚠️ 仍未验**真机字形与 web/桌面的差异**、**dpr 换算**。',
     needle: 'CanvasRenderingContext2D',
     exts: ['mbt'],
   },
