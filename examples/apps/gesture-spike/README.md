@@ -23,9 +23,12 @@ node verify.mjs      # 40 项（§1-4 比实现，§5 边界，含证伪）
 
 决策点 19 要在这三条里选：① PanResponder ② RNGH ③ 两者并存。而这里有三个**未知量**：
 
-1. **RNGH 在 react-native-web 宿主上跑不跑？** —— 包里有 **275 个 `.web.js` 文件**
-   （`GestureHandlerRootView.web.js` / `GestureComponents.web.js` / …），但"包里有 web 实现"
-   ≠"在我们的 RNW + esbuild 别名下能挂载并收到事件"。网上还能搜到"web 上跑不起来"的讨论。
+1. **RNGH 在 react-native-web 宿主上跑不跑？** —— 装进来的那份 `react-native-gesture-handler@3.3.0`
+   **自带一整套 `.web` 变体**（本机实测：包内 `*.web.js` **21 个**、`*.web.*` **105 个** ——
+   RootView 与各手势组件都有，都在包内 `lib/module/components/` 下；⚠️ **别抄这个数**，
+   它跟着包的版本走，要数就 `find node_modules/react-native-gesture-handler -name '*.web.js'`），
+   但"包里有 web 实现"≠"在我们的 RNW + esbuild 别名下能挂载并收到事件"。
+   网上还能搜到"web 上跑不起来"的讨论。
 2. **`PanResponder` 在 RNW 上给不给元素内坐标？** —— responder 系统 RNW 也实现了，
    零新依赖这条很吸引人，但"能点"≠"能拖且坐标对"。
 3. **RNGH 的 `translationX` 与 DOM 的"按下即起算"一致吗？** —— 这条直接决定
@@ -97,7 +100,7 @@ banner: { js: 'var __DEV__ = true; var global = globalThis;' },  // ② __DEV__ 
 
 1. **只测了 web 宿主（RNW）**。原生侧的结论（性能、手势与原生视图的交互、UI 线程 vs JS 线程）
    要 `expo prebuild` + 重建 APK + 真机 —— **那部分已经另起了 `examples/apps/gesture-edges/`**
-   （18 项），§7 里凡标「(真机)」的都归它。
+   （它自己的判据集，条数与分数以那份脚本的汇总行为准），§7 里凡标「(真机)」的都归它。
 2. **没测"JS 线程忙时的手感"**：罗盘拖拽会触发整棵视图重算（MoonBit → React 元素），
    而 `PanResponder` 与渲染都在 JS 线程 —— 这条是真机上最可能翻车的地方，**现在仍然没有判据**。
 

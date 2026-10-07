@@ -4,10 +4,12 @@
 // ── 子命令面（**冻结**，改名前先看 docs/design/SCAFFOLD.md 的 CLI 面那一节）────────
 //
 //   init <dir>     从模板生成一个项目（= 脚手架；E 轨道）
+//   create         从一个**既有** rabbita 项目生成 moobile 项目（E9：`--from-rabbita`，落迁移报告）
 //   build          把编好的 MoonBit 产物搬到宿主目录（Metro 只认工程目录内的路径）
 //   regen          能力注册表（从 package.json 的依赖生成，已有）
 //   doctor         环境自检（S3：缺什么直接说装什么）                    —— **未实现**
-//   libgen         组件库生成（I 轨道：manifest + MoonBit DSL + 宿主注册）—— **未实现**
+//   libgen         组件库生成（I 轨道：manifest + MoonBit DSL + 宿主注册）—— **已实现**
+//                  （`bin/libgen.js` 在表里已接上 —— 这里原先写"未实现"，是 I 轨道落地前的旧话）
 //   upgrade        读 moon.mod + package.json 列出要改的版本             —— **未实现**
 //
 // ⚠️ 为什么把子命令写在这个文件里当"契约"：**这个文件是共同战场** ——
@@ -27,7 +29,14 @@ const USAGE = `moobile-host —— moobile 的宿主侧工具
 
 用法：
   moobile-host init <目录> [--name <应用名>]     从模板生成一个项目
-                  [--host expo|rnw]              用哪个宿主（默认 expo；rnw = 裸 RN + RNW 桌面）
+                  [--host expo|rnw|webview]      用哪个宿主（默认 expo；三档见 README 的宿主表）
+                                                 · rnw     = 裸 RN + react-native-windows（桌面）
+                                                 · webview = **静态 Web 外壳**（零 Expo / 零 Metro）：
+                                                   esbuild 打成 dist/，扔任何静态服务器就能跑
+                                                 （PWA / Tauri / Electron 的底座）
+                  [--force] [--dry-run]          非空目录也写 / 只列将要写什么，不落盘
+  moobile-host create --from-rabbita <既有项目> <新目录>
+                                                 从一个**既有的 rabbita 项目**迁移过来
   moobile-host build [--release] [--out <文件>]  把 MoonBit 产物搬到宿主目录
   moobile-host regen [--out <文件>] [--check]    生成 / 核对能力注册表
   moobile-host regen --styles --diff             迁移应用的**样式层**：生成物 vs 磁盘逐函数差在哪
@@ -38,11 +47,13 @@ const USAGE = `moobile-host —— moobile 的宿主侧工具
   -h, --help        这条帮助
   -v, --version     版本号
 
-生成出来的项目里：
-  npm run build     ==  moon build --target js  +  moobile-host build
-  npm run web       ==  npm run build  +  expo start --web
+生成出来的项目里（三档的 npm run build 都是 moon build + moobile-host build）：
+  expo 档：   npm run web       ==  npm run build  +  expo start --web
+  webview 档：npm run serve     ==  零依赖静态服务，浏览器打开即看（dist/ 也已就绪）
+  rnw 档：    npm start         ==  Metro dev server；npm run windows 跑桌面窗口
 
-名字已冻结、但还没实现的（别抢）：doctor / libgen / upgrade
+名字已冻结、但还没实现的（别抢）：doctor / upgrade
+libgen 已经实现了（bin/libgen.js，用法见 npm/moobile-host/README.md 的组件库那一节）
 `;
 
 function version() {

@@ -6,10 +6,20 @@
     <title>御纂周易折中 · 静态 Web 宿主</title>
     <style>
       html,
-      body,
-      #root {
+      body {
         height: 100%;
         margin: 0;
+      }
+      /* [为什么 #root 必须是 flex 容器] 原生 RN 里「根视图 = 屏幕大小」是内置前提；
+         搬进浏览器时这一步要**手工补上**（RNW 的 quick-start 模板就是 height:100% + display:flex）。
+         漏了的后果是**静默的**：应用根是弹性项（flex:1），块盒里没有可分配的 flex 空间
+         => 它长到内容高 => 本该滚动的内容区被撑满、滚的是整个页面 => 顶栏跟着滚出去。
+         实测：内容 3000px 时容器 3435 / 整页可滚 2945；补上后容器 490 / 整页可滚 0 / 滚 window 顶栏不动。 */
+      #root {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
     </style>
   </head>

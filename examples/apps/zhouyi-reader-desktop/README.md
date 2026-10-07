@@ -39,7 +39,7 @@ node verify.mjs                                                  # ← 判据在
 
 | 要什么 | 为什么 | 本机 |
 |---|---|---|
-| **VS 2026 ≥ 18.6.1**（不是文档写的 VS 2022） | RNW 0.83.2 **包内自带**的 `rnw-dependencies.ps1` 写的是 `$vsver = "18.6.1"`；CLI 的闸门在 `msbuildtools.js:160` | ❌ 只有 VS 2022 BuildTools |
+| **VS 2026 ≥ 18.6.1**（不是文档写的 VS 2022） | RNW 0.83.2 **包内自带**的 `Scripts/rnw-dependencies.ps1`（在 `node_modules/react-native-windows/` 下，不是本仓的文件）写的是 `$vsver = "18.6.1"`；CLI 的闸门在它包内的 `msbuildtools.js:160` | ❌ 只有 VS 2022 BuildTools |
 | `Desktop development with C++` / `.NET Desktop` / `UWP + C++ (v143) UWP tools` | 同上脚本的 `$vsWorkloads` / `$vsComponents` | ❌ 全缺 |
 | Windows SDK **10.0.22621.0** | RNW 的 `WindowsSdk.Default.props` 在 New Arch 下强制它 | ❌ 只有 10.0.19041.0 |
 | `pwsh`（PowerShell 7）**在 PATH 上** | `@react-native-windows/find-dotnet-tools` 会 require 它；**缺了表现为"`windows` 平台不存在"** | ⚠️ 装了但不在 PATH |

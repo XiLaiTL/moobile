@@ -237,8 +237,14 @@ MoonBit 侧就是普通标签，只是名字带命名空间：
 - **组件与适配器只注册一次**：每次渲染重新注册会让 React 认为"类型变了"，
   整棵子树卸载重挂，组件库内部的 state / 动画会归零。
 
-⚠️ **未做**：事件**载荷**还是不透明的（`onChange` 能触发，但取不到用户输入的值），
-所以受控组件暂时用不了 —— 见设计稿 §5 T1。
+✅ **事件载荷已通**（2026-09 落地；⚠️ **原先这里写着"未做"—— 已过期**）：
+`onChange` 这类事件不只"能触发"，**用户输入的真实值也回到了 `update`** ⇒ 受控组件可以用了。
+MoonBit 侧是 `Attrs::on_raw(event, f : (Payload) -> Cmd)` + 一组提取器
+（`Payload::text()` / `json()` / `num()` / `bool()` / `field(name)`），实现在
+`vendor/rabbita/html/payload.mbt`（整文件限定 js）；DOM 的事件对象、RN 直接给的字符串、
+组件库给的业务值这三种形态由提取器统一覆盖，形状对不上给空值而**不抛错**。
+判据不是"事件触发了"而是"**值对上了**"（设计稿 §5 T1 的 3 条：打字 → 回显**该文本** /
+`input.value` 仍等于 Model 的值 / 第二次输入同样到达）。
 
 ## 画布（`<canvas>` 的平台替代物，Skia）
 
@@ -279,11 +285,21 @@ ctx.stroke()
    （`moobile-host/canvas-ops`，纯函数，也能单独拿来用）。
 3. **文字要字体**：RN Skia 的 `<Text>` 需要一个 `SkFont`，而"用哪个字体"是应用的资源决定，
    宿主不替你猜 → 传 `makeFont`，不传而指令里又有文字就**当场抛**（不静默跳过文字）。
-4. **平台闸门默认是 `['android','ios']`**（与 `registerLibrary` 的默认 `['web']` 相反）——
+4. **平台闸门默认是 `['android','ios']`**（`registerLibrary` 自己**没有**默认值：手写注册不传
+   `platforms` 就**完全不过闸门**；`['web']` 只是 libgen 生成配置时的默认）——
    Skia 只跑原生。Web 上要同样的画面走 CanvasKit，那是另一条注册（`platforms: ['web']`）。
 
-判据与已知边界（**真机上的组件挂载还没验**）见
-[`examples/apps/canvas-spike/`](https://github.com/XiLaiTL/moobile/tree/main/examples/apps/canvas-spike)。
+判据见 [`examples/apps/canvas-spike/`](https://github.com/XiLaiTL/moobile/tree/main/examples/apps/canvas-spike)
+（离线试金石：指令 → 树 → 真 Skia 回放，含跨语言对账与两组变换证伪；项数以它自己打的汇总行为准）。
+
+⚠️ **原先这里写着"真机上的组件挂载还没验"—— 已经不成立**（2026-10-23 复核）：
+`examples/apps/zhouyi-reader/device_check.mjs` 在真机上量到**像素级** ——
+① 画布上**真的有字**（独立的墨色连通块：无字 790 / 有字 2191，阈值 1500，是标定出来的）；
+② 罗盘是**正圆**不是椭圆（RN Skia 的变换只读每一项的第一个键，正圆曾被画成横扁的椭圆，
+见 `docs/FINDINGS.md` 第二十三轮）；③ 圆心对得上。
+证据图 `docs/evidence/zhouyi-compass-cjk-before.png` / `-after.png`（第二十二 / 二十三 / 二十五轮）。
+仍**待测**的：真机回退字体是 NotoSansCJK **黑体**、源 CSS 想要**楷体** ⇒ 真机字形与 web/桌面
+**不一致**，而这个差异有多大至今**没有判据**（第二十五轮§六）；以及 `devicePixelRatio` 换算（T3.5）。
 
 ### 两个容易踩的形状（2026-10 实测补）
 
@@ -368,10 +384,14 @@ RN 里没有"同源"这回事，`fetch('/todos')` 没有意义：地址由宿主
 
 ## 兼容性
 
+⚠️ **别抄本节的数字**（版本会漂）：**库版本**以 `moon.mod` 为准，**宿主版本**以
+`npm/moobile-host/package.json` 为准，**契约版本**以两侧声明为准（就是下面那两处）；
+已发布 / 待发的现状与各门分数在 `docs/STATUS.md`。
+
 | moobile（MoonBit 包） | moobile-host | MOBILE_HOST 契约 |
 |---|---|---|
-| 0.2.x | 0.2.x | 1 |
-| 0.3.x（**已发布** 2026-10-01） | 0.3.x（**已发布**） | **2** —— 加了 `events` / `wrapRoot` / `platform`，`components` 键空间开放 |
+| 0.2.x（历史） | 0.2.x | 1 |
+| **0.3.0 起至今** | **与库同代**（模板钉的就是同代） | **2** —— 加了 `events` / `wrapRoot` / `platform`，`components` 键空间开放；之后两次发版（含 vendor 换底那次）**都没有动契约编号** |
 
 ⚠️ **两个包必须同代升**：只升一边会在挂载时**同时报出两个契约版本号**（下面那句就是它的行为）。
 

@@ -1822,7 +1822,7 @@
         "auto": "半自动",
         "count": 11,
         "why": "canvas 在标签表里是**明确排除**的（RN 无 canvas）。",
-        "next": "**画布通道已落地**（`@canvas.OpCtx`，32 项判据）：方法名与 `CanvasRenderingContext2D` 逐字相同，迁移是换类型；真机也验过（`canvas-spike` 7/7、`canvas-demo` 12/12）。⚠️ 仍差**文字字形**（`makeFont`）与 **`devicePixelRatio` 换算**（T3.5）。",
+        "next": "**画布通道已落地**（`@canvas.OpCtx`，41 项判据）：方法与 `CanvasRenderingContext2D` 同名；真机验过（`canvas-spike` 7/7、`canvas-demo` 12/12、字形已验）。⚠️ 仍未验**真机字形与 web/桌面的差异**、**dpr 换算**。",
         "hits": [
           {
             "file": "frontend/colorring.mbt",

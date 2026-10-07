@@ -21,7 +21,11 @@ installHost();
 // 画布后端：这个宿主**只**注册 DOM 2D 那条（`canvas-web.js`，零依赖）。
 //
 // ⚠️ 为什么这里不挂 `canvas-svg`：那条是**桌面宿主**的通道（RNW 上 Skia 没有后端、也没有 DOM
-//    canvas），它的判据在 Expo 宿主那边用 `EXPO_PUBLIC_CANVAS=svg` 验过（同一套 45 条）。
+//    canvas），它的判据在 Expo 宿主那边用 `EXPO_PUBLIC_CANVAS=svg` 验过 —— 跑的就是**应用自己
+//    那套判据**（`../zhouyi-reader/verify.mjs`，它按"canvas 读像素 / svg 数元素"分档，与后端无关）。
+//    ⚠️ 这里原先抄的"同一套 45 条"是远古读数 —— **别再抄数字**：条数随应用长、也随宿主变
+//       （换宿主那两条门各自钉死一个数：静态 Web 宿主的 `EXPECT_APP_ASSERTIONS = 107`、
+//       Electron 那条 = 105 —— 附着模式下"响应式"那 2 条会 SKIP）。要数字就跑一遍看汇总行。
 //    这个宿主的定位是"**零额外依赖的静态外壳**"——为了一个用不到的通道把
 //    `react-native-svg`（连带一个 RN 本体 peer）拖进来，等于把卖点拆了。
 //    （实测：装它会撞 peer 冲突，`react@19.2.0` vs RN 0.87 要的 `^19.2.3`。）

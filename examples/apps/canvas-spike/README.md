@@ -3,7 +3,7 @@
 ```bash
 cd examples/apps/canvas-spike/host
 npm install          # 只有 canvaskit-wasm（真 Skia 的 WASM 版）
-node verify.mjs      # 26 项判据（含 2 个证伪诱饵）
+node verify.mjs      # 判据（项数与通过数以它自己末尾的汇总行为准；含证伪诱饵）
 node verify.mjs --keep   # 顺带把 PNG 证据写到 docs/evidence/canvas-r1/
 ```
 
@@ -11,7 +11,9 @@ node verify.mjs --keep   # 顺带把 PNG 证据写到 docs/evidence/canvas-r1/
 "画出来对不对"已经用**真 Skia**（CanvasKit，和 RN Skia 是同一个引擎）在**本机**验过了，
 判据是**384 个像素采样点逐一对照卦爻数据**；而契约的两端（MoonBit 编码器 ↔ 宿主包解码器/翻译器）
 **逐条对账过**，载荷逐字节相同、出图像素逐点相同。
-**原生侧（RN 的 Skia 组件挂载 + 真机）与文字字形没验**，边界见文末 §5。
+**原生侧（RN 的 Skia 组件挂载 + 真机）与文字字形当时没验，后来都验了**（§9 · `docs/FINDINGS.md`
+第二十三/二十五轮）；**剩下两件事仍然没有判据**：① 两端的字形**差多少**（真机回退用黑体、源 CSS
+想要楷体，字形**不一样**）；② 画布侧的 `devicePixelRatio` 换算（T3.5）。边界见文末 §5。
 
 ---
 
@@ -111,19 +113,23 @@ path + fill + stroke + transform + text，不需要那些高级 API。
 桥的做法是把当前累积变换挂到**每个元素自己的 `transform` prop** 上（RN Skia 的绘制节点都接受 `transform`），
 于是 `save/restore` 退化成"存/取快照"，树保持扁平。
 
-## 4. 判据与证据（32 项，`node verify.mjs`）
+## 4. 判据与证据（`node verify.mjs`）
 
-### 4.1 七组
+⚠️ **项数不在这里抄**（"数字抄一份就会漂一份"，`docs/STATUS.md` 立的规矩）——
+**以脚本末尾那行汇总为准**，它自己会数。
 
-| 组 | 回答什么问题 | 项数 |
-|---|---|---|
-| ① 词汇表覆盖 | 实测的 18 个调用，契约里是不是都有？ | 3 |
-| ② 载荷大小 | 塞进一个 prop 有多大？ | 2 |
-| ③ 形状（stub） | ops → 元素树逐条对不对（含负例：不许静默） | 11 |
-| ④ 真引擎出图 | 真 Skia 回放不崩、画出了东西 | 1 |
-| ⑤ 像素对数据 | **384 个采样点**的颜色 == 由卦爻数据独立推出的颜色；圆外是纸色；外圈金线真的画出来了；径向逐像素 + 5 条环带边界 | 4 |
-| ⑥ 证伪 | 上面的断言**抓不抓得住错** | 4 |
-| ⑦ **跨语言对账** | MoonBit 编出来的载荷 ⇄ 宿主包的解码器/翻译器/真 Skia：条数、逐条数值、**逐字节**、**像素逐点** | 6 |
+### 4.1 八组
+
+| 组 | 回答什么问题 |
+|---|---|
+| ① 词汇表覆盖 | 实测的 18 个调用，契约里是不是都有？ |
+| ② 载荷大小 | 塞进一个 prop 有多大？ |
+| ③ 形状（stub） | ops → 元素树逐条对不对（含负例：不许静默） |
+| ③′ 字体回退 | 画布文字用哪个字体：应用给的优先、画不出才回退、注册回退要通知重渲染 |
+| ④ 真引擎出图 | 真 Skia 回放不崩、画出了东西 |
+| ⑤ 像素对数据 | **384 个采样点**的颜色 == 由卦爻数据独立推出的颜色；圆外是纸色；外圈金线真的画出来了；径向逐像素 + 5 条环带边界 |
+| ⑥ 证伪 | 上面的断言**抓不抓得住错** |
+| ⑦ **跨语言对账** | MoonBit 编出来的载荷 ⇄ 宿主包的解码器/翻译器/真 Skia：条数、逐条数值、**逐字节**、**像素逐点** |
 
 ### 4.2 跨语言对账（第 ⑦ 组）：契约两端各一份实现
 
@@ -159,9 +165,11 @@ path + fill + stroke + transform + text，不需要那些高级 API。
 
 ## 5. 这个 spike **没有**证明什么（边界，别读成已验证）
 
-1. **RN 原生侧的组件挂载没验**。这里回放的是**真 Skia 引擎**（CanvasKit），共享 path / paint / transform 语义；
-   但 React 那一层（`<Canvas>` 组件挂载、reconciler、`transform` prop 的接受形状）**没跑过**。
-   要验它得 `expo prebuild` + 重建 APK + 模拟器截图。
+1. ~~**原先：RN 原生侧的组件挂载没验**~~ → **已验**（§9，2026-10-01，**7 / 7**；`transform` prop 的接受形状
+   另有 `docs/FINDINGS.md` 第二十三轮的修前/修后真机读数）。原先这条写"React 那一层（`<Canvas>` 组件挂载、
+   reconciler、`transform` prop 的接受形状）**没跑过**，要验它得 `expo prebuild` + 重建 APK + 模拟器截图"
+   —— 那件事后来做了，本条跟着作废（留痕，不静默抹掉）。
+   这里回放的是**真 Skia 引擎**（CanvasKit），共享 path / paint / transform 语义。
 2. **Skia 会带进两个额外原生依赖**（`npm view @shopify/react-native-skia@2.12.0 peerDependencies` 实测）：
 
    ```
@@ -172,14 +180,29 @@ path + fill + stroke + transform + text，不需要那些高级 API。
 
    这条**文档里没有**，而它正是 P3 当初挂的 Q1 风险（"如果成本失控，要重新评估状态模型与 RN 导航/手势库如何共存"）。
    另外它自带 `canvaskit-wasm@0.41.0`，所以 Web/本机这条路是现成的。
-3. **手势（T3.4）与坐标换算（T3.5）没做**。罗盘现在只是"画出来"，还不能拖、不能点选。
-4. **文字只验到元素形状，没验字形**。CanvasKit 是 wasm，没有系统字体管理器；本机是从系统字体目录里
-   找到中文黑体（`msyh.ttc`）才画得出字的（`--keep` 的 PNG 里有中文标签）。
-   找不到字体时这一步记 **SKIP**（不是 PASS）；几何判据的采样点全在 `r ≤ 300`，标签在 `r ≥ 303`，两者不重叠，
-   所以文字是否渲染**不影响**几何判据。
+3. ~~**手势（T3.4）与坐标换算（T3.5）没做**。罗盘现在只是"画出来"，还不能拖、不能点选。~~
+   → **分两半**：**手势通道（T3.4）已落地且真机验过**（`gesture/` 包 + 宿主 `gesture-rn.js`
+   默认装载；真机读数是"拖拽后画布重绘 / 轻点外环进卦"，见 `examples/apps/gesture-edges/` 与
+   `examples/apps/zhouyi-reader/device_check.mjs`）；**画布侧的 `devicePixelRatio` 换算（T3.5）
+   仍未验**（口径见 `docs/STATUS.md`）。⚠️ 但**本 spike 的罗盘样本自己仍然只是"画出来"** ——
+   拖与点是那个真应用验的，不是这里。
+4. ~~**原先：文字只验到元素形状，没验字形**~~ → **字形真机也画出来了**（`docs/FINDINGS.md` 第二十四/二十五轮：
+   真机上原先一个中文都画不出来 —— Skia 的 `<Text>` 不做字体回退；修法是"宿主给注册口、应用把系统 CJK
+   字体喂进去"，`await SkiaApi.Data.fromURI('file:///system/fonts/NotoSansCJK-Regular.ttc')` 拿到的
+   typeface 里「乾」= **字形 9647**；像素判据是画布区域"独立墨色连通块" **790 → 2191**、阈值 1500；
+   真机判据在 `examples/apps/zhouyi-reader/device_check.mjs`，证据图
+   `docs/evidence/zhouyi-compass-cjk-{before,after}.png`）。
+   ⚠️ **"差异"这一半仍然没有判据**：真机回退用 NotoSansCJK **黑体**，而源 CSS 想要**楷体** ⇒
+   两端的字形**不一样**，**差多少至今没有判据**（第二十五/二十八轮记着）。
+   本机这一侧没变：CanvasKit 是 wasm，没有系统字体管理器，本机是从系统字体目录里找到中文黑体
+   （`msyh.ttc`）才画得出字的（`--keep` 的 PNG 里有中文标签）。找不到字体时这一步记 **SKIP**（不是 PASS）；
+   几何判据的采样点全在 `r ≤ 300`，标签在 `r ≥ 303`，两者不重叠，所以文字是否渲染**不影响**几何判据。
 5. **`scale` 没有被真实样本覆盖**（罗盘不用它），只有单测；D1 全项目统计里它出现 1 次。
-6. **性能没有基线**。六十四卦是 838 个 Path 元素、5335 条 op；每帧重建这棵树在真机上多大代价，
-   `D` 轨道整条未开始 → **没有判据可谈**。
+6. ~~**性能没有基线**。`D` 轨道整条未开始 → **没有判据可谈**。~~ → **改成一半**：`D1` 的**离线基线**
+   已经落地（`tools/perf_bench.mjs` + `examples/apps/perf-bench/`，数字在 `docs/PERF.md`），但它量的是
+   **长列表负载**的翻译层 / `dom` 档，**没有一项覆盖画布那棵树**；`D1` 的真机/真浏览器那两套、`D2` 的
+   掉帧率与内存峰值仍未做（口径见 `docs/STATUS.md` 的"D 性能"那一行）。
+   ⇒ 六十四卦是 838 个 Path 元素、5335 条 op；**每帧重建这棵树在真机上多大代价，仍然没有判据**。
 
 ## 6. 目录
 
@@ -191,7 +214,7 @@ path + fill + stroke + transform + text，不需要那些高级 API。
 | `host/probe_program.mjs` | **镜像程序**：与 `spike.mbt` 是同一条规格的 JS 实现 |
 | `host/compass.mjs` | **真实样本**：yi 的六十四卦色环 1:1 抄成 op 列表（逐段对应关系写在文件头） |
 | `host/play.mjs` | 把元素树**真画出来**（CanvasKit），读回像素 |
-| `host/verify.mjs` | **32 项**判据（六组 + 跨语言对账，含证伪诱饵） |
+| `host/verify.mjs` | 判据（八组 + 跨语言对账，含证伪诱饵；**项数以它自己的汇总行为准**） |
 | `host/hexagrams.json` | 64 卦摘录（只取 序号/卦名/卦画 三列，出处写在文件里） |
 | `docs/evidence/canvas-r1/*.png` | 四个层级的罗盘渲染结果（视觉证据） |
 
@@ -202,13 +225,18 @@ path + fill + stroke + transform + text，不需要那些高级 API。
 
 1. ~~**库侧落地**~~ ✅ **已完成**：库包 `canvas/`（18 条指令 + `OpCtx` + `canvas()`，7 项测试）
    与宿主包两个入口（`canvas-ops` / `canvas-skia`）都在树里。
-2. **原生验证**（下一个未知量）：`expo prebuild` → 重建 APK → `adb shell wm size` + 截图断言。
+2. ~~**原生验证**（下一个未知量）：要验的是三件本机验不了的事：`<Canvas>` 的**组件挂载**、
+   `transform` prop 的接受形状、**文字字形**。~~ → **三件都验过了**：组件挂载 ✅（§9 的 7/7）、
+   `transform` prop 的接受形状 ✅（`docs/FINDINGS.md` 第二十三轮："每项只读第一个键"那条，真机复核过）、
+   **文字字形** ✅（第二十五轮：真机画布上的中文画出来了）。
+   配方留在 §9.1：`expo prebuild` → 重建 APK → `adb shell wm size` + 截图断言。
    ⚠️ prebuild 会把 Gradle 改回 9.3.1，之后**必须重跑** `bash tools/android_env_setup.sh`（T3.1 的坑）。
-   要验的是三件本机验不了的事：`<Canvas>` 的**组件挂载**、`transform` prop 的接受形状、**文字字形**。
+   **下一个未知量**换成了"真机字形与 web/桌面的差异"与画布侧的 `devicePixelRatio` 换算。
 3. **手势**（T3.4）与**坐标换算**（T3.5）：注意 T3.4 的警告 ——
    **别去修 rabbita 的 `Mouse`**（RN 上它返零值），另开手势通道。
 4. **性能**：六十四卦是 838 个 Path 元素、5335 条 op，每帧重建这棵树在真机上多大代价 ——
-   而 `D` 轨道整条未开始，**现在没有判据**。
+   `D1` 的**离线**基线已落地（`examples/apps/perf-bench/`，数字在 `docs/PERF.md`），但**它不覆盖画布**；
+   画布 + 真机这一格**现在仍然没有判据**。
 
 ## 8. 这一轮的收尾状态
 
@@ -219,8 +247,8 @@ path + fill + stroke + transform + text，不需要那些高级 API。
 | 宿主侧 | ✅ `canvas-ops`（纯翻译器）+ `canvas-skia`（React 桥，应用传入 Skia） |
 | 绘制语义 | ✅ 真 Skia 出图 + 384 采样点对数据 + 3 个证伪 |
 | 载荷契约 | ✅ 跨语言逐条对账，载荷**逐字节相同**、出图**像素逐点相同** |
-| 真机 | ❌ **未验**（组件挂载 / 文字字形） |
-| 手势、坐标换算 | ❌ 未做 |
+| 真机 | ~~原先 ❌ **未验**（组件挂载 / 文字字形）~~ → ✅ **已验**：§9 的 7/7 + `docs/FINDINGS.md` 第二十五轮（文字字形） |
+| 手势、坐标换算 | ~~❌ 未做~~ → 手势通道**已落地且真机验过**；画布侧 `devicePixelRatio` 换算（T3.5）**仍未验** |
 
 ---
 
@@ -273,8 +301,22 @@ NODE_OPTIONS=--preserve-symlinks ./gradlew assembleDebug -PreactNativeArchitectu
 
 ### 9.2 仍然**没有**验的
 
-- **文字字形**：探针里**故意没有** `fill_text` 指令（否则必须给 `makeFont`）。所以"canvas 上画中文"
-  这条路**没上过真机**。
-- **手势**（T3.4）与 `devicePixelRatio` 换算（T3.5）：罗盘仍"画得出、拖不动"。
+- ~~**文字字形**：**原先**探针里**故意没有** `fill_text` 指令（否则必须给 `makeFont`）。所以"canvas 上画中文"
+  这条路**没上过真机**。~~ → **已推翻（2026-10-23）**："canvas 上画中文"**真机验过了** —— 挪上真机的
+  是 `examples/apps/zhouyi-reader/`（它的绘制指令里有文字），它撞出"真机上画布一个中文都画不出来"
+  （Skia 的 `<Text>` 不做字体回退），修法是"宿主给注册口、应用把系统 CJK 字体喂进去"
+  （`docs/FINDINGS.md` 第二十四/二十五轮）。读数：应用把
+  `file:///system/fonts/NotoSansCJK-Regular.ttc` 读成 typeface 之后，「乾」= **字形 9647**（不是 `.notdef`）；
+  像素判据（不靠自述）是画布区域"独立墨色连通块" **790 → 2191**、阈值 1500，真机判据在
+  `examples/apps/zhouyi-reader/device_check.mjs`，证据图
+  `docs/evidence/zhouyi-compass-cjk-{before,after}.png`。
+  ⚠️ **"差多少"这一半仍然没有判据**：真机回退是 NotoSansCJK **黑体**，而源 CSS 想要**楷体** ⇒
+  两端的字形**不一样**，**差异至今没有判据**（第二十五/二十八轮）。另：**本探针自己仍然不画文字**
+  （这条边界对 §9 那个 9 条 op 的探针仍然成立）—— 字形这件事的证据在 `zhouyi-reader`，不在这里。
+- ~~**手势**（T3.4）与 `devicePixelRatio` 换算（T3.5）：罗盘仍"画得出、拖不动"。~~ → **分两半**：
+  手势通道（T3.4）**已落地且真机验过**（真机读数是"拖拽后画布重绘 / 轻点外环进卦"）；
+  **画布侧的 `devicePixelRatio` 换算（T3.5）仍未验**。本 spike 的罗盘样本仍是"画得出、拖不动"。
 - **iOS**：仍无验证（口径见 `docs/STATUS.md` §2.2）。
-- **性能**：真机上每帧重建这棵树多大代价 —— `D` 轨道未开始，**没有判据**。
+- ~~**性能**：真机上每帧重建这棵树多大代价 —— `D` 轨道未开始，**没有判据**。~~ → `D1` 的**离线**基线
+  已落地（`examples/apps/perf-bench/`，数字在 `docs/PERF.md`），但它**不覆盖画布**；
+  **画布 + 真机这一格仍然没有判据**。

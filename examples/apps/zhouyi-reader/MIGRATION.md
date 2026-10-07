@@ -28,7 +28,7 @@
 | `gesture.dpr` | 2 | 半自动 | T3.5：换算收进画布/手势通道内部，应用侧不用自己算。 |
 | `input.controlled` | 1 | 半自动 | 把 `on_input=emit.map(f)` 换成 `on_raw("change", e => …)`，值从 `e.text()` 取。 |
 | `net.http` | 1 | 半自动 | 换成 `XiLaiTL/moobile/http`；⚠️ 它在 RN 上的传输层**未验过**（见 STATUS §4）。 |
-| `canvas.api` | 11 | 半自动 | **画布通道已落地**（`@canvas.OpCtx`，32 项判据）：方法名与 `CanvasRenderingContext2D` 逐字相同，迁移是换类型；真机也验过（`canvas-spike` 7/7、`canvas-demo` 12/12）。⚠️ 仍差**文字字形**（`makeFont`）与 **`devi |
+| `canvas.api` | 11 | 半自动 | **画布通道已落地**（`@canvas.OpCtx`，41 项判据）：方法与 `CanvasRenderingContext2D` 同名；真机验过（`canvas-spike` 7/7、`canvas-demo` 12/12、字形已验）。⚠️ 仍未验**真机字形与 web/桌面的差异**、**dpr 换算**。 |
 | `tag.excluded` | 7 | 人决定 | 接第三方组件库（I 轨道）或改写成真实组件。**已有的替代物**：`canvas`（画布通道）。 |
 | `tag.outside` | 0 | 人决定 | 人决定：改写成表内标签，或走组件通道（`库名:组件名`）。 |
 | `dep.rabbita` | 1 | 必须改 | 换成 `XiLaiTL/moobile`；判据：`moon.mod` 里只剩一条 rabbita 来源、`moon tree` 不出现 `moonbit-community/rabbita`。 |
@@ -197,6 +197,15 @@ styles/styles.mbt
 >
 > 生成区那份是 `create` 在**迁移当天**算的，之后这个应用被**手改**过（`main.mbt` 等），
 > 所以它不再逐字对应现在的代码。几条要紧的：
+>
+> 7. **2026-10-23：§1 表里 `canvas.api` 那一行已换成"当前事实"**（原来那一句里过期三处）：判据条数
+>    不是 32 而是 **41**（`cd examples/apps/canvas-spike/host && node verify.mjs` 自己打的汇总行：
+>    `通过 41 失败 0 跳过 0`）；**文字字形已经在真机上画出来了**（第二十五轮；证据图
+>    `docs/evidence/zhouyi-compass-cjk-after.png`，真机判据 `device_check.mjs` 的「★ 画布上真的有字」）；
+>    **仍未验**的是"真机字形与 web/桌面**差多少**"与画布侧的 `devicePixelRatio` 换算 —— 这两条别当成验过了。
+>    两份实现一起改（`npm/moobile-host/lib/migrate/scan.js` 与 `tools/mbtools/src/migrate_scan.mbt`，
+>    门 `node tools/migrate_scan_reconcile.mjs`），产物这一行取自重跑生成器的输出。**只换了这一行** ——
+>    生成区其余数字仍是迁移当天的读数（见补记 3 / 5）。
 >
 > 6. **2026-10-23 起判据条数又长了**（下面几条里写的 99 / 29 是当时的读数）：web `verify.mjs`
 >    **107** 条（补了文字样式 4 条）、真机 `device_check.mjs` **39** 条（补了画布文字 / 正圆性 /

@@ -4,10 +4,10 @@
 > `@antd` DSL 包与宿主注册，把 **71 个组件**全部渲染出来的示例。
 >
 > **它的判据是什么**：不是"页面能打开"，而是 —— **manifest 里的每一个组件都真的被 antd 渲染出了 DOM**，
-> 并且关键交互确实把值送回了 MoonBit。做法见 `host/verify.mjs`（24 条）。
+> 并且关键交互确实把值送回了 MoonBit。做法见 `host/verify.mjs`（**条数以它自己的汇总行为准**）。
 >
 > **它为什么不在 `tools/verify_all.sh` 里**（这是刻意的）：那条门测的是**库本体**
-> （标签直通 / 契约 / 宿主包 / 载荷通道，26 项，几分钟内可跑完、离线）；
+> （标签直通 / 契约 / 宿主包 / 载荷通道；**项数以那条门自己打的汇总行为准**，几分钟内可跑完、离线）；
 > 这一份测的是**应用侧生成物**，它跟着 antd 的版本走，只有装了 antd 的机器能跑。
 > 混在一起会让"门红了"分不清是库退化了还是 antd 升级了 —— 那种门最后会被人无视。
 > 生成物的门属于**应用的 CI**（设计稿 §5 T6）。
@@ -21,7 +21,7 @@ cd <仓库根> && moon build --target js
 # 2) 装依赖（antd + react + jsdom，约 110 个包）
 cd examples/apps/antd-demo/host && npm install
 
-# 3) 一条命令跑三件事：生成物与清单一致 + 24 条判据
+# 3) 一条命令跑三件事：生成物与清单一致 + 判据（条数以它自己打的汇总行为准）
 npm run check
 ```
 
@@ -65,7 +65,10 @@ npm run verify          # 只跑判据
 @antd.form_item(label="姓名", [ @antd.input(placeholder="姓名", ([] : Array[@html.Html])) ])
 ```
 
-## 24 条判据（`host/verify.mjs`）
+## 判据（`host/verify.mjs`）
+
+⚠️ **条数不在这里抄** —— **以 `node verify.mjs` 末尾那行汇总为准**（它自己会数）。
+它压的是这几件事：
 
 - **覆盖**：manifest 的 71 个组件**每一个**都有 gallery 格子（`data-demo="<组件名>"`），
   且每个格子里都有 antd 渲染出的 `.ant-*` DOM；
@@ -80,7 +83,7 @@ npm run verify          # 只跑判据
   `Tour` 是 portal（改判到 jsdom 阶段断言）；`Watermark` 的可见产出是 canvas，
   而 **jsdom 没有实现 canvas** —— 改判成"它的 children 渲染出来了"。
 
-## 已知限制（别把 24/24 读成"antd 全都能用"）
+## 已知限制（别把这一份的全绿读成"antd 全都能用"）
 
 1. **渲染型回调（`itemRender` / `renderItem`）过不来**：`Listy` / `Masonry` 这类组件的渲染
    由回调决定，而我们的 prop 通道只能传 String / Bool / Int / Double + JSON 文本
@@ -107,6 +110,6 @@ npm run verify          # 只跑判据
 | | `examples/apps/antd-spike` | 这里 |
 |---|---|---|
 | 定位 | **判据**：库本体接得对不对 | **用法示例**：生成物覆盖多少、交互能不能用 |
-| 压的东西 | 标签直通 / 契约 / 宿主包 / 载荷通道（26 项） | 全组件覆盖 + 交互 + 两侧同源（24 项） |
+| 压的东西 | 标签直通 / 契约 / 宿主包 / 载荷通道 | 全组件覆盖 + 交互 + 两侧同源 |
 | 进 `verify_all.sh`？ | ✅ 是（离线、几秒） | ❌ 否（跟 antd 版本走，属应用 CI） |
 | 手写还是生成 | 手写 `@html.node("antd:Button", …)` | 生成的 `@antd.button(…)` |

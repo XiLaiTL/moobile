@@ -30,7 +30,7 @@ npm run android            # 或 npm run web（web 上画布要另配 CanvasKit�
 
 ```bash
 cd examples/apps/canvas-demo
-node device_check.mjs      # 12 项：token / 像素 / 拖动 / 点按 / 证伪
+node device_check.mjs      # 判据：token / 像素 / 拖动 / 点按 / 证伪（项数与结果以它自己打的汇总行为准）
 ```
 
 **实测结果（2026-10-01，Android 模拟器 `moobile64`，12 / 12 全过）**：
@@ -86,7 +86,12 @@ Error: react-native-reanimated is not installed!   (OptionalDependencyNotInstall
 
 - **Web 上的画布**：Skia 在 web 需要额外加载 CanvasKit（见 Skia 官方 web 安装说明），
   本示例**只验了 Android**。手势通道与画布无关，web 上已验证（见 `examples/apps/gesture-spike`）。
-- **文字**：画布上没画文字（`registerSkiaCanvas` 没传 `makeFont`，而指令里没有 `fill_text`）——
-  所以"canvas 上画中文"仍未上过真机。
+- **文字**：**本示例**画布上没画文字（`registerSkiaCanvas` 没传 `makeFont`，而指令里没有 `fill_text`）。
+  ⚠️ 原先这里接着写"所以'canvas 上画中文'仍未上过真机" —— **那句已被推翻（2026-10-23）**：
+  画中文的真机证据在 `../zhouyi-reader/`（它的指令里有文字，宿主新增 `canvas-font.js` 注册口 +
+  应用把系统 CJK 字体喂进去；证据图 `docs/evidence/zhouyi-compass-cjk-{before,after}.png`，
+  真机判据是"画布区域独立墨色连通块 790 → 2191、阈值 1500"）。
+  **"差异"这一半仍然没有判据**：真机上的字形与 web/桌面**不一样**（回退用 NotoSansCJK 黑体，
+  源 CSS 想要楷体），差多少**至今没有判据** —— 见 `docs/FINDINGS.md` 第二十五/二十八轮。
 - **多指 / pinch / rotate**：手势通道 v1 只做单指拖动 + 点按（契约里留了 `pointers` 字段）。
 - **iOS**：未验。

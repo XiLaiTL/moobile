@@ -32,24 +32,28 @@ npm run web          # 或 npm run android
 > ⚠️ 在本仓库里跑时 `moobile-host` 指的是 `file:../../../npm/moobile-host`（本地包），
 > 因为库自身还没发 `0.5.0`。生成给**别人**的项目里那一条是 registry 版本号。
 
-## 验收（真浏览器，99 项）
+## 验收（真浏览器）
 
 ```bash
 npx expo start --web --port 8081      # 另开一个终端
 node verify.mjs http://localhost:8081/
 ```
 
-判据是**真 Chrome 里的 99 项断言**：首屏 / 数据装载 / **罗盘画出像素 + 拖拽后画面变化 +
-轻点外环进卦** / 搜索 → 过滤网格 / 点卦卡 → 详情页（真爻辞）/ 样式落到了元素上 /
-**底部三块折叠（21 项：常显 + 默认折叠 + 点开出现正文里那句具体的话 + 箭头 ▸→▾ + 再点收起）** /
+⚠️ **条数不在这里抄**（"数字抄一份就会漂一份"）—— **以脚本末尾那行汇总为准**，
+`docs/STATUS.md` 记着最近的读数。这里只列**压了哪些面**：
+
+判据是**真 Chrome 里的断言**：首屏 / 数据装载 / **罗盘画出像素 + 拖拽后画面变化 +
+轻点外环进卦** / 搜索 → 过滤网格 / 点卦卡 → 详情页（真爻辞）/ 样式落到了元素上（含**文字样式**：
+爻题粗体、字号与颜色）/ **底部三块折叠（常显 + 默认折叠 + 点开出现正文里那句具体的话 + 箭头 ▸→▾ + 再点收起）** /
 无 console 错误。
 
-> **折叠那 21 条做过证伪**：把 `more_section` 的 `if open` 改成 `if true`（永远展开）→ **39 / 45**（当时的总数），
+> **折叠那 21 条做过证伪**：把 `more_section` 的 `if open` 改成 `if true`（永远展开）→ **39 / 45**（**当时**的总数，
+> 现在条数已长过它 —— 见 `docs/STATUS.md`），
 > 红的正好是"默认折叠"与"再点一次收起"那六条。只断言"点开出现了"会漏掉**半受控**
 > （`<details>` 自带状态，写成"能开不能收"照样能过前三条）。
 截图落在 `shot-zhouyi-reader.png`。
 
-## 真机（Android）验收，29 项
+## 真机（Android）验收
 
 ```bash
 # ① 起模拟器（AVD 名 moobile64）  ② Metro 在 8081（同一条命令服务原生与 web）
@@ -57,8 +61,10 @@ cd android && ./gradlew assembleDebug && adb install -r app/build/outputs/apk/de
 node device_check.mjs
 ```
 
-判据见 [`device_check.mjs`](device_check.mjs)（**29 / 29**）：包与 Metro 是同一份 / 首屏罗盘 / 画布几何
-（由文本锚点反推，且**不溢出屏宽**）/ 拖拽后不崩且画布重绘 / **轻点外环进卦** / 输入通道 /
+判据见 [`device_check.mjs`](device_check.mjs)（**条数与分数以它自己的汇总行为准**，最近的读数在
+`docs/STATUS.md`）：包与 Metro 是同一份 / 首屏罗盘 / 画布几何
+（由文本锚点反推，且**不溢出屏宽**）/ 罗盘是正圆且圆心居中 / **画布上真的有字**（量墨色连通块）/
+拖拽后不崩且画布重绘 / **轻点外环进卦** / 输入通道 /
 **底部折叠区块（滚下去能看到正文、收起来又看不到）** / 无原生崩溃。
 
 > 折叠那几条的判据在真机上**必须绕一下**：`uiautomator` 只 dump **可见节点**，
@@ -87,14 +93,15 @@ node device_check.mjs
 | **响应式** | CSS `min(94vw, 720px)` | `@sub.current_viewport()`（**首帧读一次**）+ `@sub.on_resize`（变化时推）→ Model 的 `vp_w` → 画布边长 | RN 没有 CSS；边长还决定手势坐标怎么换算。★ 只订阅是不够的：**两端都不补发初始值** ⇒ 读不到宽度时画布一直画在回落值 **360**（在 1400px 的窗口里小得离谱，且无报错）—— 第十一轮库侧补了"读一次"那条 API |
 | **画布的 web 后端** | 浏览器自带 canvas | `registerWebCanvas()`（`moobile-host/canvas-web`，DOM 2D） | 没注册时组件通道会 fail-fast，而 React 会把**整页卸掉** |
 | **画布的矢量/桌面后端** | —— | `registerSvgCanvas()`（`moobile-host/canvas-svg` + `react-native-svg`） | Skia **没有 Windows 后端**；SVG 是 RNW 上唯一现成的矢量通道，而它同时支持 web —— 所以这条**在本机就验过**（`EXPO_PUBLIC_CANVAS=svg`）|
-| **页面根（两件事）** | `body`/`html` 的 CSS + 浏览器自己的**文档级滚动** | `div(page().flex(1))` + `@html.node("scroll", …)` | ★ **两个都只在真机上现形**：`page()` 生成出来却没人挂（浏览器自带 body 样式兜着）、RN 的 `View` 不滚动（DOM 自己会滚）。实测：真机上滚 30 次界面纹丝不动，而同一页面 web 判据 45/45。判据已写进库：`lib/migrate/app-audit.js` + `tools/migrate_app_audit.mjs` |
+| **页面根（两件事）** | `body`/`html` 的 CSS + 浏览器自己的**文档级滚动** | `div(page().flex(1))` + `@html.node("scroll", …)` | ★ **两个都只在真机上现形**：`page()` 生成出来却没人挂（浏览器自带 body 样式兜着）、RN 的 `View` 不滚动（DOM 自己会滚）。实测：真机上滚 30 次界面纹丝不动，而同一页面 web 判据**当时**是 45/45（全绿 —— 这条判据的洞就在这里；今天 web 的条数见 `docs/STATUS.md`）。判据已写进库：`lib/migrate/app-audit.js` + `tools/migrate_app_audit.mjs` |
 | **三块折叠** | `<details>/<summary>` 的**自身状态** | `open_more : Array[Bool]` + `ToggleMore(i)` + 按钮/条件渲染 | 那两个标签在标签表里是**明确排除**的（RN 没有那个语义）；状态进 Model 才可断言 |
 
 ## 第四个宿主：桌面窗口（Electron）
 
 同一份产物装进一个**真窗口**（**本机不需要 VS 工具链**）：
 [`../zhouyi-reader-electron/`](../zhouyi-reader-electron/)（`node verify.mjs` —— 起窗口 +
-把**本目录这 99 条判据**附着打上去，报 97/0）。
+把**本目录这份判据**附着打上去；**期望数 = 本目录的条数减去附着模式下会 SKIP 的那几条**，
+以那份脚本自己的汇总行为准）。
 
 | 桌面路线 | 答的问题 | 本机 |
 |---|---|---|
@@ -105,7 +112,8 @@ node device_check.mjs
 
 1. **桌面端（RNW）没跑**：本机缺 VS 2026 + SDK 22621 —— 见
    [`../../../docs/design/DESKTOP-RNW.md`](../../../docs/design/DESKTOP-RNW.md)。
-   ⚠️ 但它的**画布后端已经写好并在 web 上验过**（`canvas-svg.js`：同一条 24 项判据全过），
+   ⚠️ 但它的**画布后端已经写好并在 web 上验过**（`canvas-svg.js`：把同一条判据链跑绿，
+   读数见 `docs/STATUS.md`；⚠️ 那条链**后来长过当时记的条数**），
    所以剩下的只是**宿主工程 + 工具链**，不是"桌面端还差实现"。
 2. ~~卦详情页的折叠交互没写断言；`more_view` 还是保底桩~~ → **已做**：三块折叠改成受控
    （`open_more` 进 Model），web 21 条 + 真机 9 条断言，并做过证伪。

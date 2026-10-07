@@ -8,7 +8,7 @@
 cd examples/apps/zhouyi-reader && npm run build     # ① 编产物（应用自己的事）
 cd ../zhouyi-reader-webview
 npm install                                          # ② react / react-dom / react-native-web / esbuild —— 没有 expo
-node verify.mjs                                      # ③ 打包 + 起静态服务 + 跑应用那 99 条判据（约 4 分钟）
+node verify.mjs                                      # ③ 打包 + 起静态服务 + 跑应用那份界面判据（约 4 分钟）
 ```
 
 想只看界面：`node build.mjs && node serve.mjs` → 打开 `http://127.0.0.1:8123/`。
@@ -23,15 +23,18 @@ node verify.mjs                                      # ③ 打包 + 起静态服
 | 画布后端 | web→DOM 2D / android→Skia | windows→SVG | **DOM 2D** |
 | 产出 | 三端 | Windows 桌面（要 VS 2026） | **一个静态站点**（PWA / Tauri / Electron 的外壳都能套） |
 
-## `verify.mjs` 验什么（15 项，三层）
+## `verify.mjs` 验什么（三层）
+
+⚠️ **项数不在这里抄** —— **以它自己末尾的汇总行为准**（脚本里那个 `EXPECT_APP_ASSERTIONS`
+常量就是它要求应用报的数）。
 
 1. **打包面**：esbuild 输入清单里**一个 expo / Metro 包都没有**、原生 `react-native`
    本体没被卷进来（只有 `react-native-web`）、产物是 `index.html` + `bundle.js`；
 2. **产物面**：服务端那份 `artifact.json` 的 sha256 == 磁盘上 `../zhouyi-reader/moobile.js`
    的 sha256，而且 bundle 里嵌了同一个指纹（⇒ 浏览器吃的**就是这一次编的产物**）；
-3. **界面面**：把**应用自己那 99 条判据**（`../zhouyi-reader/verify.mjs`）**原样**指向这个
+3. **界面面**：把**应用自己那份判据**（`../zhouyi-reader/verify.mjs`）**原样**指向这个
    静态服务的 URL —— 首屏 / 罗盘画像素 / 拖拽重绘 / 轻点进卦 / 搜索 → 网格 / 点卦卡进详情 /
-   详情页五个折叠族与三个状态族 / 无 console 错误。它必须报 **99 / 0**（少一条也算红）。
+   详情页五个折叠族与三个状态族 / 无 console 错误。它必须报 **`EXPECT_APP_ASSERTIONS / 0`**（少一条也算红）。
 
 ★ 第 3 层是这条门的重点：**换宿主之后界面行为一样**，而不是"能渲染出一个壳"。
 从头另写一套断言等于又造一份会漂的实现 —— 所以这里是 `spawn` 那个脚本、读它的汇总行。

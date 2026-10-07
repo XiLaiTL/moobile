@@ -6,8 +6,12 @@
 //    参考实现（本地库 + 网络同步 + 多页面）见仓库的 examples/apps/todo-app/。
 //
 // ⚠️ `vendor/rabbita/*` 这几条看着别扭（为什么要写 vendor？）—— 它们是库**转发出来的**包：
-//    moobile 是 rabbita 的换后端 fork，`html` / `cmd` / `sub` 由库转发，所以 import 路径
-//    必须长这样。写 `XiLaiTL/moobile/html` 是**错的**（历史上发过一版这样的 README，踩过）。
+//    moobile 是 rabbita 的换后端 fork，`html` / `cmd` / `sub` 由库转发，所以 import 路径可以长这样。
+//    ⚠️ 旧注释写着"写 `XiLaiTL/moobile/html` 是**错的**" —— 那是 0.2.1 那版的实情
+//    （那份包里只有 `vendor/rabbita/*`，见 `docs/FINDINGS.md`）；**0.2.2 起两者都成立**：
+//    根上的 `html/` 是**转发包**（`html/forward.generated.mbt`，由 `tools/gen_forwarders.py` 生成），
+//    主 `README.md` §1 教的就是短路径，`docs/STATUS.md` 记着这批路径对着已发布版本编得过
+//    （试金石 `examples/apps/antd-spike/` 刻意走公开路径，本模板与 `examples/apps/todo-app/` 同源走全路径）。
 supported_targets = "+js"
 
 import {

@@ -15,18 +15,24 @@
 // 实测 `npm view @shopify/react-native-skia@2.12.0 peerDependencies`）。
 // 传进来是显式的：装没装、装哪个版本，应用自己知道。
 //
-// ⚠️ **平台闸门刻意不设默认值**：`registerLibrary` 的默认是 `platforms: ['web']`，
-// 而那对 Skia 是**反的**（它只跑原生）。所以这里默认 `['android', 'ios']`，
-// 而不是把 web 也放进来 —— 放进来只会让"Web 上也注册了 Skia"变成一个装不上的包。
+// ⚠️ **平台闸门刻意不设默认值**：`registerLibrary` **没有** `platforms` 的默认值 ——
+// 手写注册时不传就**完全不过闸门**（`core.js` 是 `if (platforms && …)`）。
+// （`['web']` 那个默认只存在于 **libgen 生成配置**那条路：`libgen/index.js` 装载时给 `['web']`。
+// 2026-10-04 更正：本行原先写"`registerLibrary` 的默认是 `['web']`"，与代码不符。）
+// 所以这里必须自己给默认 `['android', 'ios']`，而不是把 web 也放进来 ——
+// 放进来只会让"Web 上也注册了 Skia"变成一个装不上的包。
 // 要在 Web 上看同样的画面，走 CanvasKit（见 `examples/apps/canvas-spike/`），
 // 那是另一条注册（`platforms: ['web']`）。
 //
-// ## 还没验的部分（别当已验证）
+// ## 验证到哪一步了（2026-10-04 更正：这一段原先写的是"还没验"）
 //
-// **真机上的组件挂载没跑过**（要 `expo prebuild` + 重建 APK）。已验证到的是：
-// 指令 → 元素树的翻译（逐条断言）+ 用**真 Skia 引擎**（CanvasKit）回放出图并逐像素对账，
-// 见 `examples/apps/canvas-spike/`。React 那一层（`<Canvas>` 挂载、reconciler、
-// `transform` prop 的接受形状）与**文字**是待验的两块。
+// ✅ **真机上的组件挂载已经跑过了**（`examples/apps/zhouyi-reader/device_check.mjs`；
+// 含"画布上真的有字"的墨点连通块判据，像素证据 `docs/evidence/zhouyi-compass-cjk-*.png`）。
+// 原先这里写着"真机上的组件挂载没跑过"—— 已不成立，`npm/moobile-host/README.md` 早先改口了，
+// 本文件头没跟着改（门只扫 `docs/**`，JS 注释里的过期断言它抓不到）。
+// 已验证到的是：指令 → 元素树的翻译（逐条断言）+ 用**真 Skia 引擎**（CanvasKit）回放出图并逐像素对账，
+// 见 `examples/apps/canvas-spike/`。
+// **仍待测**：真机与 web / 桌面的字形**差异**有多大（至今没有判据）、投影 `devicePixelRatio` 换算。
 
 import React, { useMemo } from 'react';
 import { opsToTree } from './canvas-ops.js';

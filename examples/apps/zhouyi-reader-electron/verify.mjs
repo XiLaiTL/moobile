@@ -18,7 +18,7 @@
 //      标题是应用名（不是 `index.html` 那种默认值）。
 //   B. **产物面**：这个窗口加载的是**这一次**编的 `dist/`（服务端指纹 = 磁盘 `moobile.js` 的 sha256），
 //      而且依赖图里没有 expo / Metro。
-//   C. ★ **把应用自己那 99 条界面判据原样打在这个窗口上** —— 走 `PROBE_CDP_URL` 附着模式
+//   C. ★ **把应用自己那 107 条界面判据原样打在这个窗口上** —— 走 `PROBE_CDP_URL` 附着模式
 //      （`../zhouyi-reader/verify.mjs` 支持附着到别人的 CDP 端点）。于是"换宿主之后界面行为一样"
 //      在桌面端也是**判据**，而不是"看起来能开"。
 //
@@ -36,8 +36,20 @@ const APP = path.resolve(HERE, "..", "zhouyi-reader");
 const DIST = path.join(HERE, "dist");
 const APP_VERIFY = path.join(APP, "verify.mjs");
 // 附着模式下应用那份判据里"响应式"那一组会 **SKIP**（视口由宿主决定，靠 CDP 模拟不算数）
-// ⇒ 期望 **97**（99 减去那 2 条）；桌面端的响应式由**下面第二段**用两个不同尺寸的真窗口验。
-const EXPECT_APP_ASSERTIONS = 97;
+// ⇒ 期望 **105**（107 减去那 2 条）；桌面端的响应式由**下面第二段**用两个不同尺寸的真窗口验。
+//
+// ⚠️ 这两个数**都是实测来的，不是算出来的**（2026-10-23，静态宿主 + 真 Chrome 各跑一遍
+//    `../zhouyi-reader/verify.mjs`，看它自己打的汇总行）：
+//      · 非附着（自己起 Chrome）：`通过 107 失败 0`
+//      · 附着（`PROBE_CDP_URL`，即本文件这条门用的模式）：`通过 105 失败 0` + 一行
+//        `SKIP 响应式（附着模式：视口由宿主决定…）` ⇒ 差的正是那 2 条。
+//    为什么不能"拿 107 减 2 写上去"：这正是本常量**长期停在 97** 的原因 —— 它当初按
+//    "应用 99 − SKIP 2"算，而应用那份判据后来长到 103、又长到 107（补了 4 条文字样式判据），
+//    于是这条门**一直是红的**，且红的样子像"换宿主把界面弄坏了"。
+//    ⇒ 以后应用那份判据的条数变了，**把两种模式各跑一遍再抄**（`../zhouyi-reader/verify.mjs`
+//      的汇总行会打"通过 N 失败 M"）；`../zhouyi-reader-webview/verify.mjs` 里的
+//      `EXPECT_APP_ASSERTIONS`（= 非附着那一档）也要跟着改。
+const EXPECT_APP_ASSERTIONS = 105;
 const WIN_W = 1280;
 const WIN_H = 900;
 

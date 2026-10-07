@@ -8,9 +8,16 @@
 cd examples/apps/zhouyi-reader && npm run build     # ① 编产物（应用自己的事）
 cd ../zhouyi-reader-electron
 npm install                                          # ② electron / esbuild / react-native-web（没有 expo、没有 metro）
-node verify.mjs                                      # ③ 起窗口 + 把应用那 97 条判据**打在这个窗口上**（约 4 分钟）
+node verify.mjs                                      # ③ 起窗口 + 把应用那份界面判据**打在这个窗口上**（约 4 分钟）
 npm start                                            # 想自己点一点：起窗口，不带判据
 ```
+
+> ✅ **那个过期常量已收口**（2026-10-23）：`verify.mjs` 里 `EXPECT_APP_ASSERTIONS` 现在是 **105** ——
+> 它原先停在 **97**（按"应用当时 99 条 − 附着模式下 SKIP 2 条"算的），而应用那份判据后来长到
+> **107**（补了 4 条文字样式判据）⇒ 那段时间这条门**一直是红的**，且红的样子像"换宿主把界面弄坏了"。
+> 105 是**两条模式各跑一遍量出来的**（见 `verify.mjs` 里那段注释）：非附着 `通过 107 失败 0` /
+> 附着 `通过 105 失败 0` + 一行 `SKIP 响应式…`。⚠️ 应用那份判据的条数再变时，**两种模式各跑一遍再抄**
+> （要改的常量有两处：本目录 = 附着那一档，`../zhouyi-reader-webview/` = 非附着那一档）。
 
 > ⚠️ **装 Electron 的坑**：npm 的 postinstall 会被镜像跳过（`added 13 packages in 1s`，
 > 但 `node_modules/electron/dist/electron.exe` 不存在）。手动补一次：
@@ -22,10 +29,10 @@ npm start                                            # 想自己点一点：起�
 
 | 路线 | 答的问题 | 判据 | 本机 |
 |---|---|---|---|
-| `examples/apps/zhouyi-reader-desktop/`（`--host rnw`） | "同一份产物能不能进 **React Native 的原生宿主**" | 5 项（打包产物里有本应用真串 + 宿主接线） | ⏳ 窗口要 VS 2026 + SDK 22621 |
-| **本目录**（Electron） | "**桌面端能不能真的跑起来给人用**" | **17 项**（含"应用那 97 条判据在窗口里全过"） | ✅ 起真窗口 |
+| `examples/apps/zhouyi-reader-desktop/`（`--host rnw`） | "同一份产物能不能进 **React Native 的原生宿主**" | 打包产物里有本应用真串 + 宿主接线（**条数以那份脚本的汇总行为准**） | ⏳ 窗口要 VS 2026 + SDK 22621 |
+| **本目录**（Electron） | "**桌面端能不能真的跑起来给人用**" | 四层（**条数以那份脚本的汇总行为准**；含"应用那份界面判据在窗口里全过"） | ✅ 起真窗口 |
 
-## `verify.mjs` 验什么（17 项，四层）
+## `verify.mjs` 验什么（四层）
 
 1. **窗口**：Electron 进程起来、CDP 上有 page target、标题是应用名、
    渲染进程里**没有 Node 能力**（`nodeIntegration:false` + 沙箱 ⇒ `require` 不可用）；
@@ -33,7 +40,8 @@ npm start                                            # 想自己点一点：起�
    = 磁盘 `moobile.js` 的 sha256，而且**窗口里的页面**报的是同一个指纹、宿主标记是 `electron`；
 3. ★ **同一套界面判据打在窗口上**：`PROBE_CDP_URL=<窗口的 CDP>` 跑
    `../zhouyi-reader/verify.mjs`（那份脚本支持"**附着模式**"：不自己起浏览器、也不导航）——
-   它必须报 **97 / 0**（附着模式下它自己的"响应式"那 2 条会 SKIP，见下）；
+   它必须报 **`105 / 0`**（`EXPECT_APP_ASSERTIONS`；附着模式下应用那份脚本自己的"响应式"
+   那 2 条会 SKIP，见下 —— 107 − 2，两个数都是实测的，见上面的那条说明）；
 4. **真窗口的响应式**：再起一个**更小的窗口**（`ELECTRON_WIN_W=420`），断言画布边长
    跟着真实窗口宽度走（≈ min(94vw, 720)）、**不是那个回落值 360**。
 
