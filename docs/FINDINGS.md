@@ -7262,3 +7262,85 @@ popstate（back）的载荷 : url_changed | full=…/#/s/baz      path= frag=/s/
 **测一个动作，就别让别的动作同时发生**：把该动作放在序列的**最前**（或在一个干净的复位态之后），
 并且让它的**期望增量是唯一可解释的**（"如果没有这个动作，计数应当不变"）。
 
+
+---
+
+## 补记（节点寻址落地：站点右栏目录那两件事的**前置**，2026-10-07）
+
+### 一、缺的不是「滚动函数」，是**句柄**
+
+站点的「本页目录」要两件事：**点一下跳到那一节** 与 **滚到哪高亮到哪**。
+函数一个不缺（web 有 `scrollIntoView` / `getBoundingClientRect`，RN 有 `ScrollView.scrollTo` / `measure`）——
+缺的是**「名字 → 节点」这条通道**：拿到一个「第 3 节」的名字，今天什么也做不了。
+⇒ 所以这一刀交的不是「滚一下」，是**寻址**：`Attrs::id("sec-3")` 写名字，`@sub` 三个 API 用它。
+
+### 二、交了什么
+
+| 件 | 形状 |
+|---|---|
+| 属性通道 | **不新增属性**：节点名就是 `Attrs::id("…")`。证据是两端各自的白纸黑字 —— RN 的 `ViewPropTypes.js` 对 `id` 写着 "**Has precedence over `nativeID`**"；RNW 0.21.3 的 `forwardedProps` / `createDOMProps` 白名单里有 `id`，落到 DOM 的 `id`（`nativeID` 也能落，但会打一行 deprecation 警告）。渲染侧**一行没改**（`render_props` 早就把属性表原样挂成 React prop） |
+| `@sub.scroll_to_node(node, block?, behavior?)` | **动作型**：`node` 能力的 `invoke("scrollTo", {"node":…,"block":…})` → 回退 DOM → **两头都没有 ⇒ `abort`** |
+| `@sub.node_rect(node)` | 读一次（同步）：`invoke("measure", …)` → 回退 `getBoundingClientRect` → 都没有 ⇒ `None`（**不给全 0**） |
+| `@sub.node_scroll_top(node)` | 读一次（同步）容器的 `scrollTop`：站点正文栏那种「自己滚」的容器要靠它（`on_scroll` 报的是**文档级**滚动，语义不同） |
+
+判据：`tools/cap_platform.mjs` 的两张表（`PUBLIC_API` + `DOM_INVENTORY`）都被登记 —— 门**当场报过**
+「`sub::scroll_to_node` 是公开 API，但 PUBLIC_API 里没有它」，按它的要求补齐后才绿
+（**合计 36 个公开 API / 34 条 DOM 链路**）。
+
+### 三、读数（`examples/apps/node-spike/`，真 Chrome + CDP **真鼠标**）
+
+| 组 | 问什么 | 读数 |
+|---|---|---|
+| ① | `Attrs::id` 落没落到 DOM | ✅ `#pane` / `#sec-1..3` / 四个按钮**全在** |
+| ② | 对照：`@nav.scroll_to` | ⚠️ **它真的滚了**（0 → 1000）—— 见第五节 |
+| ③ | `@sub.scroll_to_node("sec-3", block="start")` | ✅ `scrollTop` 0 → 1000；**sec-3.top − pane.top = 0.0px**（"顶到容器上沿"这条语义成立） |
+| ④ | `node_rect` vs 浏览器自己量的 | ✅ 四个数**最大差 0.000px** |
+| ④′ | 读数是活的吗 | ✅ 滚回顶再量：`y` 274 → **1274** |
+| ⑤ | `node_scroll_top` vs `element.scrollTop` | ✅ 137 vs 137（差 0.000px） |
+
+页面 **0 条 JS 错误**；产物 sha256 `e9ff4a4c5209405d…`。
+
+### 四、证伪（判据自己会红）
+
+把 `section()` 上的 **`.id(name)` 去掉** → 重建 → 再跑：**12 条不成立**，
+`#sec-1..3` 三条直接报「不在 DOM 里」、`COUNT scroll` 不涨、`pane.scrollTop` 仍 0，
+页面异常堆栈**点名 `abort_missing_node`**（"节点不在"这条路带着「检查 `Attrs::id(...)`」炸出来，**不是静默**）。
+还原后 sha256 与上面**逐字节相同**，复跑全绿 ⇒「改回来了」本身也有证据。
+
+### 五、⚠️ 我预判错了一条，而且是**判据当场纠正的**
+
+第一版的判词是：「`@nav.scroll_to` 走的是**没有实现**的 op 路 ⇒ 它什么都不做」。
+**实测否掉**：`pane.scrollTop` 0 → 1000。读了 `nav/op.mbt` 才看清：`@nav` 里**滚**那几个 op 是
+**库侧自己实现的**（`AfterLayout` + DOM，不经宿主），**`push` / `load` / `reload` 才没有实现**
+（落 `_ => raise Unhandled`，被运行时吞掉 —— 那才是 route-spike 量到 `@nav.push_url` 静默 no-op 的原因）。
+⇒ **两件事别混成一句「nav 全是死的」。** 这一格留成常设对照，判词改成「只读数、不预设结论」。
+
+那为什么还要这一套？三条**实测出来的**差别：① **消费者 import 不到 `@nav`**（根上**没有** `nav/` 转发包
+—— 站点就是这么被卡住的）；② 它只有「滚」、没有「量」；③ 它不经能力通道（RN 无 DOM ⇒ 抛）。
+
+### 六、又踩了一次的坑：**`div` 上的 `on_click` 是死处理器**
+
+试金石第一版把按钮写成 `@html.div(...).on_click(...)` ⇒ **点了什么都不发生、也不报错**
+（读数表现为「COUNT 全 0」，你分不清是功能没做还是点击没到）。真因：`on_click` 在 web 上映射成
+**`onPress`**（`render.mbt` 的 `default_event_prop`），只有 `Pressable` 接得住。
+⇒ 可点的一律 `@html.button`。**站点那边早有同一笔账**（`shell/sidebar.mbt` 与 `article.mbt` 的注释），
+这一轮是**新试金石又踩了一遍** —— 说明这条还没变成"不用想"的东西。
+
+### 七、语言 / 工具坑（都写进注释了）
+
+1. **`const X : Array[String]` 不合法**（常量只允许不可变基本类型）⇒ 改成函数返回；
+2. **`try … catch {…} noraise {…}` 后面不能直接接 `match` 块** ⇒ 先把结果绑到变量再 `match`；
+3. `derive(Show)` 已 deprecated（用 `Debug`）；`derive(Eq)` / `derive(FromJson)` 会带上
+   `implicit_impl_as_method` 警告 ⇒ 用不到就别 derive；
+4. **别把 DOM 类型写进函数签名**（`@dom.Element?` 在非 js 目标上找不到）⇒ 照 `url_action.mbt` 的写法，
+   把 DOM 调用放进 `match` 里、不命名那个类型，这样 `js+native+wasm` 三目标都能编；
+5. **仪器自己会崩**：`drive.mjs` 第一版在「元素不在 DOM」时 `TypeError` 整个崩掉、报告全丢
+   ⇒ 崩当然也算红，但**红在哪看不见** —— 补了 null 守卫之后，证伪那一次给出的是一份**能读的报告**。
+
+### 八、边界（别读大）
+
+- **RN 原生未验**：`node` 能力的三个动作今天**没有任何宿主登记** ⇒ RN 上会 `abort`（不静默）；
+  动作名 / 载荷 / 回包都写在 `sub/node.mbt` 与 `cap_platform.mjs` 里，要接时照着登记。
+- **容器级滚动订阅还没做**：只有一次性读 ⇒ 应用侧要跟读只能自己轮询（代价同 `hosttheme` 那条 2 秒轮询）。
+  这是站点「滚到哪高亮到哪」的**下一刀**。
+- 试金石**不进 `verify_all.sh`**（要 Chrome + `npm install`，与 `route-spike` / `canvas-spike` 同类）。

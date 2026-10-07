@@ -63,6 +63,18 @@ const PUBLIC_API = {
     // ⚠️ 动作**必须登记在这里**：未声明的动作 = 判据能看见的缺口（DESIGN-ROUTER §6.5）。
     push_url: { rn: 'host-cap', note: '**动作**：`url` 能力的 `invoke("push", url)`（宿主登记 up=由宿主实现）→ 没有宿主登记时，**有 DOM 就自己来**（`@dom.window().push_url`）**并补一次本地回声**（走 `inject_url_changed`，与 popstate **同形**；实测 pushState 不产生 popstate）；**两头都没有 ⇒ abort**（同 on_scroll 那条取舍）。Web ✅ · RN 待宿主登记' },
     replace_url: { rn: 'host-cap', note: '同上（`invoke("replace", url)` / `@dom.window().replace_url`）。语义差别：不新增历史条目（"同一条路由只换装饰参数"用它）' },
+    // ── **节点寻址**（2026-10-07）：站点右栏目录"点一下跳过去 + 滚到哪高亮到哪"逼出来的 ——
+    // 缺的**不是滚动函数**（web 有 scrollIntoView、RN 有 ScrollView.scrollTo），是**句柄**：
+    // 「名字 → 节点」这条通道。节点名走 `Attrs::id("…")`（RN 认且优先于 nativeID；RNW 落到 DOM 的
+    // id 且不打 deprecation 警告）⇒ 渲染侧一行都不用改。见 `vendor/rabbita/sub/node.mbt`。
+    // ⚠️ 与 `@nav` 里那个 `NavScrollTo(element, …)` 的关系 —— **第一版写错了，被判据纠正**（见 node-spike）：
+    // 我原以为它走"没有实现的 op 路"⇒ 静默 no-op；实测它**真的能滚**（`AfterLayout` + DOM 在库侧自己实现）。
+    // 真差别是三条：① 根上**没有** `nav/` 转发包 ⇒ **消费者 import 不到它**（站点就是这么被卡住的）；
+    // ② 它只有"滚"、没有"量"；③ 它不经能力通道（RN 无 DOM ⇒ 抛），而这组走 `node` 能力的 `invoke`。
+    // ⚠️ `push` / `load` / `reload` 那几个 op 才是真没实现（落 `_ => raise Unhandled`）。
+    scroll_to_node: { rn: 'host-cap', note: '**动作**：`node` 能力的 `invoke("scrollTo", {"node":"…","block":"start|center|end|nearest"})`，回包 `{"ok":bool,"why":""}`（`ok:false` = 宿主自己找不到那个节点，与"没实现"（回 null）分开）→ 没有宿主登记时**有 DOM 就自己来**（`getElementById` + `scrollIntoView`）；**两头都没有 ⇒ abort**。Web ✅（node-spike 真 Chrome 实测）· RN 待宿主登记' },
+    node_rect: { rn: 'host-cap', note: '读一次（同步）节点矩形，**视口坐标系**：`invoke("measure", {"node":"…"})` 回 `{"x","y","width","height"}` → 问不到回退 DOM（`getBoundingClientRect`）→ 两端都没有 ⇒ **None**（不猜、不给全 0）。⚠️ 节点**不在 DOM 里**会 abort（那是 bug，不是"这个平台没有"）⇒ 不能在 `initial` 里调' },
+    node_scroll_top: { rn: 'host-cap', note: '读一次（同步）某个具名节点的 `scrollTop`：`invoke("scrollTop", {"node":"…"})` 回 `{"value":Double}` → 回退 DOM（`element.scrollTop`）→ 否则 **None**。用途：站点正文栏那种**自己滚**的容器 —— `on_scroll` 报的是**文档级**滚动，语义不同。⚠️ **只有一次性读，订阅还没做**' },
     on_url_request: { rn: 'host-cap', note: '同 on_url_changed（注入器）；同源判断的基准 URL 走 Context::get_origin —— 原来读 window.location.href，RN 上没有 location 会抛。Web 侧：**没有任何调用点**（代码里只有 trait 声明与各处 impl；13 组真动作里计数恒为 0）⇒ 想用它做深链入口，得自己接一条桥' },
     on_key_down: { rn: 'web-only', note: '移动端没有全局键盘' },
     on_key_up: { rn: 'web-only', note: '同上' },
@@ -140,6 +152,9 @@ const DOM_INVENTORY = {
     'document.hidden': { cls: 'host-cap', rnFails: 'ok', note: 'on_visibility_change（RN → AppState）—— 走宿主能力，不碰 document' },
     'document.add_event_listener': { cls: 'todo', rnFails: 'throw', note: 'visibilitychange=已接宿主能力；keydown/keyup/mousemove=Web-only（会抛）' },
     'document.query_selector': { cls: 'web-only', rnFails: 'throw', note: '滚动位置助手里的 query_selector("html")' },
+    // 节点寻址（2026-10-07，`sub/node.mbt`）：按 `Attrs::id(...)` 写下的名字找节点。
+    // RN 上**不会走到这里** —— 先问 `host_has_dom()`，为假就带着说明 abort（不是静默 no-op）。
+    'document.get_element_by_id': { cls: 'guard', rnFails: 'ok', note: '`sub` 的节点寻址（scroll_to_node / node_rect / node_scroll_top）三条都受 `host_has_dom()` 保护；RN 且宿主没登记 `node` 能力 ⇒ **abort 并在消息里说清怎么办**，不静默。⚠️ 沿用 `@nav` 的老路（`NavScrollTo`）也行得通但**走的是没有实现的 op 通道** ⇒ 静默 no-op，那正是这组 API 存在的理由' },
   },
   clipboard: {
     'window.write_text': { cls: 'todo', rnFails: 'throw', note: 'navigator.clipboard → expo-clipboard；RN 上 navigator 不存在' },

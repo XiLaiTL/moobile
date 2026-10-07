@@ -1,0 +1,37 @@
+// 只有 6 条 import（其中第 6 条 `@nav` 是**试金石专属**：只为那一格死通道对照）。
+//
+// ⚠️ 加能力 = 加一条 import + 对应 npm 包（+ 重跑 `npx moobile-host regen`）。
+//    例：本地库加 `XiLaiTL/moobile/sqlite`（配 `expo-sqlite`），
+//    网络加 `XiLaiTL/moobile/vendor/rabbita/http`。
+//    参考实现（本地库 + 网络同步 + 多页面）见仓库的 examples/apps/todo-app/。
+//
+// ⚠️ `vendor/rabbita/*` 这几条看着别扭（为什么要写 vendor？）—— 它们是库**转发出来的**包：
+//    moobile 是 rabbita 的换后端 fork，`html` / `cmd` / `sub` 由库转发，所以 import 路径可以长这样。
+//    ⚠️ 旧注释写着"写 `XiLaiTL/moobile/html` 是**错的**" —— 那是 0.2.1 那版的实情
+//    （那份包里只有 `vendor/rabbita/*`，见 `docs/FINDINGS.md`）；**0.2.2 起两者都成立**：
+//    根上的 `html/` 是**转发包**（`html/forward.generated.mbt`，由 `tools/gen_forwarders.py` 生成），
+//    主 `README.md` §1 教的就是短路径，`docs/STATUS.md` 记着这批路径对着已发布版本编得过
+//    （试金石 `examples/apps/antd-spike/` 刻意走公开路径，本模板与 `examples/apps/todo-app/` 同源走全路径）。
+supported_targets = "+js"
+
+import {
+  "XiLaiTL/moobile" @moobile,
+  "XiLaiTL/moobile/style",
+  "XiLaiTL/moobile/vendor/rabbita/html",
+  "XiLaiTL/moobile/vendor/rabbita/cmd",
+  "XiLaiTL/moobile/vendor/rabbita/sub" @sub,
+  // ⚠️ 只为**对照那一格**：`@nav.scroll_to` 是 fork 里已有的"按 id 滚过去"，
+  //    根上**没有** `nav/` 转发包（消费者 import 不到），而它的 op 在宿主侧没有实现。
+  "XiLaiTL/moobile/vendor/rabbita/nav" @nav,
+}
+
+options(
+  link: {
+    "js": {
+      "format": "esm",
+      "exports": [
+        "app",
+      ],
+    },
+  },
+)

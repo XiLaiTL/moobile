@@ -44,4 +44,10 @@ members = [
   // `on_url_changed` / `on_url_request` / `on_visibility_change` 三条订阅到底推不推值 ——
   // 前两条此前只到逻辑层（`sub_url_wbtest.mbt`），真浏览器是一次都没量过。
   "examples/apps/route-spike",
+  // 节点寻址试金石（2026-10-07）：站点右栏目录"点一下跳过去 + 滚到哪高亮到哪"逼出来的 ——
+  // 它量四件事：`Attrs::id` 落没落到 DOM、`@sub.scroll_to_node` 真滚没滚、
+  // `node_rect` 与浏览器自己量的对不对得上，以及**对照那一格**：
+  // fork 里已有的 `@nav.scroll_to` 走的是**没有实现的 op 通道**（预期它什么都不发生）。
+  // 它必须吃本地源码 —— 验的正是工作区里**还没发布**的这套 API。
+  "examples/apps/node-spike",
 ]

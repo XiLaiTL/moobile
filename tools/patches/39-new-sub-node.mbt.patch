@@ -1,0 +1,317 @@
+--- /dev/null
++++ b/sub/node.mbt
+@@ -0,0 +1,314 @@
++// vendor/rabbita/sub/node.mbt —— 「节点寻址」：给一个**具名节点**，就能**滚到它** / **量它**。
++//
++// ## 为什么需要这一层（缺的不是「滚动函数」）
++//
++// 站点右栏的「本页目录」要两件事：**点一下跳到那一节** 与 **滚到哪高亮到哪**。
++// 两件事都要求「**能指到一个具体的节点**」——而 web 有 `scrollIntoView` / `getBoundingClientRect`、
++// RN 有 `ScrollView.scrollTo` / `measure`，函数一个不缺。缺的是**句柄**：
++// 今天的 moobile 没有任何「名字 → 节点」的通道，所以拿到一个「第 3 节」的名字什么也做不了。
++//
++// ## ⚠️ `@nav` 里已经有一个「按 id 滚过去」—— 但它对**消费者不可达**，而且只有"滚"没有"量"
++//
++// `vendor/rabbita/nav/op.mbt` 的 `NavScrollTo(element, behavior)` 就是这件语义
++// （`get_element_by_id` + `scroll_into_view`，包在 `AfterLayout` 里），而它**真的能跑**。
++//
++// ⚠️⚠️ **这一条是本文件第一版写错、被自己的判据当场纠正的**（2026-10-07，`node-spike` 的第一跑）：
++// 我原先照着 route-spike 那笔账（`@nav.push_url` 是静默 no-op）写成「`@nav` 的 op 没有任何宿主实现
++// ⇒ 调它什么都不发生」。实测**否掉**了这句话 —— 点了 `@nav.scroll_to("sec-3")`，`pane.scrollTop`
++// 从 **0 变成 1000**，与 `@sub.scroll_to_node` 同样到位。
++// 真因：`@nav` 里**滚**那几个 op 是**库侧自己实现的**（`AfterLayout` + DOM，不经过宿主），
++// 而 **`push` / `load` / `reload` 那几个没有实现**（落进 `op.mbt` 的 `_ => raise Unhandled`，
++// 运行时把它吞掉）—— 那才是 `@nav.push_url` 静默 no-op 的原因。**两件事别混成一句「nav 全是死的」。**
++//
++// 那为什么还要这一套？三条，都是实测出来的差别：
++//   1. **消费者 import 不到 `@nav`**：根上**没有** `nav/` 转发包（`ls` 一下就知道），
++//      站点侧（skillpress 的 `shell/`）import 的只有 `@moobile` / `@html` / `@cmd` / `@sub` / `@style`
++//      ⇒ 那个能跑的 API 对它**不可达**；
++//   2. **它只有"滚"，没有"量"**：跟读高亮要的是"某一节现在在哪"（`node_rect`）与
++//      "容器滚到哪了"（`node_scroll_top`），`@nav` 里没有这两样；
++//   3. **它不经能力通道**：RN 上没有 DOM，库侧那条路直接抛；本文件走 `node` 能力的 `invoke`
++//      （宿主登记即可），与 `url` 那条动作通道同一个形状。
++//
++// ## 节点名放在哪儿：`Attrs::id("…")`（**不新增属性**）
++//
++// 一个属性、两端都到得了，而且都不触发警告：
++//   · **RN**：`Libraries/Components/View/ViewPropTypes.js` 里 `id` 的注释是
++//     「Used to locate this view from native classes. **Has precedence over `nativeID` prop.**」
++//     ⇒ 认，且比 `nativeID` 优先；
++//   · **RNW 0.21.3**：`id` 在 `forwardedProps` 与 `createDOMProps` 的白名单里，落到 DOM 的 `id`
++//     （`nativeID` 也能落，但 RNW 会**打一行 deprecation 警告**：`nativeID is deprecated. Use id.`）。
++//
++// 渲染那一侧**一行都不用改**：`Attrs::id(...)` 走 `Props.attrs`，
++// `render.mbt` 的 `render_props` 已经把属性表原样挂成 React prop（`js_obj_set(o, "id", …)`）。
++//
++// ## 取值顺序（与 `current_url` / `current_viewport` 同一套）
++//
++// ① **宿主动作优先**：`node` 能力的 `invoke`（RN 侧将来由宿主登记，库不知道 RN 的存在）；
++// ② **有 DOM 就自己来**：`getElementById` + `scrollIntoView` / `getBoundingClientRect`；
++// ③ **两头都没有 ⇒ `abort`**（与 `on_scroll` 同一条取舍：宁可在开发期炸一次，
++//    也不要上线后「点了没反应」）。
++//
++// ⚠️ 节点名是**每次调用都不一样**的参数 ⇒ 走 `invoke(action, payload)`（带载荷的**动作**），
++// 而不是 `read()`（`read` 是「问现在是什么」，没有参数位）。
++//
++// ## 还没做的三样（写在这儿，别当成已解决）
++//
++// 1. **容器级滚动订阅**：`on_scroll` 在 Web 上报的是**文档级**滚动，而站点的正文栏是
++//    **自己的滚动容器** ⇒ 「滚到哪高亮到哪」还缺一条「某个节点的滚动位置」的**订阅**（下一刀）。
++//    今天能拿到的只有一次性的 `node_scroll_top()`。
++// 2. **RN 原生**：`node` 能力要宿主登记（动作名 / 载荷 / 回包都写在下面每个函数的注释里），
++//    未登记且无 DOM ⇒ `abort`。
++// 3. **观感那一半**（`transform` 等语义样式）不在这里，见 `style/style.mbt`。
++
++///|
++/// 节点的一次测量 —— **相对视口**（与 DOM 的 `getBoundingClientRect()` 同一口径）。
++///
++/// ⚠️ 要算「某一节在**滚动容器**里的位置」，调用方得再减一次容器的矩形
++/// （容器自己也可以是个具名节点：量两次相减）。这一层**不替调用方猜**你要哪个坐标系 ——
++/// 猜错的表现是「高亮总是偏一节」，而且两端还偏得不一样。
++pub struct NodeRect {
++  x : Double
++  y : Double
++  width : Double
++  height : Double
++} derive(FromJson)
++
++///|
++/// 宿主 `node` 动作的回执形状：`{"ok":Bool,"why":String}`（成功时 `why` 给空串）。
++///
++/// 约定与 `read_json` / `invoke` 同一条：**`null` 才是「没实现」**；
++/// 回了对象就必须解析 —— `ok: false` 是「宿主说做不到」（带上理由），
++/// 形状不对则**当场报错**（别把「没实现」与「实现坏了」混成一个 `None`）。
++priv struct HostAck {
++  ok : Bool
++  why : String
++} derive(FromJson)
++
++///|
++/// 宿主回一个数（`node_scroll_top` 的回包就是一个 JSON 数字）。
++priv struct HostNum {
++  value : Double
++} derive(FromJson)
++
++///|
++/// 找不到节点时的报错 —— **点名那个 id**，并说清最可能的原因。
++fn abort_missing_node(node : String, action : String) -> Unit {
++  abort(
++    "moobile/sub: `" +
++    action +
++    "` 找不到具名节点 `" +
++    node +
++    "`。\n" +
++    "  最可能的原因：那个元素上没有写 `Attrs::id(\"" +
++    node +
++    "\")`（节点名就是 `id`，本层不另造属性）。\n" +
++    "  也可能：元素还没挂载 —— 本层**不能在 `initial` / 首帧之前调**。\n" +
++    "  为什么直接报错而不静默返回：静默的后果是「点了没反应」，那种症状最难查。\n" +
++    "  同一个取舍见 `sub/url_action.mbt` 文件头第 ③ 条与 `on_scroll`。",
++  )
++}
++
++///|
++/// 动作回执不合形状时的报错 —— 带上「收到的是什么」，别只说「解析失败」。
++fn abort_bad_ack(action : String, reply : String) -> Unit {
++  abort(
++    "moobile/sub: 宿主能力 `node` 对动作 `" +
++    action +
++    "` 的回包不是 {ok, why} 形状。\n" +
++    "  收到：" +
++    reply +
++    "\n" +
++    "  期望：如 {\"ok\":true,\"why\":\"\"}（键名正好是 ok / why）\n" +
++    "  为什么直接报错：形状不对是「实现坏了」，与「没实现」（回 null）是两件事，不许混。",
++  )
++}
++
++///|
++/// 测量回包不合形状时的报错。
++fn abort_bad_rect(reply : String) -> Unit {
++  abort(
++    "moobile/sub: 宿主能力 `node` 对动作 `measure` 的回包不是 {x,y,width,height} 形状。\n" +
++    "  收到：" +
++    reply +
++    "\n" +
++    "  期望：如 {\"x\":0,\"y\":120.5,\"width\":640,\"height\":32}",
++  )
++}
++
++///|
++/// 滚动位置回包不合形状时的报错。
++fn abort_bad_number(reply : String) -> Unit {
++  abort(
++    "moobile/sub: 宿主能力 `node` 对动作 `scrollTop` 的回包不是 {\"value\":Double} 形状。\n" +
++    "  收到：" +
++    reply +
++    "\n" +
++    "  期望：如 {\"value\":300}",
++  )
++}
++
++///|
++/// 动作载荷：`{"node":"…"}`，有 `block` 时再加一个键（**空串时整个键都不写** ——
++/// 免得宿主把「没要求」读成「要求 start」）。
++fn node_payload(node : String, block : String) -> String {
++  let m : Map[String, Json] = if block == "" {
++    { "node": Json::string(node) }
++  } else {
++    { "node": Json::string(node), "block": Json::string(block) }
++  }
++  Json::object(m).stringify()
++}
++
++///|
++/// 解回执 `{"ok":Bool,"why":String}`；形状不对给 `None`（调用方据此报错）。
++fn ack_of_payload(payload : String) -> HostAck? {
++  try @json.from_json(@json.parse(payload)) catch {
++    _ => None
++  } noraise {
++    (a : HostAck) => Some(a)
++  }
++}
++
++///|
++/// **滚到具名节点**（`scrollIntoView` 语义）。
++///
++/// 参数是**语义**，不是 CSS 值：
++/// · `block` ∈ `"start"` / `"center"` / `"end"` / `"nearest"`（默认 `"start"` ——
++///   与「点目录让那一节顶到容器上沿」同一个意思）；
++/// · `behavior` ∈ `"auto"` / `"smooth"`（默认 `"auto"`；⚠️ `"smooth"` 是**动画**，
++///   判据读到的会是中间态 —— 见 spike 的读数）。
++///
++/// **平台**：Web ✅（DOM）· RN **未实现** ⇒ `abort`（等宿主登记 `node` 能力的
++/// `invoke("scrollTo", {"node":"…","block":"…"})`，回包 `{"ok":true,"why":""}`）。
++pub fn scroll_to_node(node : String, block? : String, behavior? : String) -> @cmd.Cmd {
++  let b = block.unwrap_or("start")
++  let beh = behavior.unwrap_or("auto")
++  @cmd.custom_cmd(fn(_sched) {
++    let mut done = false
++    // ① 宿主动作优先（RN 侧将来登记；`cap.invoke` 不是函数 ⇒ `None` = **没实现**）
++    match @cmd.host_capability("node") {
++      Some(cap) =>
++        match cap.invoke("scrollTo", node_payload(node, b)) {
++          Some(reply) =>
++            match ack_of_payload(reply) {
++              Some(ack) =>
++                if ack.ok {
++                  done = true
++                } else {
++                  abort(
++                    "moobile/sub: 宿主说滚不到节点 `" +
++                    node +
++                    "`：" +
++                    ack.why +
++                    "\n  （这是「宿主自己找不到它」，不是「没实现」）",
++                  )
++                }
++              None => abort_bad_ack("scrollTo", reply)
++            }
++          None => ()
++        }
++      None => ()
++    }
++    // ② 有 DOM 就自己来（Web 老行为）
++    if !done && @cmd.host_has_dom() {
++      match @dom.document().get_element_by_id(node).to_option() {
++        Some(el) => {
++          el.scroll_into_view_with_options(behavior=beh, block=b)
++          done = true
++        }
++        None => abort_missing_node(node, "scroll_to_node")
++      }
++    }
++    // ③ 两头都没有：不静默失败
++    if !done {
++      abort(
++        "moobile/sub: `scroll_to_node` 推不了 —— 宿主没登记 `node` 能力，运行时也没有 DOM。\n" +
++        "  Web 需要 `host_has_dom()`；RN 需要宿主登记 `node.invoke(\"scrollTo\", …)`。",
++      )
++    }
++  })
++}
++
++///|
++/// **量一个具名节点**（同步读一次，**视口坐标系**）。
++///
++/// 取值顺序同 `scroll_to_node`：① 宿主动作（`invoke("measure", {"node":"…"})`，
++/// 回包 `{"x":…,"y":…,"width":…,"height":…}`）→ ② DOM 回退 → ③ 两头都没有 ⇒ `None`
++/// （**不猜**：不给全 0 —— 全 0 会算出一个「在第 0 像素」的高亮，那种 bug 更难查）。
++///
++/// ⚠️ 节点**在 DOM 里找不到**时会 `abort`（那是 bug，不是「这个平台没有」）⇒
++/// **不要在 `initial()` / 首帧之前调**，调用点应当在挂载之后（例如某个 Msg 的处理里）。
++pub fn node_rect(node : String) -> NodeRect? {
++  match @cmd.host_capability("node") {
++    Some(cap) =>
++      match cap.invoke("measure", node_payload(node, "")) {
++        Some(reply) => {
++          let parsed : NodeRect? = try @json.from_json(@json.parse(reply)) catch {
++            _ => None
++          } noraise {
++            (r : NodeRect) => Some(r)
++          }
++          match parsed {
++            Some(r) => return Some(r)
++            None => abort_bad_rect(reply)
++          }
++        }
++        None => ()
++      }
++    None => ()
++  }
++  if @cmd.host_has_dom() {
++    match @dom.document().get_element_by_id(node).to_option() {
++      Some(el) => {
++        let r = el.get_bounding_client_rect()
++        return Some({
++          x: r.get_x(),
++          y: r.get_y(),
++          width: r.get_width(),
++          height: r.get_height(),
++        })
++      }
++      None => abort_missing_node(node, "node_rect")
++    }
++  }
++  None
++}
++
++///|
++/// **读一个具名节点的滚动位置**（`scrollTop`，一次性）。
++///
++/// 用途：站点正文栏那种「**自己滚**的容器」——「现在滚到哪了」要问容器，不能问 `window`
++/// （`@sub.on_scroll` 给的是**文档级**滚动，语义不同，见 `tools/cap_platform.mjs` 里那条
++/// `window.scroll_y` 的判词）。
++///
++/// ⚠️ 这一版只有**一次性读**；「滚到哪高亮到哪」要的是**订阅**，还没做（见文件头 §未做 1）。
++/// 今天应用侧要跟读只能自己轮询（`@sub.every`），代价与 `hosttheme` 那条 2 秒轮询同类。
++///
++/// **平台**：Web ✅ · RN 未实现 ⇒ `None`（容器滚动在 RN 是**组件 prop**，不是元素属性）。
++pub fn node_scroll_top(node : String) -> Double? {
++  match @cmd.host_capability("node") {
++    Some(cap) =>
++      match cap.invoke("scrollTop", node_payload(node, "")) {
++        Some(reply) => {
++          let parsed : Double? = try @json.from_json(@json.parse(reply)) catch {
++            _ => None
++          } noraise {
++            (n : HostNum) => Some(n.value)
++          }
++          match parsed {
++            Some(v) => return Some(v)
++            None => abort_bad_number(reply)
++          }
++        }
++        None => ()
++      }
++    None => ()
++  }
++  if @cmd.host_has_dom() {
++    match @dom.document().get_element_by_id(node).to_option() {
++      Some(el) => return Some(el.get_scroll_top())
++      None => abort_missing_node(node, "node_scroll_top")
++    }
++  }
++  None
++}
