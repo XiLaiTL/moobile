@@ -4,7 +4,7 @@
 // `NavItem` / `Section` / `Home`）。这份文件只**填值**，所以每个构造器都带 `@shell.` 前缀 ——
 // 为什么必须带，见 `engine/content/emit.mbt` 里 `REC` 的注释。
 //
-// 内容源：`skills/skillpress/SKILL.md`（首页）+ `skills/<name>/{SKILL.md,references/*.md,scripts/*}`。
+// 内容源：`skills/skillpress/WEBSITE.md`（首页）+ `skills/<name>/{SKILL.md,references/*.md,scripts/*}`。
 // 为什么在构建期解析 markdown：见 `tools/gen-content.mjs` 的文件头（映射的**参照实现**还在那边）。
 
 ///| 首页（来自 `skills/skillpress/WEBSITE.md`）。
