@@ -29,6 +29,9 @@ node drive.mjs --keep   # 留 Chrome（排查用）
 | ④ | `@sub.node_rect("sec-3")` vs 浏览器自己量的 | ✅ 四个数**全对上，最大差 0.000px**（x=12 y=274 w=854 h=500） |
 | ④′ | 读数**是活的**吗（防「缓存 / 常数」） | ✅ 把容器滚回顶再量：`y` 274 → **1274**（差 1000px） |
 | ⑤ | `@sub.node_scroll_top("pane")` vs `element.scrollTop` | ✅ 137 vs 137，**差 0.000px** |
+| ⑤′ | `@sub.on_node_scroll("pane", …)`：**装载后先补一次**当前值 | ✅ 没人滚的时候 `COUNT sub=1`、`SUB_BOOT=0`，与浏览器读到的 `scrollTop` **一致** |
+| ⑤″ | 同上：滚动时推得动 | ✅ 滚到 1000 后 `COUNT sub 1→4`、`SUB_LAST=1000` 与 `element.scrollTop` **一致** |
+| ⑥ | `Style::transform` 的浏览器矩阵（**顺序敏感**） | ✅ 先移后缩 ⇒ `matrix(2,0,0,2,**40**,0)`；先缩后移 ⇒ `matrix(2,0,0,2,**80**,0)`（**两者不同** ⇒ 顺序保住了）；`rotate(90deg)` ⇒ `matrix(0,1,-1,0,0,0)` |
 
 其它：页面 **0 条 JS 错误/异常**；全程**真鼠标**（`Input.dispatchMouseEvent` 三连），不是合成事件
 （合成事件在这套宿主上不可信，见 skillpress M5 那笔账）。

@@ -328,6 +328,33 @@ async function main() {
   say(Math.abs(st.scrollTopLine - domTop) <= 0.5, `库读到 ${st.scrollTopLine}，浏览器读到 ${domTop}（差 ${Math.abs(st.scrollTopLine - domTop).toFixed(3)}px）`);
   rows.push(['⑤ node_scroll_top("pane")', '库读数', `${st.scrollTopLine}`, `浏览器 ${domTop}`]);
 
+  // ── ⑥ `Style::transform`：真浏览器里的**矩阵**（顺序敏感那一条在这里证）────────
+  //
+  // 读的是 `getComputedStyle(el).transform` —— 浏览器把 `translateX(40px) scale(2)` 这类
+  // 算成矩阵。判定用**数值容差**（浮点 + 浏览器自己的舍入），而不是字符串比较。
+  console.log('');
+  console.log('⑥ `Style::transform` 的浏览器矩阵（顺序敏感：同一组动作、换个顺序必须不一样）');
+  const mats = await evalJs('(() => {' +
+    'const out = {};' +
+    'for (const id of ["tf-a", "tf-b", "tf-c"]) { const el = document.getElementById(id);' +
+    'out[id] = el ? getComputedStyle(el).transform : null; }' +
+    'return out;' +
+    '})()');
+  const nums = (m) => {
+    const g = (m || '').match(/-?[\d.]+(?:e-?\d+)?/g);
+    return g ? g.map(Number) : null;
+  };
+  const close = (a, b, tol) => a && b && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= tol);
+  const A = nums(mats && mats['tf-a']);
+  const B = nums(mats && mats['tf-b']);
+  const C = nums(mats && mats['tf-c']);
+  say(!!A, `#tf-a 的计算变换 = ${mats && mats['tf-a']}`);
+  say(close(A, [2, 0, 0, 2, 40, 0], 0.01), '先移后缩 ⇒ matrix(2,0,0,2,**40**,0)（位移**不被**缩放）');
+  say(close(B, [2, 0, 0, 2, 80, 0], 0.01), '先缩后移 ⇒ matrix(2,0,0,2,**80**,0)（位移**被**缩放）');
+  say(!!A && !!B && !close(A, B, 0.01), '**两者不同** ⇒ 顺序真的被保住了（相同就说明顺序被丢了）');
+  say(close(C, [0, 1, -1, 0, 0, 0], 0.01), `rotate(90deg) ⇒ matrix(0,1,-1,0,0,0)（实测 ${mats && mats['tf-c']}）`);
+  rows.push(['⑥ Style::transform', '真浏览器', `a=${JSON.stringify(A)}`, `b=${JSON.stringify(B)}`]);
+
   // ── 报告 ────────────────────────────────────────────────────────────────────
   console.log('\n───── 读数表 ─────');
   for (const r of rows) console.log('  ' + r.join('  |  '));

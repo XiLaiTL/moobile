@@ -235,6 +235,52 @@ fn view(m : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         [button("read-top", "READ-TOP", ReadTopNow, emit)],
       ),
       @html.div(attrs=attrs(@style.Style::new().flex_direction(@style.FlexDirection::Column)), rows),
+      // ── 变换（`Style::transform`）：**顺序敏感**那一条要在浏览器里证 ----
+      //    tf-a 与 tf-b 的动作**一样、顺序不同**：先移后缩 ⇒ 位移**不被缩放**；
+      //    先缩后移 ⇒ 位移**被缩放**（40 → 80）。两个矩阵必须不同，否则说明顺序被丢了。
+      line("CSS transform 的三个读数（矩阵由浏览器算）", 13.0, "#5b4f3f"),
+      @html.div(
+        attrs=attrs(
+          @style.Style::new()
+          .height(@style.px(40.0))
+          .width(@style.px(200.0))
+          .margin_bottom(@style.px(8.0))
+          .background_color("#dbe4ff")
+          .transform([
+            @style.Transform::Translate(40.0, 0.0),
+            @style.Transform::Scale(2.0),
+          ]),
+        )
+        .id("tf-a"),
+        "",
+      ),
+      @html.div(
+        attrs=attrs(
+          @style.Style::new()
+          .height(@style.px(40.0))
+          .width(@style.px(200.0))
+          .margin_bottom(@style.px(8.0))
+          .background_color("#ffe3e3")
+          .transform([
+            @style.Transform::Scale(2.0),
+            @style.Transform::Translate(40.0, 0.0),
+          ]),
+        )
+        .id("tf-b"),
+        "",
+      ),
+      @html.div(
+        attrs=attrs(
+          @style.Style::new()
+          .height(@style.px(40.0))
+          .width(@style.px(200.0))
+          .margin_bottom(@style.px(8.0))
+          .background_color("#e6f4ea")
+          .transform([@style.Transform::Rotate(90.0)]),
+        )
+        .id("tf-c"),
+        "",
+      ),
       // ── 自己滚的容器（id="pane"）：站点正文栏就是这种形状 ----
       @html.div(
         attrs=attrs(

@@ -819,6 +819,78 @@ pub fn Style::box_shadow(
   self.kw("boxShadow", shadow_value(color, x, y, blur, spread))
 }
 
+///|
+/// **一条变换**（`transform` 里的一个动作）。
+///
+/// ## 为什么是"有序的一串"而不是几个字段
+///
+/// 变换**顺序敏感**：`translate` 之后再 `scale`，与反过来**不是同一个结果**（后者缩放的才是位移后的坐标系）。
+/// 所以 API 收 `Array[Transform]`，**数组顺序就是施加顺序** —— 换成结构体字段
+/// （`x` / `scale` / `rotate` 各一格）就把"顺序"这件事永久丢掉了。
+///
+/// ## 为什么吐**字符串**（实测：两端都认，**不需要按后端分叉**）
+///
+/// 这是甲级三样里最容易被想当然的一条 —— 直觉是"RN 要数组、web 要字符串 ⇒ 必须分叉"。
+/// **读两端自己的源码之后，这句不成立**：
+///
+/// · **RN**（`Libraries/StyleSheet/processTransform.js`）：签名就是 `Array<Object> | string`；
+///   传字符串时用 `/(\w+)\(([^)]+)\)/g` 把每个 `fn(args)` 解析成**单键对象**，并**保序**
+///   ⇒ 字符串是它的一等输入，不是兼容层；
+/// · **RNW 0.21.3**（`exports/StyleSheet/preprocess.js`）：`transform` 那一支只在
+///   `Array.isArray(_value)` 时走数组翻译，**字符串原样落进 CSS** ⇒ 也认。
+///
+/// ⇒ 本层只吐**一条字符串**（与 `box_shadow` 同一形状），不必分叉 ——
+///   分叉只会带来"同一个变换在两端长得不一样"的新账。
+///
+/// ## 一个动作一个函数（不是风格问题：RN 有硬校验）
+///
+/// RN 的 `_validateTransforms` 要求**每个 transform 对象恰好一个键**；本仓 canvas 那边也栽过同一件事
+/// （RN Skia 只读 `Object.keys(val)[0]`，第二个键**静默作废** —— 罗盘被画成横扁的椭圆）。
+/// ⇒ `Translate(x, y)` 一律吐**两个函数**（`translateX(…) translateY(…)`，RN 解析成两个单键对象），
+///   **绝不**吐 `translate(x, y)` 那种一个函数带两个参数的形态。
+///   判据：白盒测试数**函数个数 == 动作个数**（`style_wbtest.mbt`）。
+///
+/// ⚠️ 单位写死在这里（调用点给不出裸字符串，与 `box_shadow` 同一条规矩：别把 CSS 语法漏进可移植子集）：
+///   RN 的解析器要求 `translateX/Y` **带单位**（值为 0 时可省）；`rotate` 走默认分支 ⇒ 要 `deg`；`scale` 是纯数。
+///
+/// **平台**：Web ✅ · RNW ✅ · RN ✅（字符串形态是它的一等输入）。
+pub(all) enum Transform {
+  /// 位移（px）：抽屉/浮出的"移出去多少"
+  Translate(Double, Double)
+  /// 缩放（倍数）
+  Scale(Double)
+  /// 旋转（度）
+  Rotate(Double)
+}
+
+///|
+pub fn Transform::to_string(self : Transform) -> String {
+  match self {
+    Translate(x, y) => "translateX(\{x}px) translateY(\{y}px)"
+    Scale(f) => "scale(\{f})"
+    Rotate(d) => "rotate(\{d}deg)"
+  }
+}
+
+///|
+/// **变换**（甲级三样的最后一样）：抽屉 / 下拉的位移、指示条、悬浮抬起。
+///
+/// 语义参数**有序**：`[Translate(0.0, -8.0), Scale(1.02)]` 就是"先上移 8px 再放大 2%"。
+/// 传空数组 = 一条空串（等于不加变换，但**键还在** —— 需要"清掉变换"时用它）。
+///
+/// ⚠️ 它**不改布局**：变换是合成期的（不参与 flex 计算）⇒ 别拿它当"撑开/收窄"用，
+///    也别指望它触发重排（那正是它与 `margin` / `width` 的区别）。
+pub fn Style::transform(self : Style, items : Array[Transform]) -> Style {
+  let buf = StringBuilder::new()
+  for i = 0; i < items.length(); i = i + 1 {
+    if i > 0 {
+      buf.write_string(" ")
+    }
+    buf.write_string(items[i].to_string())
+  }
+  self.kw("transform", buf.to_string())
+}
+
 // ---------------------------------------- 补齐：yi 的 CSS 用到的可移植属性
 //
 // 清单来自 `docs/evidence/r1/style_gap.md` 的差集分析（yi 的 198 条 CSS 共 57 个属性名，

@@ -7386,3 +7386,39 @@ popstate（back）的载荷 : url_changed | full=…/#/s/baz      path= frag=/s/
 2. **"点了没反应"要先分清"点没到"与"点了没用"**：这一轮的诊断靠的是在点击前把
    `document.elementFromPoint(x, y)` 打出来（那一点上是 `null`，坐标 `186,-3`）——
    于是"仪器错了"与"功能坏了"当场分开。**这条自证已经写进驱动脚本**，不是一次性调试。
+
+
+### 十、同日第三刀：`Style::transform` —— 「RN 要数组、web 要字符串」这句**也是错的**
+
+甲级三样的最后一样（前两样 `cursor` / `box_shadow` 见 §6.7 那一轮）。设计与施工单原写：
+"RN 要**数组**（顺序敏感）、web 要字符串 ⇒ `StyleValue` 必须能表达"有序的若干动作" ⇒ **这一样要动类型**"。
+**读两端自己的源码之后，这句不成立**：
+
+| 原写 | 实测（读源码） |
+|---|---|
+| RN 只吃数组 | ❌ `Libraries/StyleSheet/processTransform.js` 的签名就是 `Array<Object> \| string` —— 传字符串时用 `/(\w+)\(([^)]+)\)/g` 把每个 `fn(args)` 拆成**单键对象**并**保序** ⇒ 字符串是它的**一等输入**，不是兼容层 |
+| web 只吃字符串 | ❌ RNW 0.21.3 的 `preprocess.js`：`transform` 那一支只在 `Array.isArray(_value)` 时才走数组翻译，**字符串原样落进 CSS** ⇒ 也认 |
+
+⇒ 实现与 `box_shadow` 同一形状：`Style::transform(Array[Transform])` 吐**一条字符串**
+（`Transform::Translate(x,y)` / `Scale(f)` / `Rotate(deg)`，单位写死在构造器里），
+**`StyleValue` 一个变体都没动**（那正是 PLAN-ui §6.7 那三条硬约束要的）。
+序由 `Array` 保：**数组顺序 = 施加顺序**。
+
+⚠️ 一条必须守住的形状（RN 的硬校验 + 本仓 canvas 的前科）：**一个动作一个函数** ——
+`Translate(x, y)` 吐 `translateX(…) translateY(…)`（**两个**函数 ⇒ RN 解析成两个单键对象），
+**绝不**吐 `translate(x, y)`。理由两条：RN 的 `_validateTransforms` 要求每个 transform 对象
+**恰好一个键**；而 RN Skia 只读 `Object.keys(val)[0]`（第二个键**静默作废** —— 罗盘曾因此被画成椭圆）。
+
+**读数（真浏览器，`examples/apps/node-spike/drive.mjs` ⑥；产物 sha256 `8b0693632f74d771…`）**：
+
+| 盒子 | 动作（顺序） | `getComputedStyle` 的矩阵 |
+|---|---|---|
+| `#tf-a` | `Translate(40,0)` → `Scale(2)` | `matrix(2, 0, 0, 2, **40**, 0)` —— 位移**不被**缩放 |
+| `#tf-b` | `Scale(2)` → `Translate(40,0)` | `matrix(2, 0, 0, 2, **80**, 0)` —— 位移**被**缩放 |
+| `#tf-c` | `Rotate(90)` | `matrix(0, 1, -1, 0, 0, 0)` |
+
+**#"两者不同"本身就是判据**：同一组动作换个顺序必须得到**不同**的矩阵 —— 相同就说明顺序被丢了
+（那正是"用结构体字段表达变换"会犯的错）。白盒另加 6 条（`style/style_wbtest.mbt`）：
+顺序敏感、**函数个数 == 动作个数**、键名是 `transform` 且值是字符串、能落在链的任意位置、
+空数组 ⇒ 键在串空。平台门 `style_platform_check` **14 / 0**（`transform` 本来就在 RN 登记表里，
+不需要登记成"原生不认"）。
