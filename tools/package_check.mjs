@@ -25,7 +25,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -174,7 +174,18 @@ check(
 );
 
 // 逐一对上：两侧都把 `.npmignore` 归一到 `.gitignore` 再比（npm 的改名是已知的，不是差异）
-const normalize = (names) => names.map((n) => (n === ".npmignore" ? ".gitignore" : n)).sort();
+//
+// ⚠️ **两侧都要按 `init` 的同一套规矩过滤**（2026-10-07 修，实测的假红）：
+//    `init` 会跳过 `SKIP_FILES`（`moobile.js` / `package-lock.json`）与 `*.map` / `*.mbti`，
+//    而这条判据原来把**暂存目录里的所有文件**都算进来 ⇒ 只要模板目录里躺着一个**构建产物**
+//    （`pkg.generated.mbti`，`moon info` 生成的，**没进 git**）就报"生成物与模板对不上"，
+//    看着像打包坏了，其实是**本机跑过构建**留下的东西（干净克隆里没这一条）。
+//    ⇒ 过滤规则从**被测的那份包**里读（`lib/template.js` 的 `SKIP_FILES`）—— 一处真源，
+//      而不是在这儿再抄一份"哪些算产物"。
+const { SKIP_FILES } = await import(pathToFileURL(path.join(installed, "lib", "template.js")).href);
+const isJunk = (n) => SKIP_FILES.has(n) || n.endsWith(".map") || n.endsWith(".mbti");
+const normalize = (names) =>
+  names.filter((n) => !isJunk(n)).map((n) => (n === ".npmignore" ? ".gitignore" : n)).sort();
 const stagedSet = normalize(fs.readdirSync(STAGED));
 const genSet = normalize(genNames);
 const sameSet = JSON.stringify(genSet) === JSON.stringify(stagedSet);
