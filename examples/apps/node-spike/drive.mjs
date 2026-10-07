@@ -143,6 +143,9 @@ async function main() {
       rectNode: rectLine[0] || '-',
       rect: rectLine.length ? rectLine.slice(1).map(Number) : null,
       scrollTopLine: Number((t.match(/SCROLLTOP (\S+)/) || [])[1]),
+      sub: num('sub'),
+      subLast: (t.match(/SUB_LAST (\S+)/) || [])[1] || '-',
+      subBoot: (t.match(/SUB_BOOT (\S+)/) || [])[1] || '-',
       note: (t.match(/NOTE (.+)/) || [])[1] || '-',
     };
   };
@@ -170,12 +173,25 @@ async function main() {
 
   // ── **真鼠标**：CDP 的 Input 域（合成事件在这套宿主上不可信，见 skillpress M5 的教训）──
   const clickById = async (node) => {
+    // ⚠️ **先把它滚进可视区再量**（站点 M5 那条教训原样搬过来）：`scrollIntoView` 会把
+    //    **所有可滚祖先**都滚一遍 —— 包括**页面本身**。本试金石第一版就栽在这儿：
+    //    ② 那一步（`@nav.scroll_to`）之后，按钮中心跑到了 **y=-3**，于是 ③ 点了个空，
+    //    读数表现为"点了没反应"，而行凶的是**仪器**。（`elementFromPoint` 自证把它揪出来了。）
+    await evalJs(`(() => {
+      const el = document.getElementById(${JSON.stringify(node)});
+      if (el) el.scrollIntoView({ block: 'center' });
+      return 'ok';
+    })()`);
+    await sleep(150);
     const r = await evalJs(`(() => {
       const el = document.getElementById(${JSON.stringify(node)});
       if (!el) return null;
       const b = el.getBoundingClientRect();
       if (b.width === 0 || b.height === 0) return { zero: true };
-      return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+      const x = b.left + b.width / 2, y = b.top + b.height / 2;
+      // **仪器自证**：那一点上到底是谁？（点了没反应时，先分清楚"点没到"与"点了没用"）
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, hit: hit ? (hit.tagName + (hit.id ? '#' + hit.id : '') + ' 「' + (hit.textContent || '').trim().slice(0, 12) + '」') : 'null' };
     })()`);
     if (!r) return 'missing';
     if (r.zero) return 'zero-size';
@@ -186,7 +202,7 @@ async function main() {
     await send('Input.dispatchMouseEvent', {
       type: 'mouseReleased', x: r.x, y: r.y, button: 'left', buttons: 0, clickCount: 1,
     });
-    return { x: r.x, y: r.y };
+    return { x: r.x, y: r.y, hit: r.hit };
   };
 
   await send('Page.navigate', { url: BASE });
@@ -207,6 +223,20 @@ async function main() {
   const sec3Before = await domRect('sec-3');
   say(paneBefore && paneBefore.h > 0 && sec3Before && sec3Before.h > 0, `容器高 ${paneBefore && paneBefore.h}、第三节高 ${sec3Before && sec3Before.h}（容器得比内容矮才滚得动）`);
   say((await domScrollTop('pane')) === 0, `初始 scrollTop = ${await domScrollTop('pane')}（期望 0）`);
+
+  // ── ①′ 订阅那条通道：**装载后补的那一次**（"首帧就有值"）──────────────────────
+  //
+  // ⚠️ 这一条必须放在**任何滚动之前**跑：它问的是"还没人滚的时候，订阅有没有先给一个值"。
+  //    本仓在 `current_viewport` / `current_url` 上各栽过一次"订阅不补首帧"的账，所以新订阅要验它。
+  console.log("");
+  console.log('①′ `@sub.on_node_scroll("pane")`：装载后有没有**先补一次**当前值');
+  const boot = await read();
+  const bootScroll = await domScrollTop('pane');
+  say(boot.sub >= 1, `没人滚的时候订阅已经推过一次（COUNT sub=${boot.sub}）`);
+  const bootVal = Number(boot.subBoot);
+  say(boot.subBoot !== '-' && Number.isFinite(bootVal), `SUB_BOOT = ${boot.subBoot}（不是 "-"，也不是空）`);
+  say(Number.isFinite(bootVal) && Math.abs(bootVal - bootScroll) <= 0.5, `补的那一次与浏览器读到的 scrollTop 一致（${boot.subBoot} vs ${bootScroll}）`);
+  rows.push(['①′ on_node_scroll 装载补值', '库订阅', `sub=${boot.sub}`, `boot=${boot.subBoot} vs DOM ${bootScroll}`]);
 
   // ── ② 对照：`@nav.scroll_to`（fork 里已有的那个）──────────────────────────────
   // ⚠️ 这一格**不设预测**：第一跑时我预测"它是死通道"，实测**它真的滚了**（0 → 1000），
@@ -230,9 +260,12 @@ async function main() {
   // ── ③ `@sub.scroll_to_node`：**语义**——那一节顶到容器上沿 ────────────────────
   console.log('\n③ `@sub.scroll_to_node("sec-3", block="start")`：真滚了没有');
   const beforeGo = await read();
-  await clickById('go-sec-3');
+  const hit3 = await clickById('go-sec-3');
   await sleep(600);
   const afterGo = await read();
+  if (afterGo.scroll === beforeGo.scroll) {
+    console.log(`     ! 点击没到应用：那一点上是 ${typeof hit3 === 'object' ? hit3.hit : hit3}（按钮中心 ${typeof hit3 === 'object' ? Math.round(hit3.x) + ',' + Math.round(hit3.y) : '-'}）`);
+  }
   const paneAfter = await domRect('pane');
   const sec3After = await domRect('sec-3');
   const scrolledTop = await domScrollTop('pane');
@@ -247,6 +280,15 @@ async function main() {
     const delta = Math.abs(sec3After.y - paneAfter.y);
     say(delta <= 2, `**那一节顶到容器上沿**：sec-3.top=${sec3After.y.toFixed(1)} vs pane.top=${paneAfter.y.toFixed(1)} ⇒ 差 ${delta.toFixed(1)}px（≤2）`);
     rows.push(['③ @sub.scroll_to_node("sec-3")', '真鼠标', `scrollTop=${scrolledTop}`, `sec-3.top − pane.top = ${delta.toFixed(1)}px`]);
+  }
+
+  // ── ③′ 订阅跟着滚动走吗（值 + 次数都要对）────────────────────────────────────
+  {
+    const r = await read();
+    const st = await domScrollTop('pane');
+    say(r.sub > boot.sub, `滚动之后订阅又推了（COUNT sub ${boot.sub} → ${r.sub}）`);
+    say(Math.abs(Number(r.subLast) - st) <= 1, `SUB_LAST(${r.subLast}) 与浏览器读到的 scrollTop(${st}) 一致`);
+    rows.push(['③′ on_node_scroll 跟滚动', '库订阅', `sub=${r.sub}`, `last=${r.subLast} vs DOM ${st}`]);
   }
 
   // ── ④ `node_rect` 与浏览器自己量的对账 ───────────────────────────────────────

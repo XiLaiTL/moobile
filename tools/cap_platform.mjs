@@ -55,6 +55,7 @@ const PUBLIC_API = {
     on_visibility_change: { rn: 'host-cap', note: '宿主能力 native.visibility（RN → AppState）；真机验过' },
     on_resize: { rn: 'host-cap', note: '宿主能力 native.geometry（RN → Dimensions）；载荷走 subscribe_json 严格解。真机**未**验' },
     current_viewport: { rn: 'host-cap', note: '读一次当前视口（同步）：宿主能力 native.geometry.**read()**（RN → Dimensions.get），问不到回退 DOM（`window.innerWidth`）—— 与 on_resize 的订阅互补（两端都不补发初始值）。第十一轮补，起因：应用读不到窗口宽度 ⇒ 画布一直画在回落值上' },
+    on_node_scroll: { rn: 'web-only', note: '**订阅某个具名节点的滚动**（载荷 = 它当前的 `scrollTop`）：`document` **捕获阶段**的 `scroll` 监听（滚动事件不冒泡，但捕获收得到），按 `event.target` 的 id 过滤 —— 形状由两条实测约束定死：① **订阅装载发生在挂载之前**（`runtime/stores.mbt` 的 `handle_subs` 在 `initialize` 之后立刻跑）⇒ 不能"先找元素再挂监听"；② 捕获监听顺带解决"元素后来才挂上去"。⚠️ 装载后**补一次初始值**（有界重试约 1 秒，用完仍找不到 ⇒ abort 并带节点名）—— 订阅不补首帧这次账本仓在 `current_viewport` / `current_url` 上各栽过一次。⚠️ RN **未实现**（容器滚动在 `ScrollView.onScroll`，要另定订阅形状）⇒ 装载即 abort' },
     on_scroll: { rn: 'web-only', note: '⚠️ **不是「待接」，是语义不成立**：Web 上它报文档级滚动，RN 没有文档级滚动（滚动在 ScrollView 内部、是组件 prop）→ 替代物在**组件通道**，宿主能力换不掉一个不存在的语义。现在装载时**明确 abort**，不再静默给 0' },
     current_url: { rn: 'host-cap', note: '读一次当前 URL（同步）：宿主能力 url.**read()** 优先，问不到回退 DOM（`window.location.href`，受 host_has_dom 保护）；两端都拿不到 ⇒ **None**（不猜、不给空串）。与 on_url_changed 互补 —— 后者**首屏不推**（2026-10-07 真浏览器实测），没这一条"进来时我在哪"永远拿不到。⚠️ RN 侧**待查实**：`Linking.getInitialURL` 是异步的，要拿它当同步读得宿主先缓存一份' },
     on_url_changed: { rn: 'host-cap', note: '不是能力注册表，是**既有的** Scheduler 注入器：sub 把注入器交给宿主，宿主调 Context::inject_url_changed 驱动。有 DOM 时同时挂 popstate（Web 老行为不变）；没有 DOM 时一个 DOM API 都不碰（原来无条件挂 popstate → RN 上装载就抛）。Web 侧（2026-10-07 真浏览器实测，examples/apps/route-spike/drive.mjs）：**只有 popstate 那一档会推** —— 改 hash / 后退 / 前进 / 点同文档 a[href] 都推（载荷 = 完整 URL；hash 模式下路由在 fragment 里、path 为空），pushState / replaceState **不推**（不产生 popstate），**首屏也不推**（挂载时不读一次地址栏）' },
@@ -134,6 +135,9 @@ const DOM_INVENTORY = {
   sub: {
     'window': { cls: 'raw', rnFails: 'ok', note: '接收者本身 —— RN 做了 `global.window = global`，拿得到' },
     'window.set_interval': { cls: 'ok', rnFails: 'ok', note: 'every（globalThis.setInterval）' },
+    // 节点滚动订阅的"补一次初始值"用的一发定时器（2026-10-07）：RN 上也是 globalThis 的两个方法。
+    'window.set_timeout': { cls: 'ok', rnFails: 'ok', note: 'on_node_scroll 装载后补初始值的有界重试（globalThis.setTimeout）' },
+    'window.clear_timeout': { cls: 'ok', rnFails: 'ok', note: '同上（退订时清掉待跑的那一发）' },
     'window.clear_interval': { cls: 'ok', rnFails: 'ok', note: 'every' },
     'window.request_animation_frame': { cls: 'ok', rnFails: 'ok', note: 'on_animation_frame' },
     'window.cancel_animation_frame': { cls: 'ok', rnFails: 'ok', note: 'on_animation_frame' },

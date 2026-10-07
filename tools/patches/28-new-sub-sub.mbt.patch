@@ -26,10 +26,15 @@
  enum Sub {
    Custom(String, Scope, Error, SubLoader)
    Batch(Array[Sub])
-@@ -54,6 +71,50 @@
- }
- 
- ///|
+@@ -51,6 +68,52 @@
+   UrlRequest(Emit[@url.UrlRequest])
+   Scroll(Emit[Scroll])
+   VisibilityChange(Emit[Bool])
++  /// 某个**具名节点**的滚动（载荷 = 它当前的 `scrollTop`）。见 `on_node_scroll`。
++  NodeScroll(String, Emit[Double])
++}
++
++///|
 +/// 宿主给 resize 用的载荷形状（`native.geometry` 的 `subscribe` 推过来的 JSON）。
 +///
 +/// 为什么在这里定义而不是给 `@common.Viewport` 加 `derive(FromJson)`：
@@ -71,13 +76,10 @@
 +    "  参考实现：npm/moobile-host/native-rn.js 的 dimensions.subscribe\n" +
 +    "  为什么直接报错而不取 0：取 0 就是「静默给错值」，那正是这条通道要消灭的东西。",
 +  )
-+}
-+
-+///|
- #cfg(target="js")
- fn builtin_sub_loader(payload : Error, scheduler : &Scheduler) -> RunningSub? {
-   match payload {
-@@ -155,28 +216,72 @@
+ }
+ 
+ ///|
+@@ -155,28 +218,72 @@
      }
      Resize(cmd) => {
        let mut tagger = cmd
@@ -166,7 +168,95 @@
        let mut tagger = cmd
        let listener : @dom.Listener = event => {
          ignore(event)
-@@ -207,27 +312,50 @@
+@@ -192,6 +299,87 @@
+         tagger = new_cmd
+       }
+       @dom.window().as_event_target().add_event_listener("scroll", listener)
++      Some({ unload, update_tagger, })
++    }
++    NodeScroll(node, cmd) => {
++      // ⚠️ 形状由**两条实测约束**定死，不是设计偏好：
++      //
++      // ① **订阅装载发生在挂载之前**：`runtime/stores.mbt` 里 `create_state_machine` 在
++      //    `initialize` 之后立刻调 `handle_subs(...)`（第 91 行）⇒ 那一刻 DOM 里**还没有**
++      //    应用的元素 ⇒ **不能**用"订阅时找到元素、再给它挂监听"这种写法（会全军覆没）。
++      // ② 滚动事件**不冒泡**，但**能在 `document` 上以捕获阶段收到**（`capture: true`）
++      //    ⇒ 挂在 document 上、按 `event.target` 的 `id` 过滤，①②一起解决，
++      //    顺带还解决了"元素后来才挂上去"。
++      //
++      // ⚠️ 另一条是**本仓的老账**（`current_viewport` 与 `current_url` 都在同一处栽过）：
++      //    订阅只报"变化"、不报"当前是多少" ⇒ 这里**装载后补一次初始值**。
++      //    挂载之前读不到，所以用**有界重试**（约 1 秒）；额度用完还找不到 ⇒ `abort`
++      //    （那说明 `Attrs::id(...)` 写错了或节点压根没渲染 —— 静默等着才是最难查的）。
++      //    今天**不支持"条件渲染、以后才出现"的节点**：那要另造一个"订阅一个还不存在的节点"
++      //    的语义，别现在硬凑（本条假定它会渲染出来，只是可能晚几十毫秒）。
++      if !@cmd.host_has_dom() {
++        abort(
++          "moobile/sub: `on_node_scroll` 在当前运行时不可用。\n" +
++          "  Web 上是 `document` 捕获阶段的滚动监听（按节点 id 过滤）；这个运行时没有 DOM。\n" +
++          "  RN 的容器滚动在组件层（`ScrollView` 的 `onScroll` prop），宿主能力要另定一个**订阅**形状\n" +
++          "  （今天 `node` 能力只声明了 `scrollTo` / `measure` / `scrollTop` 三个动作）⇒ 未实现就报错，不静默。",
++        )
++      }
++      let tagger = @ref.Ref(cmd)
++      let listener : @dom.Listener = event => {
++        // 只认**我们那个节点**的滚动：捕获阶段会把页面里任何元素的滚动都送过来，
++        // 所以按 `event.target` 的 id 过滤（`to_element()` 是 `Element?`，不是元素就跳过）。
++        match event.target().to_element() {
++          Some(el) =>
++            match el.get_attribute("id") {
++              Some(id) => if id == node { scheduler.add((tagger.val)(el.get_scroll_top())) }
++              None => ()
++            }
++          None => ()
++        }
++      }
++      @dom.document()
++      .as_event_target()
++      .add_event_listener_with_options("scroll", listener, capture=true)
++      let timer : @ref.Ref[Int?] = @ref.Ref(None)
++      let attempts = @ref.Ref(0)
++      fn poll_once() -> Unit {
++        match @dom.document().get_element_by_id(node).to_option() {
++          Some(el) => {
++            timer.val = None
++            scheduler.add((tagger.val)(el.get_scroll_top()))
++          }
++          None => {
++            attempts.val = attempts.val + 1
++            if attempts.val >= 60 {
++              abort(
++                "moobile/sub: `on_node_scroll(\"" +
++                node +
++                "\")` 在挂载后约 1 秒仍找不到这个节点。\n" +
++                "  检查那个元素上有没有 `Attrs::id(\"" +
++                node +
++                "\")`（节点名就是 `id`）。\n" +
++                "  为什么报错而不静默：静默的后果是「跟读高亮永远不动」，而那种症状最难查。",
++              )
++            }
++            timer.val = Some(@dom.window().set_timeout(poll_once, 16))
++          }
++        }
++      }
++      poll_once()
++      let unload = _ => {
++        @dom.document()
++        .as_event_target()
++        .remove_event_listener_with_options("scroll", listener, capture=true)
++        match timer.val {
++          Some(id) => @dom.window().clear_timeout(id)
++          None => ()
++        }
++      }
++      let update_tagger = self => {
++        guard self is BuiltinSub::NodeScroll(_, new_cmd) else { return }
++        tagger.val = new_cmd
++      }
+       Some({ unload, update_tagger, })
+     }
+     UrlChanged(cmd) => {
+@@ -207,27 +395,50 @@
          }
        })
  
@@ -230,7 +320,7 @@
          let next = try! @url.parse(href)
          let request = if curr.protocol == next.protocol &&
            curr.host == next.host &&
-@@ -250,22 +378,40 @@
+@@ -250,22 +461,40 @@
      }
      VisibilityChange(cmd) => {
        let mut tagger = cmd
@@ -283,7 +373,7 @@
      }
      _ => None
    }
-@@ -362,6 +508,10 @@
+@@ -362,6 +591,10 @@
  
  ///|
  /// Repeatedly enqueue `cmd` every `ms` milliseconds.
@@ -294,7 +384,7 @@
  pub fn every(ms : Int, cmd : @cmd.Cmd) -> Sub {
    custom_sub("every(\{ms})", Local, Every(ms, cmd), builtin_sub_loader)
  }
-@@ -370,15 +520,158 @@
+@@ -370,15 +603,158 @@
  /// Subscribe to window resize events.
  ///
  /// The handler receives the latest viewport width and height.
@@ -453,7 +543,7 @@
  pub fn on_animation_frame(msg : @cmd.Emit[Double]) -> Sub {
    custom_sub(
      "on_animation_frame",
-@@ -392,6 +685,12 @@
+@@ -392,6 +768,12 @@
  /// Subscribe to document `keydown` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -466,7 +556,7 @@
  pub fn on_key_down(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_down", Local, Keydown(msg), builtin_sub_loader)
  }
-@@ -400,6 +699,10 @@
+@@ -400,6 +782,10 @@
  /// Subscribe to document `keyup` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -477,7 +567,7 @@
  pub fn on_key_up(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_up", Local, Keyup(msg), builtin_sub_loader)
  }
-@@ -409,6 +712,13 @@
+@@ -409,6 +795,13 @@
  ///
  /// The handler receives `true` when the document is hidden, and `false`
  /// when it becomes visible again.
@@ -491,7 +581,7 @@
  pub fn on_visibility_change(msg : @cmd.Emit[Bool]) -> Sub {
    custom_sub(
      "on_visibility_change",
-@@ -422,6 +732,12 @@
+@@ -422,6 +815,12 @@
  /// Subscribe to document `mousemove` events.
  ///
  /// The handler receives a normalized `Mouse` value from `@common`.
@@ -504,7 +594,7 @@
  pub fn on_mouse_move(msg : @cmd.Emit[Mouse]) -> Sub {
    custom_sub("on_mouse_move", Local, MouseMove(msg), builtin_sub_loader)
  }
-@@ -432,6 +748,19 @@
+@@ -432,8 +831,51 @@
  /// This reports page-level scrolling on `window`, not scrolling of an inner
  /// element. The handler receives the current scroll offset and document scroll
  /// size as a `Scroll` value.
@@ -523,8 +613,40 @@
 +/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
  pub fn on_scroll(msg : @cmd.Emit[Scroll]) -> Sub {
    custom_sub("on_scroll", Local, Scroll(msg), builtin_sub_loader)
++}
++
++///|
++/// **订阅某个具名节点的滚动**（载荷 = 它当前的 `scrollTop`）。
++///
++/// ## 为什么需要它（`on_scroll` 换不掉它）
++///
++/// `on_scroll` 报的是**文档级**滚动。而站点那种"三栏各自滚"的版面里，正文栏是**自己的滚动容器**
++/// —— 它的滚动位置**不会**出现在 `window.scrollY` 上。所以"滚到哪高亮到哪"这类跟读，
++/// 必须能订阅**某一个节点**的滚动。
++///
++/// ## 契约（三条，都是实测逼出来的）
++///
++/// 1. **装载时先补一次当前值** —— 订阅只报"变化"，而 DOM 与 RN 的滚动事件**都不会在挂载时补发一次**
++///    （本仓在 `current_viewport` / `current_url` 上各栽过一次）⇒ 这里装载完成后立刻推一次
++///    `scrollTop`。应用因此**首帧就有值**，不必自己再读一遍。
++/// 2. **按 `Attrs::id(…)` 找节点** —— 与 `scroll_to_node` / `node_rect` 同一套寻址；
++///    挂载之前读不到，所以用**有界重试**（约 1 秒），额度用完仍找不到 ⇒ `abort`（带节点名）。
++/// 3. **只认那个节点的滚动** —— 实现是 `document` **捕获阶段**的 `scroll` 监听（滚动事件不冒泡，
++///    但能在捕获阶段收到），按 `event.target` 的 `id` 过滤；挂载前装载也不受影响。
++///
++/// ⚠️ **今天不支持"条件渲染、以后才出现"的节点**：重试额度用完就报错（见第 2 条）。
++///
++/// **平台**：Web ✅ · RN ❌ **未实现**（RN 的容器滚动在组件层 `ScrollView.onScroll`；
++/// 要走宿主能力得先给 `node` 能力定一个**订阅**形状）⇒ 未实现时装载即 `abort`，不静默。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
++pub fn on_node_scroll(node : String, msg : @cmd.Emit[Double]) -> Sub {
++  // ⚠️ key 里**带上节点名**：`key` 是订阅去重的身份，两个不同节点的订阅不能互相顶掉。
++  custom_sub("on_node_scroll:" + node, Local, NodeScroll(node, msg), builtin_sub_loader)
  }
-@@ -442,6 +771,20 @@
+ 
+ ///|
+@@ -442,6 +884,20 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.
@@ -545,7 +667,7 @@
  pub fn on_url_changed(msg : @cmd.Emit[@url.Url]) -> Sub {
    custom_sub("on_url_changed", Global, UrlChanged(msg), builtin_sub_loader)
  }
-@@ -452,6 +795,15 @@
+@@ -452,6 +908,15 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.

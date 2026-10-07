@@ -48,6 +48,12 @@ priv struct Model {
   rect_node : String
   /// 最近一次滚动位置读数
   top : String
+  /// `on_node_scroll` 收到几次（**订阅**读数）
+  n_sub : Int
+  /// 最近一次订阅推上来的 scrollTop
+  sub_last : String
+  /// **装载后补的那一次**（"首帧就有值"那条账的落点）：只记第一次，之后不再改
+  sub_boot : String
   /// 一句人类可读的现场说明（动作走到哪一步了）
   note : String
 } derive(Eq)
@@ -64,11 +70,26 @@ priv enum Msg {
   ReadTop
   /// 点「READ-TOP」
   ReadTopNow
+  /// **订阅**推上来的一次滚动（`@sub.on_node_scroll("pane", …)`，载荷 = 当前 scrollTop）
+  ScrollEv(Double)
 }
 
 ///|
 fn initial() -> Model {
-  { n_scroll: 0, n_nav: 0, n_measure: 0, n_top: 0, rect: "-", rect_node: "-", top: "-", note: "就绪" }
+  {
+    n_scroll: 0,
+    n_nav: 0,
+    n_measure: 0,
+    n_top: 0,
+    rect: "-",
+    rect_node: "-",
+    top: "-",
+    n_sub: 0,
+    sub_last: "-",
+    // ⚠️ "还没收到" 与 "收到了 0" 必须分得开：这一格用 `-` 表示前者
+    sub_boot: "-",
+    note: "就绪",
+  }
 }
 
 ///|
@@ -103,6 +124,17 @@ fn update(m : Model, msg : Msg, _emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
       { ..m, n_top: m.n_top + 1, top: num(@sub.node_scroll_top("pane")) },
       @cmd.none,
     )
+    ScrollEv(v) =>
+      // `sub_boot` 只写第一次 —— 它就是"装载后补的那一次"（首帧就有值）。
+      (
+        {
+          ..m,
+          n_sub: m.n_sub + 1,
+          sub_last: "\{v}",
+          sub_boot: if m.sub_boot == "-" { "\{v}" } else { m.sub_boot },
+        },
+        @cmd.none,
+      )
     ReadTopNow => (
       { ..m, n_top: m.n_top + 1, top: num(@sub.node_scroll_top("pane")), note: "手动读了 /pane 的 scrollTop" },
       @cmd.none,
@@ -174,6 +206,9 @@ fn view(m : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   rows.push(line("COUNT top=\{m.n_top}", 14.0, "#1a1410"))
   rows.push(line(m.rect, 12.0, "#1a1410"))
   rows.push(line("SCROLLTOP \{m.top}", 12.0, "#1a1410"))
+  rows.push(line("COUNT sub=\{m.n_sub}", 14.0, "#1a1410"))
+  rows.push(line("SUB_LAST \{m.sub_last}", 12.0, "#1a1410"))
+  rows.push(line("SUB_BOOT \{m.sub_boot}", 12.0, "#1a1410"))
   rows.push(line("NOTE \{m.note}", 12.0, "#5b4f3f"))
   let navs : Array[@html.Html] = []
   let goes : Array[@html.Html] = []
@@ -223,7 +258,14 @@ fn view(m : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 /// 每 400ms 读一次 `/pane` 的滚动位置 —— 驱动脚本据此看"滚了没有"，
 /// 也顺带是 `node_scroll_top` 的**重复读数**（老读数按值得留着）。
 fn subscriptions(_m : Model, emit : @cmd.Emit[Msg]) -> @sub.Sub {
-  @sub.every(400, emit(ReadTop))
+  @sub.batch([
+    // 每 400ms 读一次 `/pane` 的滚动位置（**一次性读**那条通道）
+    @sub.every(400, emit(ReadTop)),
+    // **订阅**那条通道（本轮新加）：载荷 = 那个节点当前的 scrollTop。
+    // ⚠️ 装载时会**先补一次**（订阅只报"变化"，而滚动事件不会在挂载时补发）——
+    //    所以 `SUB_BOOT` 那一格**不用等任何人滚**就该有值。
+    @sub.on_node_scroll("pane", v => emit(ScrollEv(v))),
+  ])
 }
 
 ///|
