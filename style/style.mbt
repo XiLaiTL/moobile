@@ -767,6 +767,58 @@ pub fn Style::text_transform(self : Style, v : TextTransform) -> Style {
   self.kw("textTransform", v.to_string())
 }
 
+///|
+/// 指针形状（见 `Cursor` 的注释：**只有 web 有**，原生静默不画）。
+///
+/// ⚠️ 它**不改布局**，只改"这东西能不能点"的手感 ⇒ 别拿它当可点性的**唯一**表达：
+///    真正的可点性靠 `Pressable` / `on_click`（`cursor` 只是 web 上的视觉补充）。
+pub fn Style::cursor(self : Style, v : Cursor) -> Style {
+  self.kw("cursor", v.to_string())
+}
+
+///|
+/// 阴影 → **一条值**（`offsetX offsetY blurRadius spreadDistance color`）。
+///
+/// 为什么合成一条而不是发四个键：`boxShadow` 在现代 RN（New Architecture）与 `react-native-web`
+/// **都**是一条字符串的键（RN 0.76 起 `boxShadow` 进登记表，取值形如 `"5px 5px 5px 5px rgba(...)"`）。
+/// 发成 `shadowOffsetX/Y` 那套是**老写法**（Android 还得叠 `elevation`），两套并存会让"同一个阴影
+/// 在两个后端长得不一样"。**这一条由 `tools/style_platform_check.mjs` 当场断言**：
+/// 如果哪天 RN 的登记表里没有 `boxShadow` 了，那条门会红 —— 那时再回来改这里，别凭记忆。
+///
+/// ⚠️ 参数是**语义**（往哪偏、糊多少、扩散多少、什么色），**不是** CSS 字符串拼装权：
+///    调用点写不出 `"0 3px 12px red"` 这种自由形态，只能给数。
+fn shadow_value(color : String, x : Double, y : Double, blur : Double, spread : Double) -> String {
+  let buf = StringBuilder::new()
+  buf.write_string(x.to_string())
+  buf.write_string("px ")
+  buf.write_string(y.to_string())
+  buf.write_string("px ")
+  buf.write_string(blur.to_string())
+  buf.write_string("px ")
+  buf.write_string(spread.to_string())
+  buf.write_string("px ")
+  buf.write_string(color)
+  buf.to_string()
+}
+
+///|
+/// **阴影**（层次感的来源：卡片 / 浮层 / 下拉）。
+///
+/// ⚠️ 这是"甲级能力"里的第一条（`PLAN-ui §3.1`：各宿主都有对应物，只是形状不同）：
+///    web/RNW 与 RN 都吃这条字符串，所以**不需要按后端分叉**——分叉会带来"两端不一样"的新账。
+/// ⚠️ 阴影**不占布局**（它画在盒子外面）：窄容器里向上/向左的阴影会被裁掉，这与 CSS 同源，
+///    别指望它当边框用（要"看得见的边界"用 `border_*` + `line-2` 那个语义色）。
+pub fn Style::box_shadow(
+  self : Style,
+  color : String,
+  x : Double,
+  y : Double,
+  blur : Double,
+  spread : Double
+) -> Style {
+  self.kw("boxShadow", shadow_value(color, x, y, blur, spread))
+}
+
 // ---------------------------------------- 补齐：yi 的 CSS 用到的可移植属性
 //
 // 清单来自 `docs/evidence/r1/style_gap.md` 的差集分析（yi 的 198 条 CSS 共 57 个属性名，
@@ -817,6 +869,36 @@ pub fn WhiteSpace::to_string(self : WhiteSpace) -> String {
 }
 
 ///|
+///|
+/// **指针形状** —— 只留三种**语义**，不暴露 CSS 的字符串。
+///
+/// 为什么是语义而不是字符串（`cursor: "grab"` 那种）：给字符串等于把 web 语法漏进可移植子集；
+/// 给三档语义，两端各自翻各自的（web 出 `cursor`，别的端该忽略就忽略）。
+///
+/// ⚠️ **一条实测更正（2026-10-07，别凭直觉写）**：我原以为 `cursor` 是"只有 web 有、原生 RN 不认"——
+/// **不成立**：`node tools/style_platform_check.mjs` 拿装在仓里的真 RN 登记表
+/// （`ReactNativeStyleAttributes.js`，0.83.10 / 0.86.3 两份）**当场否掉**了这条假设
+/// （"登记表没有过期：已经支持了 → cursor"）。所以它**不进** `RN_UNSUPPORTED` 登记表。
+/// ⚠️ 但"RN 认这个键"≠"移动端看得见效果"：**移动端有没有可见效果未实测**（要有指针的宿主才谈得上），
+///    所以别把它当可点性的表达 —— 可点性仍靠 `Pressable` / `on_click` 与 `press:` 那条按下态通道。
+///
+/// ⚠️ 三档各自的**语义**（不是外观）：`Pointer` = "这东西能点"；`Text` = "这里能选中文字"；
+///    `Default` = 明确要回默认箭头（用来**压掉**从父级继承来的 pointer）。
+pub(all) enum Cursor {
+  Pointer
+  Text
+  Default
+}
+
+///|
+pub fn Cursor::to_string(self : Cursor) -> String {
+  match self {
+    Pointer => "pointer"
+    Text => "text"
+    Default => "default"
+  }
+}
+
 /// 只留 `flex` 与 `none`。**刻意不含 `grid`** —— 那正是要避免的东西。
 pub(all) enum Display {
   Flex
