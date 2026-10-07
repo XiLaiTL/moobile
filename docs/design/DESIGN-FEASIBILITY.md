@@ -11,7 +11,7 @@
 | MoonBit 工具链 | `moon 0.1.20260827 (d0aaa07 2026-08-27)` |
 | 宿主 | Windows / Git Bash（MSYS），gcc 15.1.0 (MinGW64) |
 | 样本项目 | `interest/yi`（RabiTa 0.15.4 / async 0.21.0） |
-| 依赖源码位置 | `yi/zhouyi_reader/.mooncakes/moonbit-community/rabbita` |
+| 依赖源码位置 | `yi/zhouyi_reader/.mooncakes/moonbit-community/rabbita`（**所以本文的 `rabbita/...` 是上游路径**，不是本仓的；本仓 fork 在 2026-09 搬家后摊平在 `vendor/rabbita/<包>/`） |
 
 ---
 
@@ -81,7 +81,7 @@ pub(all) enum Variant {
 
 ### A4. 结构化样式的写入与消费路径是活的
 
-**方式**：读 `rabbita/html/attrs.mbt:64` 与 `internal/vdom/diff.mbt`
+**方式**：读 `rabbita/html/attrs.mbt:64` 与 `rabbita/internal/vdom/diff.mbt`
 
 写入：
 ```moonbit
@@ -164,7 +164,7 @@ grep -rhoE 'VNode::elem\("[a-z0-9]+"' html/*.mbt | sed 's/.*("//;s/"//' | sort -
 
 ---
 
-### A8. `dom/` 是纯绑定
+### A8. `rabbita/dom/` 是纯绑定
 
 **方式**：`ls rabbita/dom/` → 70+ 文件；抽样 `canvas_rendering_context2d.mbt`
 
@@ -425,14 +425,14 @@ CSS `:root` 变量 vs MoonBit 常量，**逐字节相同但两处定义**：
 
 ### D5. 资产同步机制
 
-**方式**：`md5sum` 比对 + 读 `sync_webdist.ps1`
+**方式**：`md5sum` 比对 + 读 `yi/zhouyi_desktop/sync_webdist.ps1`
 
 ```
 962095dcef8643e9c68c1956ed52bd8f  zhouyi_reader/backend/index.html
 962095dcef8643e9c68c1956ed52bd8f  zhouyi_desktop/webdist/index.html
 ```
 
-`sync_webdist.ps1` 拷贝三项：
+`yi/zhouyi_desktop/sync_webdist.ps1` 拷贝三项：
 `backend/index.html`（结构壳 + 全部 CSS）、`_build/js/release/.../frontend.js`、`assets/reader_data.json`
 
 **结论**：`zhouyi_reader/backend/index.html` 同时是 HTML 与 CSS 的**唯一源头**。
@@ -441,7 +441,7 @@ CSS `:root` 变量 vs MoonBit 常量，**逐字节相同但两处定义**：
 
 ### D6. 移动端适配的既有基础
 
-**方式**：读 `_cdp_test.js` + `index.html`
+**方式**：读 `yi/_cdp_test.js` + `index.html`
 
 - 已用 CDP `Emulation.setDeviceMetricsOverride` 在 **390×844 / DPR 3 / mobile:true** 下验证过渲染（模拟，非真机）
 - `index.html` 已有 `viewport` meta、`touch-action: manipulation`、760px 与 640px 两级 `@media`
@@ -547,7 +547,7 @@ let style_demo : String = static_style(
 | 订阅 | `sub` |
 | 网络 | `http` 客户端、`websocket` |
 | 路由 | `nav` + `url`（含单测的 URL 解析器） |
-| 图形 | `svg`（完整 attrs + 构建器）、`html/canvas` |
+| 图形 | `svg`（完整 attrs + 构建器）、`rabbita/html/canvas` |
 | 系统 | `dialog`、`clipboard` |
 | **SSR** | `render_to_string` / `hydrate` / `hydrate_root`（`server` 包，target `native+wasm`） |
 | 体积 | README 称 ~15 KB min+gzip（含流式 VDOM diff 与标准库） |
@@ -558,7 +558,7 @@ let style_demo : String = static_style(
 |---|---|---|
 | `rabbita` 核心（TEA + `Val` + cmd/sub） | js+native+wasm | ✅ |
 | `rabbita/html`（Html 树 DSL） | js+native+wasm | ✅ |
-| `internal/vdom`（树 + diff + SSR） | js+native+wasm | ✅ |
+| `rabbita/internal/vdom`（树 + diff + SSR） | js+native+wasm | ✅ |
 | `svg` / `http` / `websocket` / `nav` / `url` | js+native+wasm | ✅ |
 | **`rabbita/dom`**（70+ 文件 DOM 绑定） | **仅 js** | ❌ |
 | **`rabbita/js`** | **仅 js** | ❌ |

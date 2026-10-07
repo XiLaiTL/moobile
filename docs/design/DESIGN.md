@@ -3,6 +3,11 @@
 > 状态：**草案 / 待验证**
 > 创建：2026-09
 > 前置项目：`interest/yi`（《御纂周易折中》阅读器，MoonBit + RabiTa Web 应用）
+>
+> ⚠️ **本文写于 fork 之前**：里面的 `rabbita/...` 是**上游** rabbita 源码的路径（实测副本见
+> [`DESIGN-FEASIBILITY.md`](DESIGN-FEASIBILITY.md) 的验证环境表）。本仓 fork 在 2026-09 搬家后
+> 摊平在 `vendor/rabbita/<包>/`（`rabbita/internal/vdom` → `vendor/rabbita/vdom`），凡本文标了 `rabbita/`
+> 前缀的引用都按上游那份读。
 
 ---
 
@@ -55,12 +60,12 @@ zhouyi_desktop/    Proton(CEF) 桌面壳（~150 行，+native）
 | 层 | 障碍 |
 |---|---|
 | 桌面壳 | Proton 仅支持 Windows/Linux/macOS，无移动端形态 |
-| 前端渲染 | RabiTa 的挂载层（`diff.mbt` + `dom/`）硬绑 DOM |
+| 前端渲染 | RabiTa 的挂载层（`diff.mbt` + `rabbita/dom/`）硬绑 DOM |
 | 外观 | 样式在宿主 HTML 的 `<style>` 里，与 MoonBit 之间靠 **90 个无类型 class 名字符串**耦合 |
 
 ### 2.2 为什么现有方案都不够
 
-已评估并否决的路径（详见 `EVIDENCE.md` 的论证链）：
+已评估并否决的路径（详见 `DESIGN-FEASIBILITY.md` 的论证链）：
 
 | 方案 | 否决原因 |
 |---|---|
@@ -248,17 +253,17 @@ React Native
 
 ## 5. 可行性数据
 
-以下数据均已实测或核实，详见 `EVIDENCE.md`（含复现方式）。
+以下数据均已实测或核实，详见 `DESIGN-FEASIBILITY.md`（含复现方式）。
 
 | 项 | 数值 | 来源 |
 |---|---|---|
-| `VNode` 构造器数 | **4** | `internal/vdom/vdom.mbt` |
+| `VNode` 构造器数 | **4** | `rabbita/internal/vdom/vdom.mbt` |
 | `rabbita/html` 支持的标签 | **116** | `VNode::elem("...")` 字面量统计 |
 | yi 实际使用标签 | **11** | `using @html {…}` 声明 |
 | `diff.mbt` 依赖的 DOM 原语 | **12** | 全量枚举 |
 | `diff.mbt` 行数 | 766 | — |
-| `dom/` 文件数 | 70+ | 全是 `extern "js"` 绑定 |
-| `rabbita` 根包传递依赖 | `internal/vdom` + `js` | `moon.pkg` |
+| `rabbita/dom/` 文件数 | 70+ | 全是 `extern "js"` 绑定 |
+| `rabbita` 根包传递依赖 | `rabbita/internal/vdom` + `js` | `moon.pkg` |
 | yi 的 CSS 规则数 | **198** | 花括号计数（扣 2 个 `@media`） |
 | └ 单类 `.foo` | 105 | — |
 | └ 后代/子 `.a .b` `.a>b` | 64 | — |
@@ -321,7 +326,7 @@ RN 无 canvas，需 `react-native-skia` 并单独搭桥。**这是唯一"一张�
 | `Val` 增量响应式 | ✅ |
 | `Html` 树 DSL | ✅ |
 | `diff.mbt`（766 行） | ❌ React 自己 diff |
-| `dom/`（70+ 文件） | ❌ 完全不用 |
+| `rabbita/dom/`（70+ 文件） | ❌ 完全不用 |
 
 **"裁剪 RabiTa"裁掉的是三分之二。** 需正视由此带来的问题：
 
@@ -359,7 +364,7 @@ RN 无 canvas，需 `react-native-skia` 并单独搭桥。**这是唯一"一张�
 
 - `VNode` → React 元素递归映射
 - 根 React 组件 + `useSyncExternalStore` 接 `Val`
-- **拆包**：使状态层（TEA / `Val` / `@html`）不传递依赖 `internal/vdom` 与 `js`
+- **拆包**：使状态层（TEA / `Val` / `@html`）不传递依赖 `rabbita/internal/vdom` 与 `js`
   - 优先上游化；否则最小 fork
   - **这是唯一需要动 RabiTa 的地方，且是包结构拆分，不是 API 改动**
 

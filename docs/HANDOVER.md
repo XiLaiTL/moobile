@@ -86,11 +86,11 @@ bash tools/verify_all.sh              # 离线全集（清单见 AGENTS.md §2�
 | **S6 收尾：详情页三块折叠** | ✅ 已做。`<details>/<summary>` 在标签表里是**明确排除**的 → 改成受控折叠（`open_more : Array[Bool]` 进 Model + `ToggleMore(Int)`）。判据：web **21 条**（含"再点一次收起"）、真机 **9 条**。**已证伪**：`if open` → `if true` 时 **39/45**，红的正好那 6 条 |
 | **两个 web 判据永远看不见的洞**（本轮主收获） | ✅ 已修 + **判据写进库**：① 源 CSS 的 `body`/`html` 被抽成 `page()` 却**没人挂**；② 根上**没有滚动容器**（RN 的 `View` 不滚动）。现象是"真机上滚 30 次界面纹丝不动"，而**同一页面** web 判据 45/45。⇒ 新增 `npm/moobile-host/lib/migrate/app-audit.js`（`create` 落盘后自动跑，结果进 `MIGRATION.md §5`）+ 离线门 `tools/migrate_app_audit.mjs`（13 项，**含 5 个故意做坏的样本**） |
 | **F1 补上 `click.on-view`**（八续，同一轮） | ✅ 把"当年**手工**数出来的 5 处 `div(… on_click=…)`"变成 F1 报告里的一条（**结构规则**，不进"按行子串"那 14 条）。实现只有一份（`lib/migrate/click-on-view.js`，`scan.js` 与 `create.js` 共用），MoonBit 真源照抄；判据 `node tools/migrate_click_scan.mjs`（**13 项**：诱饵项目钉住期望命中 + 两侧逐 hit 对账 + 真项目 5 处）。**两个方向都证伪过**（只改 JS → 9/13；只改 MoonBit → 11/13） |
-| **第三个宿主 `--host webview`**（九续，同一轮） | ✅ 零 Expo / 零 Metro 的**静态 Web** 宿主：`init --host webview` 生成静态站点工程（esbuild 一行 `alias` → `react-native-web`）；`examples/apps/zhouyi-reader-webview/verify.mjs` **15/15**，其中第 3 层是**把应用自己那 45 条界面判据原样指向静态宿主的 URL**（⇒ 换宿主管用，不是"渲出一个壳"）。生成器侧 `node tools/host_probe.mjs` **32/32**（三宿主矩阵；原 `desktop_host_probe.mjs` 改名）。⚠️ 外壳（PWA/Tauri/Electron）本身没做 |
+| **第三个宿主 `--host webview`**（九续，同一轮） | ✅ 零 Expo / 零 Metro 的**静态 Web** 宿主：`init --host webview` 生成静态站点工程（esbuild 一行 `alias` → `react-native-web`）；`examples/apps/zhouyi-reader-webview/verify.mjs` **15/15**，其中第 3 层是**把应用自己那 45 条界面判据原样指向静态宿主的 URL**（⇒ 换宿主管用，不是"渲出一个壳"）。生成器侧 `node tools/host_probe.mjs` **32/32**（三宿主矩阵；原 `desktop_host_probe.mjs` 改名<!-- docfacts:ignore 旧文件名：这是"改名之前"的历史引用，文件现在叫 host_probe.mjs -->）。⚠️ 外壳（PWA/Tauri/Electron）本身没做 |
 | **桌面端第一次有真窗口判据**（十三续，同一轮） | ✅ `examples/apps/zhouyi-reader-electron/`：Electron **真窗口** + 应用那 **97 条判据附着打上去**（17/17）+ 两个真窗口比画布边长。★ **本机不需要 VS 工具链**（`--host rnw` 那条仍要 VS 2026 + SDK 22621，只到"打进 bundle"）。⚠️ 打包安装包/自动更新/原生菜单**没做**；这条路线**还没进脚手架**（下一步 `--host electron`） |
 | **分数（本轮实测）** | web `verify.mjs` **99/99**（十轮补 36 条 + 十一轮 2 条响应式 + 十二轮 16 条罗盘控件） · 真机 `device_check.mjs` **29/29**（+3 条模式切换） · **静态宿主 15/15（内含那 45 条判据）** · 离线全集 **24/24** · 打包形态 **10/10** |
 | **环境：Metro 还开着** | ⚠️ 8081 上**还跑着** zhouyi-reader 的 Metro（`npx expo start --web --port 8081`）；`emulator-5554` 也在跑。接手时若测别的应用，**先按 PID 关掉**（占着 8081 会拿到别的应用的 bundle，本仓库被坑过）。**不能** `Stop-Process node` 一把梭（DSH 宿主也是 node） |
-| ⚠️ **没验的（别读大）** | ① **桌面窗口本身**仍未起（缺 VS 2026 + SDK 22621）—— 但"同一份产物进 RNW 宿主"有判据（`verify.mjs` 5/5）；② 折叠那条**只在 web 与 Android 上验过**（桌面/ iOS 没跑）；③ 真机上**验不到**"输入中文 → 点卦卡"（`adb shell input text` 打不出中文），那条只由 web 判据覆盖；④ `page()` 与滚动容器是**人改的**，生成器只是**报告**它移不过来（不代改） |
+| ⚠️ **没验的（别读大）** | ① **RNW 原生窗口**仍未起（缺 VS 2026 + SDK 22621；⚠️ 原先这里写的是"**桌面窗口本身**仍未起" —— 十三续那条 Electron **真窗口**已经起了，见上一行）—— 但"同一份产物进 RNW 宿主"有判据（`verify.mjs` 5/5）；② 折叠那条**只在 web 与 Android 上验过**（RNW 桌面 / iOS 没跑）；③ 真机上**验不到**"输入中文 → 点卦卡"（`adb shell input text` 打不出中文），那条只由 web 判据覆盖；④ `page()` 与滚动容器是**人改的**，生成器只是**报告**它移不过来（不代改） |
 
 ---
 
@@ -358,12 +358,12 @@ Metro"，应用拉到了**别人的 bundle**，差点得出完全错误的结论
 |---|---|
 | **iOS** | **一次都没跑过**（仓库里所有真机证据都是 Android 模拟器） |
 | **多指手势真机** | 只有 **web 证据**（`pointers=2`、`dx` 锁第一指）—— `adb shell input` 只能发单指 |
-| 画布**文字字形** | `makeFont` 那条路**没上过真机**（图形绘制已验：真机 12/12 与 7/7） |
+| 画布**文字字形** | ✅ **已上真机、并量到了字形**（⚠️ **原先这里写的是"`makeFont` 那条路没上过真机"** —— 十三轮把它搬上真机时当场撞红并修了：`registerSkiaCanvas({ skia, makeFont })` 那条路真机验过）。廿四轮定位"真机上画布的中文一个都画不出来"（Skia 的 `<Text>` 不做字体回退），廿五轮修好并**量到像素**：画布区域独立的**墨色连通块 790（无字）→ 2191（有字）**，阈值 1500 是标定出来的（两边各 ~2× 余量）；证据图 `docs/evidence/zhouyi-compass-cjk-before.png` / `-after.png`。⚠️ **待测**：真机回退字体是 NotoSansCJK **黑体**、源 CSS 想要**楷体** ⇒ 真机字形与 web/桌面**不一致**，而这个差异有多大至今**没有判据**（廿五轮§六） |
 | 画布**坐标换算**（T3.5） | `devicePixelRatio` 换算未验 |
 | **性能（D 轨道）** | **整条未开始** ⇒ 没有基线，也就没有"够好了"的判据 |
 | 真机**"删除"链条** | `verify_android.py` 里两条**稳定失败**，且**不是新引入的** |
 | C0 的 native 半 | 只验了 web 目标（`host-swap-spike` 27/27）；裸 RN **native** 宿主未跑 |
-| I7 真浏览器样式实测 | 未做（部分覆盖：应用自己那 103 条判据在**静态 Web 宿主**上 103/0，但那几条样式判据的形状是 `>= 1` —— 见 `FINDINGS.md` 第十八轮 §四） |
-| **迁移后那 4 个文字键**（`fontWeight` / `fontStyle` / `textAlign` / `textTransform`）在**真机上**的效果 | **未量**（2026-10-23 修完之后仍如此）。白盒只证明"键到了 `Text` 的 style 上"；而这类洞**天然是"web 绿、真机红"**（CSS 里这几个属性会继承 ⇒ 浏览器上看不出来）⇒ **应用在 web 上的 103/0 不能当证据** |
+| I7 真浏览器样式实测 | 未做（部分覆盖：应用自己那批判据在**静态 Web 宿主**上也全过；其中**文字样式那 4 条量的是计算样式、是精确值**（廿八轮），其余几条样式判据的形状是 `>= 1` —— 见 `FINDINGS.md` 第十八轮 §四） |
+| **迁移后那 4 个文字键**（`fontWeight` / `fontStyle` / `textAlign` / `textTransform`）在**真机上**的效果 | ⚠️ **复核后是"1 个已量 + 3 个未量"**（2026-10-23；**原先这里把 4 个一起写成"未量"** —— 对 `fontWeight` 已不成立）：**`fontWeight` 两端都量了** —— 真机量的是**画出来的笔画粗细**（廿七轮：生效 2.33 / 证伪 1.32，判据会自己红）；web 量的是**计算样式**（廿八轮：应用那批判据里 +4 条，证伪时正好红 1 条）。**`fontStyle` / `textAlign` / `textTransform` 两端都还没量**（`textAlign` 要另找一个"源 CSS 明确要居中、且样式落在文字元素自己身上"的位置，廿七轮§一）。⚠️ 这类洞**天然是"web 绿、真机红"**（CSS 里这几个属性会继承 ⇒ 浏览器上看不出来），而 web 那条判据量的是**继承之后**的计算值 ⇒ 比真机那条**弱**，别当等价（廿八轮§三） |
 | **按下态（`press`）在真机上的反馈** | **没有**：`pressStyle` 仍是**零消费方**（`Pressable` + 函数式 `style` 那一刀未接），而且生成器**默认不产出** `.press()`（`DSH_PRESS_FROM_HOVER=1` 才开）⇒ 真机上按下去**不会有任何变化**。2026-10-23 修的是"生成物对不对"，不是"按下去有没有用" |
 | 元素自身在拖动中移动时的 `x`/`y` 语义 | **契约里还没写**（手势通道的已知边界） |

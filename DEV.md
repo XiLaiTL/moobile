@@ -56,13 +56,13 @@ export JAVA_HOME="/d/Program Files/Java/jdk-17.0.5"
 
 ## 1.5 全新 clone 后的第一步（第三方代码不在仓里！）
 
-**第三方代码（rabbita fork）不进仓** —— 16 个目录在 `.gitignore` 里，
-真相是 `tools/vendor.lock` 的版本 + `tools/patches/` 的 15 个 patch。
+**第三方代码（rabbita fork）不进仓** —— 整个生成物 `vendor/**` 在 `.gitignore` 里（就一条 `/vendor/`），
+真相是 `tools/vendor.lock` 的版本 + `tools/patches/` 里的 patch 系列（**数量以该目录为准**）。
 所以 clone 下来**直接 `moon check` 会报一堆"找不到包"**，那是正常的，不是环境坏了。
 
 ```bash
 git clone <repo> && cd moobile
-bash tools/vendor_sync.sh --apply     # 拉 rabbita@0.15.4 → 铺开 → 打 patch → 统一行尾
+bash tools/vendor_sync.sh --apply     # 拉 tools/vendor.lock 里那一版 → 铺开 → 打 patch → 统一行尾
 moon check --target js                 # 现在应当是 0 错误
 ```
 
@@ -72,13 +72,13 @@ moon check --target js                 # 现在应当是 0 错误
 bash tools/vendor_sync.sh --check     # 断言「工作区 == pristine + patch」（提交前/CI）
 bash tools/lf_normalize.sh --check    # 行尾检查（CRLF 会把 patch 的上下文打乱）
 bash tools/check_external.sh          # 外部模块可用性（不需要 Metro）
-node tools/verify_web.js                        # Web 端到端 26 项（需要 Metro 在 8081）
+node tools/verify_web.js                        # Web 端到端（**项数以该脚本自己打的汇总行为准**）（需要 Metro 在 8081）
 ```
 
 **改第三方代码之后必须回写 patch**，否则改动会**静默消失**（那目录是 gitignore 的）：
 
 ```bash
-vim internal/vdom/vdom.mbt             # 直接改
+vim vendor/rabbita/vdom/vdom.mbt       # 直接改（`vendor/**` 是 gitignore 的生成物）
 bash tools/vendor_sync.sh --capture   # 回写成 patch
 bash tools/vendor_sync.sh --check     # 确认一致
 git add tools/patches && git commit
@@ -100,12 +100,14 @@ Android 构建中间产物要好几 G。所以**能搬的都搬到 E 盘，并�
 | `C:\Users\XiLaiTL\.android` | `E:\Android\dot-android` |
 | `C:\Users\XiLaiTL\.expo` | `E:\Android\dot-expo` |
 | `C:\Users\XiLaiTL\.gradle`（符号链接） | `E:\BACKUP\.gradle` |
-| `host\android\build` | `E:\moobile-build\android_build` |
-| `host\android\app\build` | `E:\moobile-build\android_app_build` |
-| `host\node_modules\@react-native\gradle-plugin\build` | `E:\moobile-build\node_modules_@react-native_gradle-plugin_build` |
-| `host\node_modules\@react-native\gradle-plugin\*\build`（4 个） | `E:\moobile-build\node_modules_@react-native_gradle-plugin_*_build` |
-| `host\node_modules\expo-modules-autolinking\android\expo-gradle-plugin\build` | `E:\moobile-build\...` |
-| `host\node_modules\expo-modules-core\android\build` | `E:\moobile-build\node_modules_expo-modules-core_android_build` |
+| `examples\apps\todo-app\host\android\build` | `E:\moobile-build\android_root_build` |
+| `…\host\android\.gradle` | `E:\moobile-build\android_dot_gradle` |
+| `…\host\android\app\build` | `E:\moobile-build\android_app_build` |
+| `…\host\node_modules\<原生模块>\android\build` 与 `…\android\.cxx` | `E:\moobile-build\builddirs-host\<模块相对路径下划线化>` |
+
+> ⚠️ 逐模块那批联接**不是写死的名单**，是 `tools/link_builddirs.ps1` **发现**出来的
+> （`android/` 目录里带 `build.gradle` 的原生模块，`build` 与 `.cxx` 各一个）；
+> 几个、每个指到哪 —— **以它自己打印的 `=== result` 为准**（清单会随 `npm install` 变化）。
 
 **重建方式**（幂等，随时可重跑）：
 
@@ -127,16 +129,20 @@ bash tools/android_env_setup.sh --check  # 只检查，不改
 cd /d/ai_project/interest/moobile
 
 moon check --target js        # 快速语法/类型检查
-./tools/build.sh                    # moon build --target js + 拷贝产物到 examples/apps/todo-app/host/moobile.js
+./tools/build.sh                    # moon build --target js + 在 host/ 里跑 moobile-host build（**发现**产物）
 ```
 
-`tools/build.sh` 做的事只有一件：`moon build --target js`，再把
-`_build/js/debug/build/examples/apps/todo-app/demo.js` 拷成 `examples/apps/todo-app/host/moobile.js`。
+`tools/build.sh` 做的事：`moon build --target js`（`release` 就加 `--release`），然后
+`cd examples/apps/todo-app/host` 跑 `node npm/moobile-host/bin/cli.js build`。
+**「搬到哪」是 `moobile-host build` 自己*发现*的 —— 这里不许写死一条产物路径**：产物路径取决于
+**模块在构建根里的身份**（工作区成员是 `_build/js/<profile>/build/<作者>/<模块>/<模块>.js`，
+独立模块是平铺的 `_build/js/<profile>/build/<模块>.js`），写死哪一条都会在
+「仓库里能跑」与「用户机器上能跑」之间错一边（真源与实测记录在 `npm/moobile-host/lib/build.js`）。
 
 ### 3.2 Web 预览（最快的一环）
 
 ```bash
-cd host
+cd examples/apps/todo-app/host
 npx expo start --port 8081
 # 浏览器打开 http://localhost:8081
 ```
@@ -216,13 +222,13 @@ bash tools/verify_all.sh --with-e2e   # 再加 Web 端到端三门
 真机与"已发布版本"两套**不进**这个入口（前者要模拟器，后者要发版之后）：
 
 ```bash
-python3 tools/verify_android.py       # 真机 21 项（新增/完成/删除/离线落库/同步）
+python3 tools/verify_android.py       # 真机（新增/完成/删除/离线落库/同步）—— 项数见下条
 bash tools/check_published.sh         # registry 上那一版对外可用吗
 ```
 
 | 脚本 | 验什么 | 前置 |
 |---|---|---|
-| `node tools/verify_web.js` | **Web 端到端 27 项断言**（渲染 / 结构化样式 / 点击过滤 / 勾选 / 输入回灌 / 新增 / 删除 / 不可移植节点=0 / 标签表覆盖=0 / 布局审计 / 订阅在跑） | Metro 在 8081 |
+| `node tools/verify_web.js` | **Web 端到端断言**（项数以该脚本自己打的汇总行为准；渲染 / 结构化样式 / 点击过滤 / 勾选 / 输入回灌 / 新增 / 删除 / 不可移植节点=0 / 标签表覆盖=0 / 布局审计 / 订阅在跑） | Metro 在 8081 |
 | `bash tools/check_published.sh [模块@版本]` | **已发布版本可用性**：在临时模块里 `moon add` + `moon check --target js`，证明 registry 上那一版对外真的能用（含能力包是否进了发布产物）。发版后跑 |
 | `bash tools/check_external.sh` | **外部模块可用性**：在一个临时 `moon.work` 工作区里编译一个外部的 `probe/app`，证明别的模块能依赖 moobile + 公开的 `style/` | 无（不需要 Metro） |
 | `node tools/measure_r1.js` | **R1 排版测量（web）** —— 用 `Range.getClientRects()` 数行盒 | Metro 在 8081 |
@@ -230,7 +236,7 @@ bash tools/check_published.sh         # registry 上那一版对外可用吗
 | `python3 tools/scroll_r1.py` | 在**安卓**上滚动并逐屏 dump 测量（6 个爻全部） | 同上 |
 | `node tools/db_probe.js` | **本地库（expo-sqlite）8 项**：能力注册、契约形状（snake_case / JSON 字符串 / 布尔→0/1）、界面条数==库里行数、**刷新后仍在**（OPFS） | Metro 在 8081 |
 | `node tools/sync_probe.js` | **同步链路 14 项**：拉取合并（服务器为准）、本地新增是**负 id + dirty**、推送后换成服务器 id、界面与服务器一致 | Metro + 后端在 8787 |
-| `python3 tools/verify_android.py` | **真机 21 项**：原生 SQLite / 播种 / 订阅心跳 / 同步拉取合并 / **新增·完成·删除**各自「先只落本地 → 同步后服务器跟上」/ 界面与服务器一致。脚本**自己把状态清成确定的**（`pm clear` + 重置服务器），可反复跑 | 模拟器 `moobile64` + 后端 + APK 已装 |
+| `python3 tools/verify_android.py` | **真机判据**（**项数以该脚本自己打的汇总行为准**，最近分数在 [`docs/STATUS.md`](docs/STATUS.md) §2）：原生 SQLite / 播种 / 订阅心跳 / 同步拉取合并 / **新增·完成·删除**各自「先只落本地 → 同步后服务器跟上」/ 界面与服务器一致。脚本**自己把状态清成确定的**（`pm clear` + 重置服务器），可反复跑 | 模拟器 `moobile64` + 后端 + APK 已装 |
 | `node tools/console_dump.js` | **白屏排查**：把 console / exception / network-loadingFailed 三类事件原样打出来 | Metro 在 8081 |
 | `node tools/template_check.mjs` | **脚手架模板门**：生成 / 替换干净 / 生成物能编能构建 / 无头跑起最小 Todo（T1b·T1c·T3·T3b） | 无 |
 | `node tools/scaffold_probe.mjs` | **生成物撑得住真应用**：把"多文件 + 多页面 + 过滤"的应用覆盖进刚生成的项目里再跑 | 无 |
@@ -245,8 +251,9 @@ bash tools/check_published.sh         # registry 上那一版对外可用吗
 ### 后端（Todo 示例）
 
 ```bash
-cd server && moon build --target native && ./_build/native/debug/build/moobile-todo-server.exe
-# 监听 127.0.0.1:8787；状态落在 examples/services/todo-server/todos.json（写临时文件再 rename，原子替换）
+cd examples/services/todo-server && moon build --target native && ./_build/native/debug/build/moobile-todo-server.exe
+# 后端是**独立嵌套模块**（自己的 `moon.mod`，模块名 XiLaiTL/moobile-todo-server）；
+# 监听 127.0.0.1:8787；状态落在同目录的 todos.json（写临时文件再 rename，原子替换）
 ```
 
 Windows 上原生构建**需要 MSVC**：moon 自己用 `vswhere.exe` 找到 VS 2022 BuildTools，不用手动 vcvars。
@@ -268,11 +275,12 @@ bash tools/check_published.sh                 # 发完再验一遍"外部视角�
 `no version satisfies requirement …`（看着像"包没发出去"，其实是索引没刷新）。
 绕过办法写在 `tools/check_published.sh` 里（`GIT_CONFIG_*` 清空 `http.proxy`）。
 
-### 宿主 npm 包（`npm/moobile-examples/apps/todo-app/host/`）
+### 宿主 npm 包（`examples/apps/todo-app/host/`）
 
 ```bash
-cd host && npm install file:../npm/moobile-host   # 装本地副本
-npx moobile-host regen                                  # 生成 registry.generated.js
+cd examples/apps/todo-app/host
+npm install file:../../../../npm/moobile-host   # 装本地副本（= package.json 里那条 file: 规格）
+npx moobile-host regen                          # 生成 registry.generated.js
 ```
 
 **发布前建议先按 tarball 验一遍**（`npm publish` 上传的是 `files` 白名单过滤后的那份，
@@ -288,7 +296,7 @@ npx moobile-host regen                                  # 生成 registry.genera
 ### 已产出的测量数据
 
 - `docs/evidence/r1/style_gap.md` —— 样式层对 yi 的 198 条 CSS 的**差集账目**（0 未归类）
-- `docs/evidence/r1/dom_survey.txt` —— `html/` + `svg/` 里 **45 处 `@dom.` 的逐条明细**
+- `docs/evidence/r1/dom_survey.txt` —— `html/` + `svg/` 里 **45 处 `@dom.` 的逐条明细** <!--docfacts:ignore:这份证据是搬家前产出的，标题/小节名就是当时的 html/ 与根上的 svg/（现在 svg 只存在于 vendor/rabbita/svg）-->（**移动后的现状**：`html/` 在根上是转发包，`svg/` 只在 `vendor/rabbita/svg`）
 - `docs/evidence/r1/android_scroll_report.md` —— 安卓上 6 个爻的原生 bounds
 - `docs/evidence/r1/yi_yao_css.txt` / `docs/evidence/r1/yi_root_vars.txt` —— 从 yi 抽出的真实 CSS 与配色
 - `docs/evidence/r1/qian_yao.txt` —— 乾卦六爻的真实数据
@@ -302,39 +310,44 @@ moobile/                     ← 项目根（模块名 XiLaiTL/moobile）
 ├── moon.mod                 # 模块定义
 ├── moon.pkg                 # ★ 模块根包 = moobile 库本体
 ├── host.mbt render.mbt app.mbt store.mbt schedule.mbt
-├── style/                   # ★ 公开包：类型化样式层（StyleValue / Style / 关键字枚举）
-├── internal/rabbita/        # vendor 的 rabbita **主包**（App / run / Val / elmish）
-├── internal/vdom/           # ★ vendor 自 rabbita，已改：Event 解耦、Props 加宽
-├── internal/runtime/        # ★ react_host.mbt = moobile 的 React 后端（新增）
-├── html/ cmd/ sub/ dom/ …   # vendor 自 rabbita（跟版方式见 FORK.md）
+├── style/  canvas/  sqlite/  gesture/     # ★ 我们自己写的包（style = 公开的类型化样式层）
+├── vendor/rabbita/          # 第三方 fork：gitignore 的生成物，由 tools/vendor_sync.sh 重建
+│   ├── rabbita/             # fork 的 rabbita **主包**（App / run / Val / elmish）
+│   ├── vdom/                # ★ vendor 自 rabbita，已改：Event 解耦、Props 加宽
+│   ├── runtime/             # ★ react_host.mbt = moobile 的 React 后端（新增）
+│   └── dom/ html/ cmd/ sub/ svg/ …        # 其余 fork 包（2026-09 之前铺在模块根）
+├── html/ cmd/ sub/ http/    # **生成的转发包**：只有 moon.pkg + forward.generated.mbt（tools/gen_forwarders.py）
 ├── examples/apps/todo-app/                    # 演示应用：model / ui(待办) / r1(R1 样本) / main
 ├── examples/apps/todo-app/host/                    # Expo 宿主（React + RN + react-native-web）
 │   └── App.js               # 一个根组件 + useSyncExternalStore，仅此而已
 ├── tools/verify_web.js tools/measure_r1.js        # 验证脚本
 ├── tools/                  # 环境脚本（见下）
 ├── docs/evidence/r1/                     # R1 的测量产出与原始数据
-├── docs/                    # 设计文档：DESIGN / EVIDENCE / DESIGN-README / ARCHITECTURE
+├── docs/                    # 文档：design/（设计）+ FINDINGS / STATUS / HANDOVER / PERF
 ├── FORK.md                  # ★ 对 rabbita 的 diff 清单（跟版/上游化用）
 ├── PLAN.md                  # ★ 剩余工作计划
 ├── README.md                # 全部实测结论（含 R1 判决）
 └── DEV.md                   # 本文件
 ```
 
-> **`internal/rabbita/` 是什么**：vendor 的 rabbita **主包**（原来在模块根），
-> 2026-09 的「形态 B」把它挪进去，为的是让**模块根包 = moobile 库本体** ——
-> 使用者写 `import { "XiLaiTL/moobile" @moobile }` 拿到的是库，而不是 rabbita 的 `App`/`run`。
-> 见 `docs/ARCHITECTURE.md` §5。
+> **`vendor/rabbita/` 是什么**：第三方 fork 的摊平处 —— 原来它们**铺在模块根**，
+> 2026-09 的「形态 B」先挪进 `internal/rabbita/` <!--docfacts:ignore:形态 B 那一步的历史布局，刻意保留原路径-->，为的是让**模块根包 = moobile 库本体** ——
+> 使用者写 `import { "XiLaiTL/moobile" @moobile }` 拿到的是库，而不是 rabbita 的 `App`/`run`；
+> 之后（R3）实测发现 `internal` 的可见性**只认路径段恰好等于 `internal`**，于是丢掉那一段、
+> 摊平成 `vendor/rabbita/*`（根包照样能 import、能匹配枚举变体，见 `docs/FINDINGS.md` R3）。
+> **短 import 路径靠根上的转发包保住**：`html/` `cmd/` `sub/` `http/` 是
+> `tools/gen_forwarders.py` 生成的，所以 `XiLaiTL/moobile/html` 这类路径对使用者有效
+> （动过 `vendor/**` 必须重跑生成器）。见 `docs/ARCHITECTURE.md` §5 / §6 末的注。
 
 `tools/`：
 
 | 文件 | 作用 |
 |---|---|
 | `android_env_setup.sh` | **幂等重建 Android 侧环境**（Gradle 版本 / gradle.properties / 目录联接） |
-| `migrate_c_to_e.ps1` | 把 C 盘的 SDK / AVD 数据搬到 E 盘并留联接（已跑过，一般不需要重跑） |
-| `link_builddirs.ps1` | 给 Gradle 各项目的 `build/` 建联接指向 E 盘 |
+| `link_builddirs.ps1` | 给 Gradle 各项目的 `build/` / `.cxx` 建联接指向 E 盘（**发现**原生模块，清单以它自己打印的 `=== result` 为准） |
 | `probe_cwd.ps1` | **查「谁锁着这个目录」**：读各进程 PEB 的 CurrentDirectory，列出 CWD 扎在指定路径下的进程（`-Filter 关键词`，`-Pids` 只出 PID）。Windows 上 `mv` 一个目录报 `Permission denied` 时用它 |
 | `check_external.sh` + `ext_probe/` | **外部模块冒烟测试**：临时工作区里编译 `probe/app`（见 `ext_probe/README.md`） |
-| `vendor_sync.sh` + `vendor.lock` + `patches/` | **生成式 vendor**：第三方代码不进仓，靠「版本 + 15 个 patch」重建。`--check` / `--apply` / `--capture` / `--from <版本>`（见 `FORK.md` §1） |
+| `vendor_sync.sh` + `vendor.lock` + `patches/` | **生成式 vendor**：第三方代码不进仓，靠「`vendor.lock` 里的版本 + `patches/` 里的 patch 系列（**数量以该目录为准**）」重建。`--check` / `--apply` / `--capture` / `--from <版本>`（见 `FORK.md` §1） |
 | `lf_normalize.sh` | **行尾预处理**：把文本文件统一成 LF（白名单式，不碰二进制）。CRLF 会让 patch 贴不上 |
 | `tap_r1.py` / `scroll_r1.py` | 安卓上的 R1 测量 |
 
@@ -353,9 +366,9 @@ moobile/                     ← 项目根（模块名 XiLaiTL/moobile）
 | Web 页整片空白 | Metro 卡死 | 杀掉占用 8081 的进程重启 |
 | **clone 后 `moon check` 报一堆"找不到包"** | 第三方代码（rabbita fork）**不在仓里**，是 `tools/vendor_sync.sh` 生成的 | 跑 `bash tools/vendor_sync.sh --apply`（见 §1.5） |
 | **`vendor_sync.sh --check` 说"内容不同"** | ① 你真改了 fork 代码却没回写 patch；② 只是行尾被写成了 CRLF | ① `--capture` 回写；② 先 `bash tools/lf_normalize.sh` 再 `--check` |
-| **改了 `html/`、`internal/vdom/` 却 `git status` 一片干净** | 那些目录是 gitignore 的生成物，git **不会**提醒你 | 提交前必须 `--capture` 再 `--check`（否则改动静默丢失） |
+| **改了 `vendor/rabbita/**` 却 `git status` 一片干净** | 那是 gitignore 的生成物，git **不会**提醒你 | 提交前必须 `--capture` 再 `--check`（否则改动静默丢失）。⚠️ 根上的 `html/` `cmd/` `sub/` `http/` 是**入库**的转发包，改了它 `git status` **看得见**，但要重跑 `tools/gen_forwarders.py` |
 | `patch` 报 `malformed patch` / `hunk FAILED` | patch 文件或工作区的行尾是 CRLF | `bash tools/lf_normalize.sh`；并确认 `.gitattributes` 没被改 |
-| Metro 在目录大挪动后自己死掉 | 它的文件监视器盯着被移动的目录 | 重启 Metro（`cd host && npx expo start --port 8081`） |
+| Metro 在目录大挪动后自己死掉 | 它的文件监视器盯着被移动的目录 | 重启 Metro（`cd examples/apps/todo-app/host && npx expo start --port 8081`） |
 | 模拟器截屏全黑 | 无头 + swiftshader | 带窗口跑（`-gpu auto`）；或用 `uiautomator dump` 代替截图 |
 | app 白屏、日志有 `loadJSBundleFromMetro` | 没做 `adb reverse tcp:8081 tcp:8081` | 见 §3.3 ③ |
 

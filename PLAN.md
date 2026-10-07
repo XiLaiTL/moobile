@@ -595,6 +595,28 @@ MoonBit 没有 Kotlin/Swift 后端。
 
 ---
 
+### 3.7.5（R）路由：定位 / 栈 / 呈现三层 + 深链 + 后台恢复
+
+> **轨道定位**：前面几条轨道解决"画得出、点得动、接得上"；**R 解决"我在哪、怎么来的、怎么回去"**。
+> 它是**跨应用**的诉求（skillpress 的站点、yi、todo-app 都要），所以做在库里、不做在应用里。
+>
+> **设计与判据**：[`docs/design/DESIGN-ROUTER.md`](docs/design/DESIGN-ROUTER.md)
+> ｜地基读数（真浏览器）：`docs/FINDINGS.md` 的「路由地基的三条真读数」
+> ｜试金石 + 驱动：[`examples/apps/route-spike/`](examples/apps/route-spike/)（`node drive.mjs`）
+
+**地基已验（2026-10-07）**，结论是**部分通**（逐条读数在 FINDINGS 那一条）：
+
+| 通道 | Web 上的真读数 | 对设计的影响 |
+|---|---|---|
+| `on_url_changed` | **只有 popstate 那一档**：改 hash / 后退 / 前进 / 点同文档 `<a>` ✅；`pushState` / `replaceState` ❌；**首屏** ❌ | "自己 push 完靠订阅更新 Model"**不成立** ⇒ 单向环里必须有"我最后写出去的 Route"那一格 |
+| `on_url_request` | **一个调用点都没有**（13 组动作计数恒 0） | 深链入口要自己接桥 |
+| `on_visibility_change` | DOM 回退接上了、方向对；**真切后台未验**（无头给不了读数） | 后台恢复那条今天只能算"通道在、时机未验" |
+
+**R 的第一刀**（先后已定，理由在设计稿 §9）：`router/core` 的纯函数 + `moon test`
+（不依赖浏览器/宿主，今天就能做）→ 补"应用侧 push 通道"与"深链桥"两条缺口 → `persist` / `host-native`。
+⚠️ **合并前的坑**：`@url.parse` 对 `#/path?query` 的拆分是**错的**（fragment 里可以含 `?`），
+而 hash 路由正是静态站最常用的形态；修法写在 FINDINGS 那一条里，**做 core 时一并处理**。
+
 ### 3.8（I）生态接入：第三方 React 组件库
 
 > **轨道定位**：H 解决"**我们**的接入要几行"，I 解决"**别人生态里的组件**能不能用"。

@@ -27,11 +27,11 @@
 ┌─ L6 应用 ──────────────────────────────────────────────── examples/apps/todo-app/
 │    模型 / update / view（用 @html DSL + @style 写）
 ├─ L5 树 / DSL / 样式 ──────────────────────────────────────
-│    internal/vdom/   树 + diff + SSR（vendor，被改过：Event 解耦、Props 加宽）
-│    html/  cmd/  sub/  dom/  variant/  js/  common/        （vendor）
+│    vendor/rabbita/vdom/   树 + diff + SSR（vendor，被改过：Event 解耦、Props 加宽）
+│    vendor/rabbita/{html,cmd,sub,dom,variant,js,common}/    （vendor）
 │    style/            ★ 我们的类型化样式层，已提为公开包
 ├─ L4 vendor 运行时 ────────────────────────────────────────
-│    internal/runtime/react_host.mbt   ★ fork 新增：把最后一跳换成"产出 React 元素"
+│    vendor/rabbita/runtime/react_host.mbt   ★ fork 新增：把最后一跳换成"产出 React 元素"
 │    （Cmd / Emit / 订阅 / 异步 effect 全由 rabbita 自己的运行时执行）
 ├─ L3 TEA 挂载 ───────────────────────────────────────────── 根包 app.mbt
 │    mount(model, update, view) -> Mount；start / snapshot / subscribe / element
@@ -56,11 +56,11 @@
 |---|---|---|---|
 | L1–L3 | **我们** | 根包 `host.mbt` `render.mbt` `app.mbt` `store.mbt` `schedule.mbt` | 544 |
 | 样式层 | **我们** | `style/style.mbt` | 928 |
-| L4 | **我们**（fork 新增） | `internal/runtime/react_host.mbt` | 224 |
-| L5 及以下 | **vendor** | `html/ cmd/ sub/ dom/ js/ variant/ common/ internal/*` | ~19,400（不含测试） |
+| L4 | **我们**（fork 新增） | `vendor/rabbita/runtime/react_host.mbt` | 224 |
+| L5 及以下 | **vendor** | `vendor/rabbita/{html,cmd,sub,dom,js,variant,common,…}/` | ~19,400（不含测试） |
 
-`FORK.md` §2 的语义改动集中在：`internal/vdom`（Event 解耦 + Props 加宽）、`html/`（事件解码表）、
-`svg/`（同样的 style 改动）、`internal/runtime/react_host.mbt`（新增）。
+`FORK.md` §2 的语义改动集中在：`vendor/rabbita/vdom`（Event 解耦 + Props 加宽）、`vendor/rabbita/html/`（事件解码表）、
+`vendor/rabbita/svg/`（同样的 style 改动）、`vendor/rabbita/runtime/react_host.mbt`（新增）。
 
 ---
 
@@ -99,7 +99,7 @@ globalThis.MOBILE_HOST = {
 > }
 > ```
 >
-> **要解决的问题**：vendor 里的能力包（`sub/` `clipboard/` `nav/` `dialog/`）是 DOM 实现，
+> **要解决的问题**：vendor 里的能力包（`vendor/rabbita/{sub,clipboard,nav,dialog}/`）是 DOM 实现，
 > 在 RN 上 `document` 根本不存在 → **直接抛**。而 `#cfg(target="js")` **区分不了 Web 与 RN**
 > （RN 走的也是 js 目标），所以"这是不是浏览器"只能由**宿主声明**。
 >
@@ -161,7 +161,7 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 
 `html/` 的公开处理器签名是 DOM 味的：`on_click : (MouseEvent) -> Cmd`、`on_scroll : (UIEvent) -> Cmd`…
 而在 React 后端下，`Mouse`/`Keyboard`/`Scroll` 这些载荷**一律是零值**
-（`html/event_decoders.mbt` 的透传表，见 `FORK.md` §2.5）。
+（`vendor/rabbita/html/event_decoders.mbt` 的透传表，见 `FORK.md` §2.5）。
 含义：**能写、不崩、坐标拿不到**。要真实手势数据得走 RN 手势通道（旧计划 `docs/plan/PLAN-2026Q3-yi-port.md` 的 T3.4）。
 
 > **2026-09 补两笔**（都与"载荷是零值"不同层面）：
@@ -179,16 +179,15 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 ### 3.1 规模
 
 - **包总数**：**26 个**（模块内，含**模块根包**、`style/`、`examples/apps/todo-app/`；不含 `examples/apps/todo-app/host/`、`tools/`）。
-  分类：**我们的 3 个**（**模块根包** + `style/` + `examples/apps/todo-app/`）、**改过的 vendor 4 个**（`html/` `svg/`
-  `internal/vdom/` `internal/runtime/`）、**原样 vendor 19 个**。
+  分类：**我们的 3 个**（**模块根包** + `style/` + `examples/apps/todo-app/`）、**改过的 vendor 4 个**（`vendor/rabbita/{html,svg,vdom,runtime}/`）、**原样 vendor 19 个**。
 - **模块内 main 依赖边 79 条**（另有 2 条只在测试里用的边），**main 边无环**。
   唯一的环是测试边：`html/ -[for "test"]-> <root> -[main]-> html/`
   —— 含义是 `html/` 的白盒测试**只能在本模块内跑**。
-- **直接依赖只有 1 个**：`moonbitlang/async@0.21.0`（被 `cmd/`、`http/`、`internal/rabbita/`、
-  `internal/runtime/` 使用 —— 是真需要）。
-  ✅ **2026-09 依赖治理**：原来还有 `hackwaly/moonback` 与 `moonbitlang/x`，两者**都只被 `server/` 使用**；
-  而 `server/`（rabbita 的 SSR/HTTP）本身既从未被编译过（声明 `native+wasm`，我们只跑 js）、
-  也没有任何包依赖它（叶子）。于是裁掉 `server/` 一个包，同时去掉**两个**依赖：**3 → 1**。
+- **直接依赖只有 1 个**：`moonbitlang/async@0.21.0`（被 `cmd/`、`http/`、`vendor/rabbita/rabbita/`、
+  `vendor/rabbita/runtime/` 使用 —— 是真需要）。
+  ✅ **2026-09 依赖治理**：原来还有 `hackwaly/moonback` 与 `moonbitlang/x`，两者**都只被 `server/` 使用**； <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径-->
+  而 `server/`（rabbita 的 SSR/HTTP）本身既从未被编译过（声明 `native+wasm`，我们只跑 js）、 <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径-->
+  也没有任何包依赖它（叶子）。于是裁掉 `server/` 一个包，同时去掉**两个**依赖：**3 → 1**。 <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径-->
   验证：`moon check` 0 错误、`tools/verify_web.js` 26/26、`check_external.sh` 通过、`vendor_sync.sh --check` 一致。
 - **module 级依赖无法按包细分**（`moon.mod` 的 `import` 是模块粒度）—— 这条限制仍然成立，
   所以以后再引入任何"只有某个包用得到"的依赖，都要先问一句：那个包能不能一起裁掉。
@@ -199,25 +198,25 @@ moon build --target js  →  _build/js/<profile>/build/<pkg>/<pkg>.js  →  (拷
 
 ```
 moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
-+ common/  dom/  js/  sub/  url/  variant/
-+ internal/{vdom, runtime, any, duplix, key, slotmap}/   ← 传递依赖（12 个）
++ vendor/rabbita/{common, dom, js, sub, url, variant}/
++ vendor/rabbita/{vdom, runtime, any, duplix, key, slotmap}/   ← 传递依赖（12 个）
 ```
 
 `html/` 与 `cmd/` 是**零新增依赖**的（本来就在模块根包的闭包里）；
-再加上根包 `internal/rabbita/` 是 17 个包、也是零新增依赖（只在要用 `Val` / `create_state` / `App` / `elmish` 时才需要）。
+再加上根包 `vendor/rabbita/rabbita/` 是 17 个包、也是零新增依赖（只在要用 `Val` / `create_state` / `App` / `elmish` 时才需要）。
 
 ### 3.3 死重清单（10 个包）
 
-`internal/rabbita/`、`examples/apps/todo-app/`、`clipboard/`、`dialog/`、`html/canvas/`、`http/`、`nav/`、`server/`、`svg/`、`websocket/`
+`vendor/rabbita/rabbita/`、`examples/apps/todo-app/`、`vendor/rabbita/clipboard/`、`vendor/rabbita/dialog/`、`vendor/rabbita/html/canvas/`、`http/`、`vendor/rabbita/nav/`、`server/`（**已裁掉**，见下）、`vendor/rabbita/svg/`、`vendor/rabbita/websocket/` <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径-->
 
 其中几个有额外含义：
 
 | 包 | 说明 |
 |---|---|
-| `html/canvas/` | **全模块零入边** —— 连 vendor 内部都没人 import，纯孤儿 |
-| `svg/` | 依赖 `html+style+vdom+variant+dom`，是"按需 DSL 层"；但标签表**已把 `svg` 排除**，RN 下用不上 |
-| ~~`server/`~~ | **已裁掉（2026-09）**：见 3.1 —— 它是 `moonback` 与 `moonbitlang/x` 的唯一使用者，自己又没被编译过、也没人依赖它 |
-| `internal/rabbita/` | 是 rabbita 的主 API（`App` / `run` / `Elmish` / `Val`），不是我们的库 —— 正是 §4.4-1 那个坑的来源 |
+| `vendor/rabbita/html/canvas/` | **全模块零入边** —— 连 vendor 内部都没人 import，纯孤儿 |
+| `vendor/rabbita/svg/` | 依赖 `html+style+vdom+variant+dom`，是"按需 DSL 层"；但标签表**已把 `svg` 排除**，RN 下用不上 |
+| ~~`server/`~~ | **已裁掉（2026-09）**：见 3.1 —— 它是 `moonback` 与 `moonbitlang/x` 的唯一使用者，自己又没被编译过、也没人依赖它 <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径--> |
+| `vendor/rabbita/rabbita/` | 是 rabbita 的主 API（`App` / `run` / `Elmish` / `Val`），不是我们的库 —— 正是 §4.4-1 那个坑的来源 |
 
 > 裁剪这 10 个包，发布面就从 26 个包降到 16 个、依赖从 3 个降到 2 个。
 > 代价是 fork 的 diff 从"改 4 个包"变成"删 10 个包"，跟版脚本要多一份删除清单（旧计划 `docs/plan/PLAN-2026Q3-yi-port.md` 的 T7.5）。
@@ -234,7 +233,7 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | 产物路径 | `_build/publish/XiLaiTL-moobile-0.1.0.zip`（改名前叫 `moobile-moobile-…`） |
 | **混进来的非库内容** | `examples/apps/todo-app/host/` 14 个文件 **741 KB（占 41%！）**、`docs/evidence/r1/` 11 个 49 KB、`tools/` 14 个 26 KB、`docs/` 3 个 41 KB、`examples/apps/todo-app/` 5 个 23 KB、`tools/verify_web.js` 12 KB、`README.md` 40 KB、`PLAN.md` 25 KB、`DEV.md` 13 KB |
 | 死重的 vendor | 8 个死重包（`svg/ http/ websocket/ nav/ dialog/ clipboard/ server/ html/canvas/`）**+ 模块根包的 5 个文件** = 45 个文件 **193 KB** |
-| 逃不掉的 vendor | `dom/` 78 个 208 KB（**在 16 包闭包里，删不掉**：`html/`、`cmd/`、`internal/vdom` 都要它）、`html/` 16 个 168 KB、`internal/` 31 个 143 KB、`js/` 15 个 44 KB |
+| 逃不掉的 vendor | `vendor/rabbita/dom/` 78 个 208 KB（**在 16 包闭包里，删不掉**：`vendor/rabbita/html/`、`vendor/rabbita/cmd/`、`vendor/rabbita/vdom` 都要它）、`vendor/rabbita/html/` 16 个 168 KB、`internal/`（搬迁前把 fork 摊在一起的那一层，现已拆进 `vendor/rabbita/`）31 个 143 KB、`vendor/rabbita/js/` 15 个 44 KB | <!--docfacts:ignore:internal/ 是搬家前那一层的目录名（已拆进 vendor/rabbita/），见同格说明-->
 
 **结论**：现在直接发，等于把**开发环境的截图、安卓构建配置、工作量计划书**一起发给用户。
 `.moonignore` 是**必须**的（`moon package --list` 就是验证工具）。
@@ -284,16 +283,16 @@ moobile/  style/  html/  cmd/            ← 使用者直接 import 的四个
 | # | 现象 | 实测 | 影响 |
 |---|---|---|---|
 | 1 | ~~模块根包是 rabbita 的主包，不是 moobile~~ ✅ **形态 B 已消除（2026-09）** | 外部模块写 `import { "XiLaiTL/moobile" @moobile }` 再调 `@moobile.mount` → **`Value mount not found in package 'moobile'`**（这次踩坑是真实发生的） | 使用者第一次就会撞上；`import "XiLaiTL/moobile"` 拿到的是 `App`/`run` 这套 rabbita API |
-| 2 | 公开签名里露 internal 类型 | `render.mbt`（模块根包） 的 `render_node(v : @vdom.VNode, …)`；`html/html.mbt` 的 `to_virtual_dom/from_vnode`；`svg/svg.mbt` 同；`cmd/commands.mbt` 的 `flatten(key : @key.Key, …)`、`cmd/scheduler.mbt` 的 `runner(_ : @key.Key, …)` | 实测（双模块 scratch）：**签名能编译过**，但消费者**一旦点它的方法或字段就硬失败** —— `4037 Cannot call method of type …VNode: package … is not imported`；直接 import 那个 internal 包则是 `Cannot import internal package … due to internal visibility rules`。结论：这种类型对外**只能当不透明句柄转手**，等于这两个 `pub fn` 对外是废的。属 vendor 既有风格，`FORK.md` §3 的上游化提案 #1/#4 正是治它 |
-| 3 | **`supported_targets` 的声明是假的**（不只是含糊） | 模块 `preferred_target = js`，但 14 个包声明 `"js+native+wasm"`、14 个 `"+native"`、7 个 `"-all+native"`。实测 `moon check --target native` **直接失败**：`html/attrs_event.mbt:425/430` 与 `html/html_utils.mbt:400` 报 `The value identifier event_decoders / dom_form_value is unbound` | ① `js/moon.pkg` 是 `options(targets: { "*": ["js"] })`，`dom/` 依赖它 → **传递性 js 锁**；② 我们 fork 的 `html/event_decoders.mbt` 是 js-only 文件，于是 `html/` 的 native 构建**被我们的改动弄坏了**（`docs/design/DESIGN.md` 里"核心 + html + cmd → native ✅"的结论已经过期）。**对外应明确"只支持 JS target"**；顺手把声明收敛成 `+js` 还能让 native 编译**快速失败并给出清楚的理由**。另据实测：模块级**没有**声明 `supported_targets`，所以包级声明**不会**被"模块 ∩ 包"的交集削弱 —— 意思是 native 消费者只要依赖**模块根包**或 `examples/apps/todo-app/`，构建会**直接失败**（不是静默降级） |
-| 4 | 公开签名里引用**非 pub 类型**（同一类问题的另一面） | 模块根包 `incremental.mbt:12` 是 `struct Val[A](@duplix.Node[A])`（**没有 `pub`**），但 `pub fn Val::map(a : Val[A], …)`、`pub type Cell = () -> Val[Html]` 都在用它；`server/server.mbt:5` 还 `using @rabbita {type Val, …}` | 对使用者而言 `Val` 不可命名 → 与第 2 项同类。因为 `server/` 从没被编译过（§3.1），这个 `using` 到底编不编得过**至今没验证** |
+| 2 | 公开签名里露 internal 类型 | `render.mbt`（模块根包） 的 `render_node(v : @vdom.VNode, …)`；`vendor/rabbita/html/html.mbt` 的 `to_virtual_dom/from_vnode`；`vendor/rabbita/svg/svg.mbt` 同；`vendor/rabbita/cmd/commands.mbt` 的 `flatten(key : @key.Key, …)`、`vendor/rabbita/cmd/scheduler.mbt` 的 `runner(_ : @key.Key, …)` | 实测（双模块 scratch）：**签名能编译过**，但消费者**一旦点它的方法或字段就硬失败** —— `4037 Cannot call method of type …VNode: package … is not imported`；直接 import 那个 internal 包则是 `Cannot import internal package … due to internal visibility rules`。结论：这种类型对外**只能当不透明句柄转手**，等于这两个 `pub fn` 对外是废的。属 vendor 既有风格，`FORK.md` §3 的上游化提案 #1/#4 正是治它 |
+| 3 | **`supported_targets` 的声明是假的**（不只是含糊） | 模块 `preferred_target = js`，但 14 个包声明 `"js+native+wasm"`、14 个 `"+native"`、7 个 `"-all+native"`。实测 `moon check --target native` **直接失败**：`vendor/rabbita/html/attrs_event.mbt:425/430` 与 `vendor/rabbita/html/html_utils.mbt:404` 报 `The value identifier event_decoders / dom_form_value is unbound`（2026-10-05 复跑核对过行号，`:400` → `:404`） | ① `vendor/rabbita/js/moon.pkg` 是 `options(targets: { "*": ["js"] })`，`vendor/rabbita/dom/` 依赖它 → **传递性 js 锁**；② 我们 fork 的 `vendor/rabbita/html/event_decoders.mbt` 是 js-only 文件，于是 `html/` 的 native 构建**被我们的改动弄坏了**（`docs/design/DESIGN.md` 里"核心 + html + cmd → native ✅"的结论已经过期）。**对外应明确"只支持 JS target"**；顺手把声明收敛成 `+js` 还能让 native 编译**快速失败并给出清楚的理由**。另据实测：模块级**没有**声明 `supported_targets`，所以包级声明**不会**被"模块 ∩ 包"的交集削弱 —— 意思是 native 消费者只要依赖**模块根包**或 `examples/apps/todo-app/`，构建会**直接失败**（不是静默降级） |
+| 4 | 公开签名里引用**非 pub 类型**（同一类问题的另一面） | rabbita 根包 `vendor/rabbita/rabbita/incremental.mbt:12` 是 `struct Val[A](@duplix.Node[A])`（**没有 `pub`**），但 `pub fn Val::map(a : Val[A], …)`、`pub type Cell = () -> Val[Html]` 都在用它；`server/server.mbt:5` 还 `using @rabbita {type Val, …}` | 对使用者而言 `Val` 不可命名 → 与第 2 项同类。因为 `server/` 从没被编译过（§3.1），这个 `using` 到底编不编得过**至今没验证** <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5，本行引的是当时那个文件），不是搬家后的现役路径--> |
 
 ### 4.5 小瑕疵（不阻塞发布，但会误导人）
 
 - `js/js.mbti` 是手写的接口文件（`FORK.md` §1 第 3 步特意保留），顶部还写着
   `// Generated using moon info` 与 `package "rami3l/js-ffi/js"` —— vendor 来的陈旧身份，
   它会**跟着发布出去**。
-- `html/canvas/` 全模块零入边（§3.3）。
+- `vendor/rabbita/html/canvas/` 全模块零入边（§3.3）。
 - 附注（免得后人被 mtime 误导）：`incremental.mbt` 的修改时间属于 T0.0 改名那一批，
   但那是 `sed` 碰到它第 706 行**注释里**的旧模块名（`moobile/moobile_demo/http`）所致，
   **不是**未记录的语义改动；根包其余文件（`top.mbt` / `tea.mbt` / `deprecated.mbt`）仍是 vendor 原始时间戳。
@@ -345,10 +344,10 @@ XiLaiTL/moobile version 0.1.0.` —— 也就是说「首段必须是账号名�
 ### 形态 B —— 把库提到模块根 ✅ **已实施（2026-09）**
 
 1. vendor 的根包（`top.mbt` / `incremental.mbt` / `deprecated.mbt` / `tea.mbt` / 根 `moon.pkg`）
-   挪进 `internal/rabbita/`；
+   挪进 `internal/rabbita/`； <!--docfacts:ignore:形态 B 那一步的历史路径；根包现落到 vendor/rabbita/rabbita/-->
 2. `moobile/*.mbt` 提到模块根，写成新的根 `moon.pkg`；
-3. 更新 2 处 vendor 对根包的引用（`html/moon.pkg` 的 `for "test"`、`server/moon.pkg`）；
-4. 同步 `FORK.md` §1 的重放步骤（根包现在落到 `internal/rabbita/`）。
+3. 更新 2 处 vendor 对根包的引用（`html/moon.pkg` 的 `for "test"`、`server/moon.pkg`）； <!--docfacts:ignore:形态 B 那一步的历史路径：server/ 后来在 T7.5 被裁掉-->
+4. 同步 `FORK.md` §1 的重放步骤（根包现在落到 `vendor/rabbita/rabbita/`）。
 
 **实施结果（2026-09，全部实测）**：
 
@@ -379,7 +378,7 @@ pub using @moobile_lib {mount, type Mount}
 
 ### 形态 C —— 拆成两个模块（长期）
 
-把 fork 改成**公开可用**（`vdom` 不再是 `internal/`）后单独发布，`moobile` 变成薄依赖。
+把 fork 改成**公开可用**（`vdom` 不再是 `internal/`）后单独发布，`moobile` 变成薄依赖。 <!--docfacts:ignore:这句说的是"不再落在名为 internal 的路径段下"（本仓 fork 的 vdom 在 vendor/rabbita/vdom/），不是指向某个现存目录-->
 
 - **代价**：fork 的 diff 变大（与"跟版"策略冲突）、要维护两个已发布模块、`moonbit-community/rabbita`
   上游若合并（`FORK.md` §3）还得再改一次。
@@ -446,10 +445,10 @@ export default function App() {
 | # | 任务 | 判据 |
 |---|---|---|
 | T7.1 | 卫生：`readme`/`repository` 字段、`LICENSE`、`THIRD-PARTY-NOTICE`、`.moonignore`。⚠️ 写 `.moonignore` 时**必须把 `.gitignore` 内容整体抄进去再追加**（它会替换同目录 `.gitignore`，见 §4.1） | `moon package --list` 只剩库文件；不再有 readme/repository 告警；`examples/apps/todo-app/host/`、`docs/evidence/r1/`、`tools/`、`examples/apps/todo-app/` 都不在清单里 |
-| T7.2 | 形态 B 重构（库提到模块根 + fork 根包进 `internal/rabbita/`） | `moon check` 0 错误；`tools/verify_web.js` 26/26；`check_external.sh` 用**裸模块名**导入并通过 |
+| T7.2 | 形态 B 重构（库提到模块根 + fork 根包进 `internal/rabbita/`） <!--docfacts:ignore:形态 B 那一步的历史路径；根包现落到 vendor/rabbita/rabbita/--> | `moon check` 0 错误；`tools/verify_web.js` 26/26；`check_external.sh` 用**裸模块名**导入并通过 |
 | T7.3 | 公开 API 说明：把 §2 的契约写进 `README.md`（宿主 4 件套 + 5 个组件 + 事件的零值语义 + 只支持 js） | 文档里有可复制的两侧样板 |
 | T7.4 ✅ | **已完成**：`--dry-run` → `202 Accepted` → 正式 `moon publish` → **`200 OK`**；随后在新建模块里 `moon add XiLaiTL/moobile@0.1.0` → 写真实应用 → `check` 通过、`build` 产出可被 JS import 的产物 | 发布链路闭环 ✅（2026-09） |
-| T7.5（部分完成） | **已完成第一步**：裁掉 `server/`（连带去掉 `moonback` + `moonbitlang/x`，发布依赖 **3 → 1**）。剩下的死重（`clipboard/ dialog/ html/canvas/ http/ nav/ svg/ websocket/`）仍在树里，见新 `PLAN.md` §3.5 | 依赖已降到位；剩余裁剪收益是文件数与 fork diff 的取舍 |
+| T7.5（部分完成） | **已完成第一步**：裁掉 `server/`（连带去掉 `moonback` + `moonbitlang/x`，发布依赖 **3 → 1**） <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径-->。剩下的死重（`vendor/rabbita/{clipboard,dialog,html/canvas,http,nav,svg,websocket}/`）仍在树里，见新 `PLAN.md` §3.5 | 依赖已降到位；剩余裁剪收益是文件数与 fork diff 的取舍 |
 | T7.6（可选） | 宿主脚手架：`App.js` 模板 / npm 包 | 新项目 5 分钟能跑起来 |
 
 **顺序建议**：T7.1 → T7.2 → T7.3 → T7.4（可选 T7.5/T7.6 随后）。

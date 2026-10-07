@@ -144,7 +144,7 @@ PLAN §1.2 已定的结论，这里只落地：**支持一个新平台 = 换一�
 `--host rnw` 与 `--host expo` 的差别**只在宿主文件**：
 `package.json` / `App.js` / `index.js` / `app.json` / `metro.config.js`（+ `babel.config.js`），
 而 **`moon.mod` / `moon.pkg` / `app.mbt` 逐字节相同** —— 这条有门在断言
-（`node tools/host_probe.mjs`，**32 项**，进 `verify_all.sh`；原名 `desktop_host_probe.mjs` —— 它现在守三宿主矩阵）。
+（`node tools/host_probe.mjs`，**32 项**，进 `verify_all.sh`；原名 `desktop_host_probe.mjs` —— 它现在守三宿主矩阵） <!--docfacts:ignore:写的是改名前的原名（现役文件是 tools/host_probe.mjs）-->。
 
 脚手架**只**负责：选宿主 → 装对应 npm 依赖 → 写对应 `App.js`/`package.json`/`app.json`。
 MoonBit 侧（`moon.mod` / `moon.pkg` / `app.mbt`）在任何宿主下**完全一样** ——
@@ -208,7 +208,7 @@ examples/apps/template/          ← 唯一真源：一个**真的能编译、�
 > 所以它是独立 module、天然隔离 —— 但**别往 `tools/template/` 里放任何 MoonBit 源码**，
 > 那里没有 `moon.mod` 挡着。
 
-**为什么不要 `examples/services/template/`**：模板**不带后端**（§7 要最小），所以无服务可配。
+**为什么模板不放 `examples/services/` 下**：模板**不带后端**（§7 要最小），所以无服务可配。
 而且 `services/` 的模块是 `+native`（要 MSVC 工具链）、**刻意不在 `moon.work` 里**——
 把模板放进去会立刻让默认 `moon check` 依赖 MSVC。后端那个坑留给 demo
 （`todo-app` + `todo-server`），不复制到模板。
@@ -598,7 +598,7 @@ Error: No packages were successfully installed
 
 | 现存 | 去向 | 依据 | 状态 |
 |---|---|---|---|
-| `cr_scan.py` | 已迁 `.mbtx`（`mbtools` 的 `cr-scan` 子命令） | 纯文件扫描 | ✅ 已退役 Python 版 |
+| `cr_scan.py` | 已迁 `.mbtx`（`mbtools` 的 `cr-scan` 子命令） | 纯文件扫描 | ✅ 已退役 Python 版 | <!--docfacts:ignore:已退役的旧实现（现役是 tools/mbtools 的 cr-scan）-->
 | `check_links.py`、`check_public_leaks.py` | → MoonBit `.mbtx` | 纯文件扫描（前者只读 Markdown 解析链接，后者只扫路径与凭据） | 待做 |
 | `gen_forwarders.py` | → MoonBit `.mbtx` | 读 `.mbti` 生成转发包；`moon ide doc "@pkg"` 可替掉手解 `.mbti` | 待做 |
 | `vendor_relocate.py` | → MoonBit `.mbtx` | 复制 + 改写，纯文件；**但它住在 `vendor_sync.sh` 里，改语言收益最低，可以最后做** | 待做 |
@@ -608,7 +608,8 @@ Error: No packages were successfully installed
 **净结果：Python 归零，但"退役"分两站 —— 4 个进 `.mbtx`，4 个进 `.mjs`。**
 语言净增数为 0：node 早就是硬依赖（§4.1），`.mjs` 不是"新引入的一套工具链"。
 
-> 数字要能对得上：`ls tools/*.py | wc -l` = **8**（`cr_scan.py` 退役后）。
+> 数字要能对得上：`ls tools/*.py | wc -l` = **9**（`cr_scan.py` 退役后；⚠️ **本文写成时是 8** —— <!--docfacts:ignore:cr_scan.py 是已退役的旧实现，本行正是在说它退役之后的账-->
+> 之后 `ci_status.py` 又从 gitignore 的 `.scratch/` 提进了 `tools/`，2026-10-01）。
 > 本文写成时的清点：`check_links` `check_public_leaks` `gen_forwarders` `readme_probe`
 > `scroll_r1` `tap_r1` `vendor_relocate` `verify_android`。
 > （`scroll_r1` / `tap_r1` 是 R1 排版判决那批 adb 工具，容易被漏记 —— 第一版本文里就漏了它们。）

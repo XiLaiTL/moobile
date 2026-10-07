@@ -88,7 +88,7 @@ npx react-native run-windows --no-launch --logging
 |---|---|
 | `package.json` / `index.js` / `App.tsx` / `metro.config.js` / `babel.config.js` / `app.json` / `android/` / `ios/` | `@react-native-community/cli init` 生成 |
 | `windows/**`（**28 个文件**，清单在 `.scratch/rnw-probe/windows-filelist.txt`） | `npx react-native init-windows` 生成，**一个字节都不是我手写的** |
-| `NuGet.config`（工程根）、`jest.config.windows.js`、被**覆盖**的 `metro.config.js` | `init-windows` 生成/覆盖 |
+| `NuGet.config`（工程根）、`<探针目录>\RnwProbe\jest.config.windows.js`、被**覆盖**的 `metro.config.js` | `init-windows` 生成/覆盖 |
 | `moobile.js` | **直接复用仓库里现成的产物**：`examples/apps/host-swap-spike/moobile.js`（sha256 `1b6d07e1…`，649,389 B）—— 本轮没跑 `moon build` |
 | `host/App.js`、`host/index.js` | **我手写**（各 10 行左右，见 §4.1） |
 | `host/registry.generated.js` | `npx moobile-host regen` 生成 |
@@ -114,7 +114,7 @@ error: unknown command 'init-windows'
    而它的编译产物 `lib-commonjs/utils/commandWithProgress.js:45` 在**模块加载时**就
    `findPowerShell()`；`@react-native-windows/cli@0.84.0` 才把它加进 `dependencies`。
    ⇒ **0.83.0 / 0.83.2 是坏的，0.84.0 修了。**
-3. RN CLI 加载依赖的 `react-native.config.js` 时把 `require` 失败**静默吞掉** →
+3. RN CLI 加载依赖的 `node_modules/react-native-windows/react-native.config.js` 时把 `require` 失败**静默吞掉** →
    `npx react-native config` 里只剩 `ios` / `android` 两个平台 → `init-windows` / `run-windows` 都不存在。
 
 **修法**（照抄即可）：
@@ -160,7 +160,7 @@ export PATH="$LOCALAPPDATA/Microsoft/WindowsApps:$PATH"
 # ② 永久：把 %LOCALAPPDATA%\Microsoft\WindowsApps 加进用户 PATH（图形界面改环境变量，或 setx）
 ```
 
-> 这一条的**连带后果比看上去大**：因为 `react-native.config.js` 加载失败是静默的，
+> 这一条的**连带后果比看上去大**：因为 `node_modules/react-native-windows/react-native.config.js` 加载失败是静默的，
 > 所以 **Metro 也认不出 `windows` 这个平台** —— 实测不带那行 PATH 时 `--platform windows`
 > 报 `error: Invalid platform "windows" selected. Available platforms are: "ios", "android", "native"`
 > （`logs/15-bundle-windows.log`）。**一个"找不到 pwsh"竟然表现成"平台不存在"。**
@@ -512,8 +512,8 @@ export default mountApp(app, { registry });
   工程里唯一的平台是 `windows`（+ 模板自带但用不到的 android/ios）。
 - **Metro 就是 RN CLI 自己的 `start`**：`npx react-native start`（不需要 Expo 的 `expo start`）。
   打生产包用 `npx react-native bundle --platform windows …`。
-- **★ 一个必须知道的耦合**：Metro 认不认 `windows` 这个平台，取决于 `react-native-windows`
-  的 `react-native.config.js` **能不能被 require 成功** —— 而它 require 了
+- **★ 一个必须知道的耦合**：Metro 认不认 `windows` 这个平台，取决于
+  `node_modules/react-native-windows/react-native.config.js` **能不能被 require 成功** —— 而它 require 了
   `@react-native-windows/cli`，后者**在模块加载时**就要 `pwsh.exe`（§1.5）。
   实测：PATH 里没有 WindowsApps 时 `--platform windows` 报
   `error: Invalid platform "windows" selected. Available platforms are: "ios", "android", "native"`；

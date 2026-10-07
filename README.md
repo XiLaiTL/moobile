@@ -13,10 +13,15 @@ moobile 是 [rabbita](https://github.com/moonbit-community/rabbita)（MoonBit �
 |---|---|
 | **MoonBit 包** | `moon add XiLaiTL/moobile@0.5.0` |
 | **宿主（JS）** | `npm install moobile-host`（React Native / Expo） |
-| 已实测 | Web ✅ ｜ Android 真机 ✅（Android 14 / x86_64） |
-| 未实测 | iOS（宿主工程可生成，本机无法构建验证）｜ 桌面（未提供宿主） |
+| 已实测 | Web ✅ ｜ Android 真机 ✅（Android 14 / x86_64）｜ 桌面 ✅ **Electron 真窗口**（`examples/apps/zhouyi-reader-electron/`）与 **静态 Web 站点**（`--host webview`） |
+| 未实测 | iOS（宿主工程可生成，本机无法构建验证）｜ 桌面 **RNW 原生窗口**（`--host rnw` 的 JS 侧已通：打包 + 宿主接线有判据；窗口本身要 VS 2026 + SDK 22621，见 [`docs/design/DESKTOP-RNW.md`](docs/design/DESKTOP-RNW.md)） |
 | 目标平台 | 只支持 `js` 目标（库本身编到 JS，再交给 React） |
 | 许可 | Apache-2.0（内含 rabbita fork，见 [`THIRD-PARTY-NOTICE.md`](THIRD-PARTY-NOTICE.md)） |
+
+> ⚠️ **原先上面把桌面写成"未提供宿主"** —— 已经不成立（2026-10-23 复核）：脚手架里有
+> `--host rnw`（裸 RN + react-native-windows，`docs/design/DESKTOP-RNW.md`）与 `--host webview`
+> （零 Metro 的静态站点）两档，Electron 那条是手写示例（真窗口，判据附着在窗口上跑；
+> **还没进脚手架**）。桌面**没有**独立一套库代码 —— "换平台 = 换一个宿主"。
 
 ---
 
@@ -173,7 +178,7 @@ cd <Expo 工程> && npx expo start --port 8081     # 浏览器打开 http://loca
 | 改这个库（构建、验证、发版、文档规矩） | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | 架构与契约（分层、宿主契约、发布形态） | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | 为什么这么设计 / 实测过什么 | [`docs/FINDINGS.md`](docs/FINDINGS.md)、[`docs/design/`](docs/design/) |
-| 我们对 rabbita 改了什么（14 个 patch） | [`FORK.md`](FORK.md) |
+| 我们对 rabbita 改了什么 | [`FORK.md`](FORK.md)（patch 系列在 `tools/patches/`，**条数以该目录为准** —— 别抄数字） |
 | 接下来打算做什么 | [`PLAN.md`](PLAN.md) |
 | 全部文档的三条路线 | [`docs/README.md`](docs/README.md) |
 
@@ -184,5 +189,7 @@ cd <Expo 工程> && npx expo start --port 8081     # 浏览器打开 http://loca
 **Apache License 2.0**，见 [`LICENSE`](LICENSE)。
 
 本模块内含 [rabbita](https://github.com/moonbit-community/rabbita) 的 fork
-（同为 Apache-2.0，来源版本 0.15.4）：版权声明、修改声明与分发形态见
+（同为 Apache-2.0；**来源版本以 `tools/vendor.lock` 的 `RABBITA_VERSION` 为准** ——
+原先此处抄的 `0.15.4` 在 2026-10-03 换底之后已漂，会漂的数字不再抄进本文）：版权声明、
+修改声明与分发形态见
 [`THIRD-PARTY-NOTICE.md`](THIRD-PARTY-NOTICE.md)，改动明细见 [`FORK.md`](FORK.md)。

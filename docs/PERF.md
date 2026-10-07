@@ -75,16 +75,16 @@ node tools/perf_bench.mjs --n 1000 --mode dom --frames 100 --warmup 30 --trials 
 
 | 产物 | sha256（前 16 位） | 怎么来的 |
 |---|---|---|
-| `art-base.js`（D3 前） | `3d8b00bf0ca5419a` | `git show HEAD:render.mbt` 落回工作区 → 构建 ⇒ **精确复现** |
-| `art-d3a.js`（D3 后） | `90bdcb5fbaac274e` | 只加 D3 的 `render.mbt` 构建 ⇒ **精确复现** |
-| `art-immut.js`（D3 + P1，**旧工具链**） | `b114b88467bf4e39` | P1 落地时的工作区构建 |
-| `art-0160.js`（0.16.0，旧工具链） | `43b6fbc869f1e898` | 换底到 0.16.0 时的构建 |
-| `art-0163.js`（**当前树** = 0.16.3 + P1 + 新工具链） | `dbcd943766992603` | 当前工作区构建 |
-| `art-nocopystyle.js`（探针 B） | `bb9052fa152e77cd` | §7.3 的临时消融 |
-| `art-nocopy4.js`（探针 A） | `9b948c7640e87870` | §7.3 的临时消融 |
+| `art-base.js`（D3 前） | `3d8b00bf0ca5419a` | `git show HEAD:render.mbt` 落回工作区 → 构建 ⇒ **精确复现** | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
+| `art-d3a.js`（D3 后） | `90bdcb5fbaac274e` | 只加 D3 的 `render.mbt` 构建 ⇒ **精确复现** | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
+| `art-immut.js`（D3 + P1，**旧工具链**） | `b114b88467bf4e39` | P1 落地时的工作区构建 | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
+| `art-0160.js`（0.16.0，旧工具链） | `43b6fbc869f1e898` | 换底到 0.16.0 时的构建 | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
+| `art-0163.js`（**当前树** = 0.16.3 + P1 + 新工具链） | `dbcd943766992603` | 当前工作区构建 | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
+| `art-nocopystyle.js`（探针 B） | `bb9052fa152e77cd` | §7.3 的临时消融 | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
+| `art-nocopy4.js`（探针 A） | `9b948c7640e87870` | §7.3 的临时消融 | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
 
 ⇒ 这两份基础产物**只差 D3 一处改动**（`git diff render.mbt` 就是那条），且**都能从源码重建出同一个哈希**。
-留档产物在 `.scratch/perf/`（**gitignore 的**，所以"能复现"靠的是源码 + 上表哈希，不是那个文件本身）。
+留档产物在 `.scratch/perf/`（**gitignore 的**，按定义**不在全仓索引里** —— 上表那些 `docfacts:ignore` 就是这个意思，不是"没这个文件"；所以"能复现"靠的是源码 + 上表哈希，不是那个文件本身）。
 
 ## 2. 本机环境（数字与它绑定）
 
@@ -189,7 +189,7 @@ N=100（707 元素）只跑过单次：`min` 1.1 ms —— **不构成统计**�
 
 ### 5.3 本轮新学到的两条（都影响判据口径）
 
-- **同一份产物、跨会话能差 7%**：`art-d3a.js` 在重测批次里是 11.68 ms，在探针批次里是 12.49 ms
+- **同一份产物、跨会话能差 7%**：`art-d3a.js` 在重测批次里是 11.68 ms，在探针批次里是 12.49 ms <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
   （同一个哈希、同一台机器、同一组参数）。⇒ **A/B 必须在同一个会话里交错跑**，
   跨会话只能比"区间是否重叠"，不能比绝对值。
 - **在负载下量的差值会被放大**：§4 那条（−10.7% → −7.6%）。
@@ -204,7 +204,7 @@ N=100（707 元素）只跑过单次：`min` 1.1 ms —— **不构成统计**�
 
 | 条件 | 事实（都是实测） |
 |---|---|
-| `NODE_ENV=production`（本机 shell 默认） | `require("react")` 走 `react.production.js`，而**它不导出 `act`**（`act` 只在 development 构建里；`react-dom/test-utils` 那个只是转发，production 下同样不可用） |
+| `NODE_ENV=production`（本机 shell 默认） | `require("react")` 走 `react.production.js`，而**它不导出 `act`**（`act` 只在 development 构建里；`react-dom/test-utils` 那个只是转发，production 下同样不可用） | <!--docfacts:ignore:指 react 依赖包（node_modules）里的 production 构建产物，不是本仓文件-->
 | 没有 `act` 时"一帧"是什么 | **`dispatchEvent` + 一个微任务**。实测：`dispatchEvent` 返回时 DOM **还是旧的**，推进发生在一个微任务之后 |
 | 那层微任务的地板 | **0.001–0.002 ms**（量出来就是为了说明"没有地板要扣"）；`act_floor_ms` 在 production 档报 `null` |
 | `root.render` 的坑 | React 19 的 `root.render` 是**并发**的：不冲刷的话"挂载完"其实还没落地（`act` 那条路把它挡住了，production 档一跑就暴露）。用 `flushSync` 挂载 |
@@ -371,7 +371,7 @@ vdom.mbt:158  Props::copy → copy_map × 4（handlers / attrs / props / styles�
 |---|---|---|---|
 | **P1** ✅ **已完成** | **消除每元素那次属性表复制** —— 做法不是删掉复制，而是把四张表改成**不可变**（`PropsTable[V]` 包 `immut/hashmap`），让 `Props::copy()` 变成 **O(1) 指针拷贝**；契约与语义都不变 | **实测 −32.4%（N=1000）/ −29.3%（N=5000）**，两组区间不重叠（§7.4） | 已落地：改动 7 个文件、**上游那 ~200 处写入一处未动**（靠 `#alias("_[_]=_")` 接住索引赋值）；已 `--capture` + `--check` + 全量门 24/24 |
 | **P1b** ✅ **已完成** | ~~`Props.styles` 从"字符串键的表"改成**扁平数组**~~ ⇒ 实测 **`translate` −47.6% / `dom` −28.8%**（min，12 轮交错，区间不重叠；§13） | 见 §13.3 | 已落地：`Styles`（扁平数组 + 可变句柄 + 数组永不原地改）+ 三条新白盒测试；`--capture`/`--check` 一致 |
-| ~~原本写的~~ | `Props.styles` 从"字符串键的表"改成**扁平数组**（`Style` 本来就是 `Array[(String, StyleValue)]`，这条键值转换是白花的） | 探针 B 那一档：**−5.6% ~ −15.4%**（P1 治"复制"，P1b 治"插入"） | 要动 `vdom{vdom,diff,ssr}` + `html/attrs` + `svg/attrs`；同样要 `--capture/--check`。**P1 落地后这条的收益会被吃掉一部分**（插入现在是不可变表的 `add`）⇒ 重测再定 |
+| ~~原本写的~~ | `Props.styles` 从"字符串键的表"改成**扁平数组**（`Style` 本来就是 `Array[(String, StyleValue)]`，这条键值转换是白花的） | 探针 B 那一档：**−5.6% ~ −15.4%**（P1 治"复制"，P1b 治"插入"） | 要动 `vendor/rabbita/vdom/{vdom,diff,ssr}.mbt` + `vendor/rabbita/html/attrs.mbt` + `vendor/rabbita/svg/attrs.mbt`；同样要 `--capture/--check`。**P1 落地后这条的收益会被吃掉一部分**（插入现在是不可变表的 `add`）⇒ 重测再定 |
 | **D6** ✅ **已完成一半** |**上游 0.16 的 `memo`**：原来**空转**（哈希被丢）⇒ 已接上（`MCtx` 路径缓存，§11）。**实测 `dom` −97% / `translate` −98.5%**（N=1000，区间不重叠） | 见 §11.1 | ⚠️ 那是"只有表头在变"的上界。**D5（handler 闭包 / 元素身份）仍未做** —— memo 只解决"应用自己声明可跳过"的那些子树 |
 | **P2** | handler 闭包 / 元素身份（D5）：`each_handler` + `js_obj_set` + 桩 `createElement` ≈ 7% 直接成本；**元素引用恒变**会让**没包 memo 的**子树每帧全量重渲 | 未测 | 需要设计（闭包池 vs 元素身份池）；`dom` 档现在能量它了（§6） |
 | **P0** ✅ **已查明** | **"推迟子树构造"省的是什么** —— 答案是**GC 的复制量**：`view()` 建出来的整棵树被 duplix 图持有到下一帧（活对象 11.73 → 8.74 MB），单次 Scavenge **2.0 → 6.5 ms**（§11.5） | 直接测量（`gc_probe`）：GC 202 → 57 ms/100 帧 | ⚠️ **"晋升到老生代"的假设被证伪**（四格都没有 Mark-Compact）。效应大小**随机器状态变化**（§5.3） |
@@ -483,7 +483,7 @@ vdom.mbt:158  Props::copy → copy_map × 4（handlers / attrs / props / styles�
 | 层 | 证据 |
 |---|---|
 | 源码 | `render.mbt` 的 `@vdom.VNode::Thunk(_, f) => render_node(f(), sched)`（哈希丢在 `_` 里） |
-| 编译产物 | `art-memoknob.js` 里那段：`const _Thunk = v$2; const _f = _Thunk._1;` —— **`_Thunk._0`（哈希）从未被引用** |
+| 编译产物 | `art-memoknob.js` 里那段：`const _Thunk = v$2; const _f = _Thunk._1;` —— **`_Thunk._0`（哈希）从未被引用** | <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
 | 实跑（计数） | 临时给负载加计数器（测完按字节还原）后的**每帧调用计数**： |
 
 | 库 | memo | `view` /帧 | `row_html` /帧 | 元素 /帧 |
@@ -589,7 +589,7 @@ model_node.map(m => {
 ⇒ 按上面那条机制，惰性根在真机上**大概率也换不来墙钟**。要判就得真机（D2 的 `dumpsys gfxinfo`）。
 
 **保留下来的东西**：这条机制本身（它是"view 的产物会被图持有"这个事实的**直接测量**，
-对任何"每帧重建大树"的框架都成立）、两个留档产物（`art-lazyroot.js` / `art-memo-fix.js`）、
+对任何"每帧重建大树"的框架都成立）、两个留档产物（`art-lazyroot.js` / `art-memo-fix.js`）、 <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
 以及下面这条方法论。
 
 ⚠️ **这一轮暴露了 `min` 统计量的一个盲区**（方法论，已补进 §10 第 14 条）：
@@ -695,7 +695,7 @@ profile 只适合回答"某个函数还在不在"**（§12.2 里 `HashMap::lengt
 | 存进来的数组是从调用方**复制**的 | `@style.Style` 的构造器是**可变**对象：调用方之后继续用它，不能影响已经存下的内容 |
 | 合并语义 = **后来的赢**（键去重） | 与原来 HAMT 覆盖的语义逐条一致 |
 
-写入只有三处：`Attrs::styles`（`html/attrs.mbt` 与 `svg/attrs.mbt`）、`Props::styles`。
+写入只有三处：`Attrs::styles`（`vendor/rabbita/html/attrs.mbt` 与 `vendor/rabbita/svg/attrs.mbt`）、`Props::styles`。
 读取侧：`is_empty` **O(1)**（数组长度）、`get`/`contains` **线性扫**（表只有几条，比哈希快）、
 `iter2` 给 `for name, value in styles` 用（`diff.mbt` / `ssr.mbt` / 我们的 `render.mbt` 都靠它）。
 
@@ -1005,7 +1005,7 @@ armed = true  → 记账路（与从前逐字一致）
 ⚠️ **我先前在这里写的机制是错的，按规矩留档更正**：原话是"比估的 8% 大，是因为 memo 路上还有
 **二次派发**（非 thunk 孩子要走 `render_node`）"。**现在去读代码，那条站不住**：
 `render_children_memo` 对**所有**孩子都调 `render_memo`（单层派发），
-与被 A/B 测的那一版我**没能复现**出"二次派发"的形状（那一版的产物已不在，`art-final.js` 只剩哈希）。
+与被 A/B 测的那一版我**没能复现**出"二次派发"的形状（那一版的产物已不在，`art-final.js` 只剩哈希）。 <!--docfacts:ignore:留档产物在 gitignore 的 .scratch/perf/，按定义不在仓里-->
 
 **能站住的解释**是"每次记账本身就是两次函数调用 + 两次属性写"：
 `ctx.enter(i)` / `ctx.leave()` 是**两次调用**，而 `ctx.depth = ctx.depth + 1` 这类在 JS 后端是

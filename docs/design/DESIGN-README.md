@@ -32,9 +32,9 @@
 | 文档 | 内容 |
 |---|---|
 | [`DESIGN.md`](DESIGN.md) | **设计文档（主）** —— 定位、架构、路线图、风险、未决问题 |
-| [`EVIDENCE.md`](DESIGN-FEASIBILITY.md) | **验证记录** —— 全部实测数据、原始输出、复现方式、已否决方案的论证链 |
+| [`DESIGN-FEASIBILITY.md`](DESIGN-FEASIBILITY.md) | **验证记录** —— 全部实测数据、原始输出、复现方式、已否决方案的论证链 |
 
-建议阅读顺序：先 `DESIGN.md` §0–§4 建立整体认识，再按需查 `EVIDENCE.md` 核对依据。
+建议阅读顺序：先 `DESIGN.md` §0–§4 建立整体认识，再按需查 `DESIGN-FEASIBILITY.md` 核对依据。
 
 ⚠️ **本文写于实现之前**，其中若干处已被实测修正 —— 修订点见
 [`../README.md`](../README.md) 的「实测发现」与「R1 判决」：

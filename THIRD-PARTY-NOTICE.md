@@ -11,15 +11,17 @@
 |---|---|
 | 项目 | **rabbita** —— MoonBit 的声明式 UI 框架（Elm / Bonsai 风格的 TEA） |
 | 来源 | <https://github.com/moonbit-community/rabbita> |
-| 我们 vendor 的版本 | **0.15.4**（注册表制品；见 `tools/vendor.lock`） |
+| 我们 vendor 的版本 | **以 `tools/vendor.lock` 的 `RABBITA_VERSION` 为准**（注册表制品，不可变）—— 原先此处抄的是 `0.15.4`，2026-10-03 换底后已漂 ⇒ **会漂的数字不再抄进本文** |
 | 许可 | **Apache License 2.0**（上游仓库根目录的 `LICENSE`；上游未附 `NOTICE` 文件） |
 | 版权 | 归 rabbita 的作者与贡献者所有（moonbit-community） |
 
 ### 我们改了什么
 
 **改动清单与逐条理由见 [`FORK.md`](FORK.md)**；机器可读的版本是
-[`tools/patches/`](tools/patches) 里的 15 个 patch（共约 983 行），
-`bash tools/vendor_sync.sh --check` 可以验证「工作区 == 上游 0.15.4 + 这些 patch」。
+[`tools/patches/`](tools/patches) 里的 patch 系列（**条数与总行数以该目录为准**：
+`ls tools/patches/*.patch | wc -l` / `wc -l tools/patches/*.patch` —— ⚠️ 原先此处抄的是
+条数与行数的快照（`15` / `983` 那一对），早已漂 ⇒ 不再抄），
+`bash tools/vendor_sync.sh --check` 可以验证「工作区 == `tools/vendor.lock` 钉的那版上游 + 这些 patch」。
 
 一句话概括：把渲染后端从 DOM 换成 React（React Native / react-native-web），
 因此需要把 `Event` 从 `@dom.Event` 解耦、把 `Props.styles` 从 `Map[String, String]`
@@ -39,8 +41,8 @@
 | 依赖 | 用途 | 许可 |
 |---|---|---|
 | `moonbitlang/async` | 异步运行时（rabbita 的 `js_async` 等） | 见其仓库 |
-| ~~`moonbitlang/x`~~ | **已不再是依赖**（2026-09）：它只被 `server/` 用，而 `server/` 已裁掉 | — |
-| ~~`hackwaly/moonback`~~ | **已不再是依赖**（2026-09）：同上，只被 `server/` 用 | — |
+| ~~`moonbitlang/x`~~ | **已不再是依赖**（2026-09）：它只被 `server/` 用，而 `server/` 已裁掉 | — <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径--> |
+| ~~`hackwaly/moonback`~~ | **已不再是依赖**（2026-09）：同上，只被 `server/` 用 | — <!--docfacts:ignore:server/ 是已裁掉的 rabbita 包（T7.5），不是搬家后的现役路径--> |
 
 > 依赖的许可条款以其各自仓库为准；这里只做索引，不复制其文本。
 

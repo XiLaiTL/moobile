@@ -123,7 +123,7 @@ registerLibrary({
 
 ### N3 prop 通道：四条具名方法 + 一条 JSON 约定
 
-**设计**（vendor 的 `html/attrs.mbt`，此前 `attribute`/`property` 是**包内私有**）：
+**设计**（`vendor/rabbita/html/attrs.mbt`，此前 `attribute`/`property` 是**包内私有**）：
 
 ```moonbit
 @html.Attrs::build()
@@ -329,7 +329,7 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs
 
 ### T1 事件载荷：让受控组件可用 —— ✅ **已实现**（2026-09）
 
-**曾经的现状**：`on_change` 能触发，但载荷是零值/不透明（`html/event_decoders.mbt` 的透传表），
+**曾经的现状**：`on_change` 能触发，但载荷是零值/不透明（`vendor/rabbita/html/event_decoders.mbt` 的透传表），
 用户输入的内容拿不到 —— `Input` / `Select` / `DatePicker` 这些**受控组件用不了**。
 
 **落地形态**（vendor patch **27**，新增文件 `vendor/rabbita/html/payload.mbt`，整文件限定 js）：
@@ -351,9 +351,9 @@ cd examples/apps/antd-spike/host && npm install && node verify.mjs
 
 **三条设计取舍**（都写进了文件头）：
 
-1. **不碰旧的 `on_*` 签名** —— 它们是对 DOM 的承诺，改了会波及 `svg/`、全部标签助手与既有应用。
+1. **不碰旧的 `on_*` 签名** —— 它们是对 DOM 的承诺，改了会波及 `vendor/rabbita/svg/`、全部标签助手与既有应用。
    这是**平行**通道，不是替换。
-2. **载荷不透明**：同一个回调在 DOM 上给事件对象、在 RN 上可能**直接给字符串**、
+2. **载荷形状因后端而异**（库不解释它）：同一个回调在 DOM 上给事件对象、在 RN 上可能**直接给字符串**、
    在组件库里给业务值 —— 提取器把这三种形态都覆盖，于是**同一份视图代码两端可用**。
 3. **提取器永不抛错**（形状对不上给 `""` / `0` / `false`）：载荷形状是运行时才知道的事，
    让它崩掉等于把"库版本不匹配"变成"白屏"。
@@ -462,7 +462,7 @@ demo 里 **71 个组件全部**用它写，`@html` 与 `@antd` 混在同一棵�
 
 ### T5 组件库适配器目录 —— ✅ **换形态落地了**（2026-09）
 
-**现状**：不再手写 `npm/moobile-host/libraries/antd.js`，而是由**同一份 manifest**
+**现状**：不再手写 `npm/moobile-host/libraries/antd.js` <!--docfacts:ignore:换形态前那套"手写适配器目录"的路径（`libraries/` 从未入库，本行正是说它已被生成物取代）-->，而是由**同一份 manifest**
 生成应用侧的 `host/libraries.generated.js`（`components` / `jsonProps` / `events` / `wrap` / `platforms`）。
 
 **为什么换**：原方案的"手写适配器目录 + `regen` 自动接"里，适配器与生成的清单是**两份东西** ——
