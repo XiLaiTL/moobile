@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cmd/host_native.mbt
-@@ -0,0 +1,310 @@
+@@ -0,0 +1,365 @@
 +///|
 +/// 宿主能力通道（PLAN §3.6 的 N2）。
 +///
@@ -258,6 +258,61 @@
 +  #|   if (v === undefined || v === null) return null;
 +  #|   return typeof v === "string" ? v : JSON.stringify(v);
 +  #| }
++
++///|
++/// **动作（`invoke`）** —— 能力通道的**第三类形状**（读 = `read`，订阅 = `subscribe*`，动作 = `invoke`）。
++///
++/// ## 为什么要有这一类（2026-10-07）
++///
++/// "推一下地址栏"（`url.push` / `url.replace`）**既不是读也不是订阅**：读是"问现在是什么"，
++/// 订阅是"变了告诉我"，而它是"**让宿主去做一件事**"。缺这一类，凡是"做一件事"的能力
++/// （推地址、滚到某处、写到剪贴板、弹对话框）都只能各自去 `@dom` 里挖 —— 而那正是
++/// **在 RN 上会抛**的那一类（`tools/cap_platform.mjs` 里"会抛/静默给错值"的全部来源）。
++///
++/// ## 纪律：动作不许是一个"能塞任何东西的洞"
++///
++/// 每个动作要**具名 + 声明载荷形状 + 声明哪端实现**，并**进 `tools/cap_platform.mjs` 的 `ACTIONS` 表**。
++/// **未声明的动作 = 判据能看见的缺口**，不是运行时才发现（这条纪律在 `current_url` 上实证过一次：
++/// 新公开 API 不标"哪端可用"，门当场报 `FAIL … 但 PUBLIC_API 里没有它`）。
++///
++/// 契约（与 `read_json` 同一条取舍）：
++/// · 宿主**没登记这个动作**（`cap.invoke` 不是函数）⇒ `None` —— **由调用方决定退化还是 abort**；
++/// · 宿主登记了、但**回包形状不对** ⇒ 也在调用方那一侧判（别把"没实现"和"实现坏了"混成一个 `None`）。
++///
++/// ⚠️ **载荷/回包都是字符串**：与 `read_json` 一样，复杂形状由**能力自己的契约**决定
++/// （谁声明谁解析），这一层只管把字节递过去。
++#cfg(target="js")
++extern "js" fn invoke_ffi(
++  cap : HostCapability,
++  action : String,
++  payload : String,
++) -> @js.Nullable[String] =
++  #| (cap, action, payload) => {
++  #|   if (typeof cap.invoke !== "function") return null;
++  #|   const v = cap.invoke(action, payload);
++  #|   if (v === undefined || v === null) return null;
++  #|   return typeof v === "string" ? v : JSON.stringify(v);
++  #| }
++
++///|
++#cfg(target="js")
++pub fn HostCapability::invoke(
++  self : HostCapability,
++  action : String,
++  payload : String,
++) -> String? {
++  invoke_ffi(self, action, payload).to_option()
++}
++
++///|
++#cfg(not(target="js"))
++pub fn HostCapability::invoke(
++  _self : HostCapability,
++  _action : String,
++  _payload : String,
++) -> String? {
++  None
++}
 +
 +///|
 +/// **这个运行时有没有 DOM？**

@@ -40,4 +40,8 @@ members = [
   // ★ 从 `interest/yi` 迁移过来的真实应用（由 `moobile-host create --from-rabbita` 生成）：
   //   它是第一个"真实应用"样本，也是三端（web / 桌面 / app）宿主骨架的载体。
   "examples/apps/zhouyi-reader",
+  // 路由地基试金石（2026-10-07）：它验的是**现役宿主（react_host）**上
+  // `on_url_changed` / `on_url_request` / `on_visibility_change` 三条订阅到底推不推值 ——
+  // 前两条此前只到逻辑层（`sub_url_wbtest.mbt`），真浏览器是一次都没量过。
+  "examples/apps/route-spike",
 ]

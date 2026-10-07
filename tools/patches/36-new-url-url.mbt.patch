@@ -1,0 +1,74 @@
+--- a/url/url.mbt
++++ b/url/url.mbt
+@@ -109,6 +109,13 @@
+ 
+ ///|
+ pub fn parse(url : String) -> Url raise Error {
++  // ⚠️ **先切 `#`，再在它之前那半段切 `?`**（2026-10-07 修）。
++  //
++  // 老实现反着来（先 `?` 再在"问号之前"找 `#`），于是 `#/s/baz?s=sec-2` 被拆成
++  // "query 在外、fragment 在内" —— **与真实地址不符**，`to_string()` 还回去是另一条 URL。
++  // 真浏览器实测（`examples/apps/route-spike/`）：
++  //   地址栏 `http://h/#/s/baz?s=sec-2&v=raw` ⇒ 老实现读出 `?s=sec-2&v=raw` + `#/s/baz`。
++  // RFC 3986 里 **fragment 是最后一段、可以含 `?`**，所以 `#` 必须先切。
+   let (protocol, remain) = match url.split("://").collect() {
+     ["http", remain] => (Http, remain)
+     ["https", remain] => (Https, remain)
+@@ -116,17 +123,25 @@
+     [remain] => (Other(""), remain)
+     _ => fail("Invalid protocol")
+   }
+-  let (mid, query_and_fragment) = match remain.split("?").collect() {
+-    [mid, remain] => (mid, remain)
+-    [mid] => (mid, "")
+-    _ => fail("Invalid host")
+-  }
+-  let (mid_part, fragment1) = match mid.split("#").collect() {
+-    [mid, fragment] => (mid, Some(fragment))
+-    [mid] => (mid, None)
++  // ① 先切 fragment（第一个 `#` 之后**全部**算 fragment，允许里面再有 `#` 与 `?`）
++  // `[head, .. rest]` 已经覆盖了"没有 `#`"（那时 rest 为空）⇒ 不需要单独的 `[head]` 分支
++  // （实测加了它只会得到一条 `unreachable_code` 警告）。
++  let (before_hash, fragment) = match remain.split("#").collect() {
++    [head, .. rest] =>
++      if rest.is_empty() {
++        (head, None)
++      } else {
++        (head, Some(rest.iter().map(StringView::to_owned).join("#")))
++      }
+     _ => fail("Invalid fragment")
+   }
+-  let (mid, path) = match mid_part.split("/").collect() {
++  // ② 再在 `#` 之前那半段里切 query（没有 `?` ⇒ 没有 query）
++  let (mid, query) = match before_hash.split("?").collect() {
++    [mid, q] => (mid, if q.is_empty() { None } else { Some(q.to_owned()) })
++    [mid] => (mid, None)
++    _ => fail("Invalid query")
++  }
++  let (mid, path) = match mid.split("/").collect() {
+     [mid] => (mid, "")
+     [mid, .. paths] => (mid, paths.iter().map(StringView::to_owned).join("/"))
+     _ => fail("Invalid host")
+@@ -143,22 +158,5 @@
+     [host] => (host.to_owned(), None)
+     _ => fail("Invalid host")
+   }
+-  let (query, fragment2) = match query_and_fragment.split("#").collect() {
+-    [query, fragment] => (Some(query.to_owned()), Some(fragment))
+-    [query] =>
+-      if query.is_empty() {
+-        (None, None)
+-      } else {
+-        (Some(query.to_owned()), None)
+-      }
+-    [] => (None, None)
+-    _ => fail("Invalid query")
+-  }
+-  let fragment = match (fragment1, fragment2) {
+-    (Some(f1), Some(f2)) => Some("\{f1}#\{f2}")
+-    (Some(f), None) => Some(f.to_owned())
+-    (None, Some(f)) => Some(f.to_owned())
+-    (None, None) => None
+-  }
+   { protocol, host, port, path, query, fragment, }
+ }

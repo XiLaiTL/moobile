@@ -56,8 +56,14 @@ const PUBLIC_API = {
     on_resize: { rn: 'host-cap', note: '宿主能力 native.geometry（RN → Dimensions）；载荷走 subscribe_json 严格解。真机**未**验' },
     current_viewport: { rn: 'host-cap', note: '读一次当前视口（同步）：宿主能力 native.geometry.**read()**（RN → Dimensions.get），问不到回退 DOM（`window.innerWidth`）—— 与 on_resize 的订阅互补（两端都不补发初始值）。第十一轮补，起因：应用读不到窗口宽度 ⇒ 画布一直画在回落值上' },
     on_scroll: { rn: 'web-only', note: '⚠️ **不是「待接」，是语义不成立**：Web 上它报文档级滚动，RN 没有文档级滚动（滚动在 ScrollView 内部、是组件 prop）→ 替代物在**组件通道**，宿主能力换不掉一个不存在的语义。现在装载时**明确 abort**，不再静默给 0' },
-    on_url_changed: { rn: 'host-cap', note: '不是能力注册表，是**既有的** Scheduler 注入器：sub 把注入器交给宿主，宿主调 Context::inject_url_changed 驱动。有 DOM 时同时挂 popstate（Web 老行为不变）；**没有 DOM 时一个 DOM API 都不碰**（原来无条件挂 popstate → RN 上装载就抛）' },
-    on_url_request: { rn: 'host-cap', note: '同 on_url_changed（注入器）；同源判断的基准 URL 走 Context::get_origin —— 原来读 window.location.href，RN 上没有 location 会抛' },
+    current_url: { rn: 'host-cap', note: '读一次当前 URL（同步）：宿主能力 url.**read()** 优先，问不到回退 DOM（`window.location.href`，受 host_has_dom 保护）；两端都拿不到 ⇒ **None**（不猜、不给空串）。与 on_url_changed 互补 —— 后者**首屏不推**（2026-10-07 真浏览器实测），没这一条"进来时我在哪"永远拿不到。⚠️ RN 侧**待查实**：`Linking.getInitialURL` 是异步的，要拿它当同步读得宿主先缓存一份' },
+    on_url_changed: { rn: 'host-cap', note: '不是能力注册表，是**既有的** Scheduler 注入器：sub 把注入器交给宿主，宿主调 Context::inject_url_changed 驱动。有 DOM 时同时挂 popstate（Web 老行为不变）；没有 DOM 时一个 DOM API 都不碰（原来无条件挂 popstate → RN 上装载就抛）。Web 侧（2026-10-07 真浏览器实测，examples/apps/route-spike/drive.mjs）：**只有 popstate 那一档会推** —— 改 hash / 后退 / 前进 / 点同文档 a[href] 都推（载荷 = 完整 URL；hash 模式下路由在 fragment 里、path 为空），pushState / replaceState **不推**（不产生 popstate），**首屏也不推**（挂载时不读一次地址栏）' },
+    // ── **动作型**（第三类形状：读 = read、订阅 = subscribe、动作 = invoke）──
+    // 载荷形状：`url.push` / `url.replace` 收一个**完整 URL 字符串**（`host_capability("url").invoke(action, url)`）。
+    // ⚠️ 动作**必须登记在这里**：未声明的动作 = 判据能看见的缺口（DESIGN-ROUTER §6.5）。
+    push_url: { rn: 'host-cap', note: '**动作**：`url` 能力的 `invoke("push", url)`（宿主登记 up=由宿主实现）→ 没有宿主登记时，**有 DOM 就自己来**（`@dom.window().push_url`）**并补一次本地回声**（走 `inject_url_changed`，与 popstate **同形**；实测 pushState 不产生 popstate）；**两头都没有 ⇒ abort**（同 on_scroll 那条取舍）。Web ✅ · RN 待宿主登记' },
+    replace_url: { rn: 'host-cap', note: '同上（`invoke("replace", url)` / `@dom.window().replace_url`）。语义差别：不新增历史条目（"同一条路由只换装饰参数"用它）' },
+    on_url_request: { rn: 'host-cap', note: '同 on_url_changed（注入器）；同源判断的基准 URL 走 Context::get_origin —— 原来读 window.location.href，RN 上没有 location 会抛。Web 侧：**没有任何调用点**（代码里只有 trait 声明与各处 impl；13 组真动作里计数恒为 0）⇒ 想用它做深链入口，得自己接一条桥' },
     on_key_down: { rn: 'web-only', note: '移动端没有全局键盘' },
     on_key_up: { rn: 'web-only', note: '同上' },
     on_mouse_move: { rn: 'web-only', note: '触屏没有 hover/指针移动；手势走 RN responder' },
@@ -124,6 +130,11 @@ const DOM_INVENTORY = {
     'window.scroll_x': { cls: 'web-only', rnFails: 'throw', note: 'on_scroll：RN 上语义不成立，现在**装载时就 abort 报错**（不再静默给 0）' },
     'window.scroll_y': { cls: 'web-only', rnFails: 'throw', note: '同 scroll_x' },
     'window.current_url': { cls: 'guard', rnFails: 'ok', note: '受 host_has_dom 保护：RN 上走 Context::get_origin（on_url_request）或由宿主注入（on_url_changed），**不会走到这里**' },
+    // 动作通道（2026-10-07）：`push_url` / `replace_url` 的 DOM 那一条路 ——
+    // **只有 `host_has_dom()` 为真才会走到**（见 `vendor/rabbita/sub/url_action.mbt`），
+    // 两头都没有（RN 且宿主没登记 `url.invoke`）⇒ **abort**，不静默。
+    'window.push_url': { cls: 'guard', rnFails: 'ok', note: '`sub.push_url` 的 Web 实现：受 host_has_dom 保护；RN 走宿主动作 `url.invoke("push", …)`，未登记则 **abort**' },
+    'window.replace_url': { cls: 'guard', rnFails: 'ok', note: '同 window.push_url（宿主动作 `url.invoke("replace", …)`）' },
     'window.add_event_listener': { cls: 'guard', rnFails: 'ok', note: 'popstate 受 host_has_dom 保护；scroll 那一支在 RN 上会先 abort（也走不到）；resize 已改走宿主能力' },
     'document': { cls: 'todo', rnFails: 'throw', note: '接收者本身；RN 上 `document` 未定义 → ReferenceError' },
     'document.hidden': { cls: 'host-cap', rnFails: 'ok', note: 'on_visibility_change（RN → AppState）—— 走宿主能力，不碰 document' },

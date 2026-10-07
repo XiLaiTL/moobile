@@ -1,0 +1,31 @@
+--- a/url/url_test.mbt
++++ b/url/url_test.mbt
+@@ -150,3 +150,28 @@
+     ),
+   )
+ }
++
++///|
++/// **往返一致**：`parse` 之后再 `to_string`，必须回到原串。
++///
++/// 2026-10-07 加：hash 路由下**装饰参数长在 fragment 里**（`#/s/baz?s=sec-2`），
++/// 而老实现"先切 `?` 再找 `#`"会把它们拆到错的地方 —— 于是 `to_string()` 还回去是**另一条 URL**。
++/// 下面的 fixture 直接取自 `examples/apps/route-spike/drive.mjs` 的真读数。
++test "round_trip_fragment_with_query" {
++  let a = "http://127.0.0.1:7208/#/s/baz?s=sec-2&v=raw"
++  @debug.debug_inspect(
++    @url.parse(a).to_string(),
++    content="\"http://127.0.0.1:7208/#/s/baz?s=sec-2&v=raw\"",
++  )
++  @debug.debug_inspect(@url.parse("http://h/#/s/baz").to_string(), content="\"http://h/#/s/baz\"")
++  // 老顺序（`#` 在 `?` 之后）—— 这条以前就是对的，别改坏
++  @debug.debug_inspect(
++    @url.parse("http://h/a/b?x=1#frag").to_string(),
++    content="\"http://h/a/b?x=1#frag\"",
++  )
++  // fragment 里再有 `#`
++  @debug.debug_inspect(@url.parse("http://h/p#a#b").to_string(), content="\"http://h/p#a#b\"")
++  // 两个字段**各就各位**：只有真在 `#` 之前那半段里的才算 query
++  @debug.debug_inspect(@url.parse(a).fragment, content="Some(\"/s/baz?s=sec-2&v=raw\")")
++  @debug.debug_inspect(@url.parse(a).query, content="None")
++}

@@ -64,6 +64,17 @@ FORWARD = [
     ("cmd", "cmd"),     # Cmd / Emit（update 的返回与副作用）
     ("sub", "sub"),     # Sub（订阅：定时器、传感器…）
     ("http", "http"),   # 网络请求（同步链路）
+    # `url`：**路由与深链的载荷类型**（`on_url_changed` 推的是 `@url.Url`、`on_url_request` 是
+    # `@url.UrlRequest`）。2026-10-07 实测：不加它，消费者**能订到却命名不了** ——
+    # `sub/pkg.generated.mbti` 的公开签名里就写着 `@url.Url`，而根上没有 `url/`，
+    # 于是应用没法把它存进 Model、也没法匹配 `Protocol`（只能调方法）。
+    # ⚠️ **路由自带一个 URL 类型是明确不选的**：一个仓里两个 URL 概念，边界上到处转换，
+    #    而且"哪个是真源"永远说不清（裁定见 `docs/design/DESIGN-ROUTER.md` §8）。
+    ("url", "url"),
+    # `common`：**同步读与订阅的载荷**都从这里来 —— `sub.current_viewport()` 返回 `@common.Viewport`，
+    # `on_key_down` / `on_mouse_move` / `on_scroll` 的载荷是 `@common.Keyboard/Mouse/Scroll`。
+    # 与 `url` 同一条分界线：**消费者会收下并可能存进 Model 的数据，必须可命名**。
+    ("common", "common"),
 ]
 
 # 转发包**可以有手写扩展**：`<转发包名>` → 那个包里有哪些**手写**文件、它们要哪些额外 import。
@@ -122,6 +133,100 @@ VALUE_DECL = re.compile(r"^pub (?:fn\[[^\]]*\]|fn|let)\s+?([A-Za-z_][A-Za-z0-9_]
 METHOD_DECL = re.compile(r"^pub fn(?:\[[^\]]*\])?\s*([A-Za-z_][A-Za-z0-9_]*)::")
 USING_DECL = re.compile(r"^pub using @\w+ \{([^}]*)\}")
 
+
+# 允许"公开签名里出现、但根上不转发"的包 —— **每条都要写理由**（别默默加）。
+#
+# 判据的由来（2026-10-07）：`sub` 的公开签名里写着 `@url.Url`，而根上没有 `url/`，
+# 于是消费者**能订到 `on_url_changed` 却命名不了它的载荷类型**（只能调方法，不能存进 Model）。
+# 这不是"设计取舍"，是**生成器清单漏了一个** —— 同类错误一定会再犯，所以让它有判据。
+COVERAGE_ALLOW = {
+    # 包名（路径最后一段）→ 为什么允许不转发。**每条都要能被挑战**，别默默加。
+    #
+    # 分界线（2026-10-07 定的口径）：**"消费者会收下并可能存进 Model 的数据"必须可命名**；
+    # 只在回调里就地消费的事件对象、以及内部管道类型，可以不转发（要用时走 vendor 路径）。
+    "core": "标准库（moonbitlang/core/*），消费者本来就能命名",
+    "dom": "DOM 事件对象（`MouseEvent`/`KeyboardEvent`）—— 只在 `on_*` 回调里就地消费，"
+           "不鼓励存进 Model；真要用就 import vendor 路径",
+    "vdom": "低层事件载荷（`@vdom.Event`）—— 同上，且 `html` 包把它包在自己的 helper 里",
+    "ref": "`@ref.Ref[...]` 只出现在 `event_decoders` 这类低层值上，应用侧不用碰",
+    "vector": "`@vector.Vector` 只在 trait impl 的签名里出现（`IsChildren`），不构造它",
+    "list": "同上（`IsChildren` 的 impl 签名）",
+    "json": "同上（低层解码签名）",
+    "debug": "`derive(Debug)` 的产物（`@debug.Debug`），消费者不命名它",
+}
+
+def referenced_foreign_types(mbti_path):
+    """公开签名里引用的外部类型：返回 [(alias, TypeName, line)]。
+
+    alias 从 mbti 的 import 块推（`"…/rabbita/url"` → alias = 路径最后一段）。
+    ⚠️ 用 `splitlines()`（不是 split("\n")）—— 免得给本文件塞进转义。
+    """
+    txt = open(mbti_path, encoding="utf-8").read()
+    aliases = set()
+    for m in re.finditer(r'"([^"]+)"', txt):
+        aliases.add(m.group(1).rsplit("/", 1)[-1])
+    out = []
+    for line in txt.splitlines():
+        st = line.strip()
+        if st.startswith("//") or st.startswith("import") or st in ("{", "}"):
+            continue
+        for m in re.finditer(r"@([A-Za-z_][A-Za-z0-9_]*)\.([A-Z][A-Za-z0-9_]*)", line):
+            if m.group(1) in aliases:
+                out.append((m.group(1), m.group(2), st))
+    return out
+
+def root_packages():
+    """根上真实存在的包（生成的转发包 + 手写的包装，如 `style/` / `canvas/` / `sqlite/`）。
+
+    判据要认它们：消费者**能 import** 就算"可命名"，至于是生成的还是手写的与判据无关。
+    """
+    out = set()
+    for name in os.listdir(ROOT):
+        d = os.path.join(ROOT, name)
+        if os.path.isdir(d) and os.path.exists(os.path.join(d, "moon.pkg")):
+            out.add(name)
+    return out
+
+def check_coverage():
+    """**公开面可命名类型不许漏**：转发的包，其公开签名引用的外部包也必须在根上可命名。
+
+    ⚠️ `.mbti` 是**构建产物、刻意不入库**（见 `ensure_mbti`）⇒ 本模式也必须先确保它们在，
+    用完删掉这一次新建的。**不这么做，就会在"刚 clone 干净树"上得到一条假红** ——
+    判据的读数不许取决于"本机跑没跑过 `moon info`"（本仓写下的教训）。
+    """
+    needed = [os.path.join(ROOT, VENDOR, v, "pkg.generated.mbti") for _, v in FORWARD]
+    created, _ran = ensure_mbti(needed)
+    try:
+        return _check_coverage_inner()
+    finally:
+        for p in created:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+def _check_coverage_inner():
+    forwarded = {vendor for _, vendor in FORWARD} | root_packages()
+    missing = {}
+    for _fwd, vendor in FORWARD:
+        mbti = os.path.join(ROOT, VENDOR, vendor, "pkg.generated.mbti")
+        if not os.path.exists(mbti):
+            print(f"ERROR: 缺少 {os.path.relpath(mbti, ROOT)}（`moon info` 没产出它）")
+            return 2
+        for alias, type_name, line in referenced_foreign_types(mbti):
+            if alias in forwarded or alias in COVERAGE_ALLOW or alias == vendor:
+                continue
+            missing.setdefault(alias, []).append((vendor, type_name, line))
+    if not missing:
+        print("公开面可命名类型覆盖 ✓（转发包签名里引用的外部包都转发了）")
+        return 0
+    print("ERROR: 这些包在**公开签名**里被引用，但根上没有转发 ⇒ 消费者能拿到却命名不了：")
+    for alias, hits in sorted(missing.items()):
+        print(f"  · @{alias} —— 出现在 {len(hits)} 处，例如：")
+        for vendor, type_name, line in hits[:3]:
+            print(f"      [{vendor}] {type_name}: {line[:96]}")
+    print("  修：把 `" + "、".join(sorted(missing)) + "` 加进 FORWARD（或写进 COVERAGE_ALLOW 并给出理由）")
+    return 2
 
 def parse_mbti(path):
     """从 .mbti 里抽出可转发的名字，返回 (types, traits, values)。"""
@@ -299,8 +404,14 @@ def save_cache(key, want):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--coverage", action="store_true",
+                    help="只查覆盖：转发包公开签名里引用的外部包，是否也在根上可命名")
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
+
+    # `--coverage` 只查"公开面可命名类型"，不生成、不比对 —— 先短路
+    if args.coverage:
+        return check_coverage()
 
     # 模块名从 moon.mod 读，避免写死
     global MODNAME

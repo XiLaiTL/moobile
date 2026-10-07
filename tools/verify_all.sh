@@ -98,6 +98,9 @@ run "外部模块可用性（check_external）" bash tools/check_external.sh
 # 转发包（根上的 html/ cmd/ sub/ http/）是从 vendor 的 .mbti **生成**的，生成物入库 → 能 diff。
 # 改了 vendor/rabbita/** 或升级 fork 之后忘了重跑生成器，就会在这里红。
 run "转发包与 mbti 一致（gen_forwarders --check）" bash tools/py.sh tools/gen_forwarders.py --check
+# 覆盖判据（2026-10-07 加）：转发包的**公开签名**里引用的外部包，也必须在根上可命名。
+# 由来：`sub` 的签名里写着 `@url.Url` 而根上没有 `url/` ⇒ 消费者能订到却命名不了（路由那一刀逼出来的）。
+run "公开面可命名类型覆盖（gen_forwarders --coverage）" bash tools/py.sh tools/gen_forwarders.py --coverage
 
 # F1 迁移动检：**两个实现逐项对账**（MoonBit 版是 F1 的真源，JS 版要随 npm 包发给使用者）。
 # 为什么要这条门：F1 与 E9 是两条腿 —— `create --from-rabbita` 用的是 JS 那份扫描器，
@@ -412,7 +415,7 @@ if [ "$WITH_E2E" = "1" ]; then
     if [ "$acode" = "200" ]; then
       run "同步 14 项（sync_probe.js）" node tools/sync_probe.js
     else
-      skip "同步 14 项（sync_probe.js）" "后端不在 8787（cd server && moon build --target native && ./_build/native/debug/build/moobile-todo-server.exe）"
+      skip "同步 14 项（sync_probe.js）" "后端不在 8787（cd examples/services/todo-server && moon build --target native && ./_build/native/debug/build/moobile-todo-server.exe）"
     fi
   else
     skip "Web UI 27 项（tools/verify_web.js）" "Metro 不在 8081（cd host && npx expo start --port 8081）"

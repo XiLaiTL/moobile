@@ -294,7 +294,7 @@
  pub fn every(ms : Int, cmd : @cmd.Cmd) -> Sub {
    custom_sub("every(\{ms})", Local, Every(ms, cmd), builtin_sub_loader)
  }
-@@ -370,15 +520,80 @@
+@@ -370,15 +520,158 @@
  /// Subscribe to window resize events.
  ///
  /// The handler receives the latest viewport width and height.
@@ -364,6 +364,84 @@
 +}
 +
 +///|
++/// **读一次当前 URL**（同步）。
++///
++/// 与 `on_url_changed` 互补 —— 而这一条是**实测逼出来的**（2026-10-07，真 Chrome + CDP，
++/// `examples/apps/route-spike/drive.mjs`）：`on_url_changed` **只在 popstate 那一档推**
++/// （改 hash / 后退 / 前进 / 点同文档 `<a>` 都推），而 **`pushState` / `replaceState` 不推、首屏也不推**。
++/// ⇒ 只有订阅没有同步读的话，**"进来的时候我在哪"永远拿不到**（首屏是瞎的）。
++///
++/// 取值顺序与 `current_viewport()` 同一套：
++/// ① **宿主能力优先**（`url` 的 `read`，RN 侧要宿主登记）；
++/// ② 问不到 → **回退 DOM**（`window.location.href`）；
++/// ③ 连 DOM 都没有 → `None`（**不猜**、不给空串，理由同 `current_viewport`）。
++///
++/// ⚠️ 回退那一步**先问 `host_has_dom()`**：RN 上 `window` 存在而 `location` 不存在，
++/// 直接读会抛（这正是 `on_url_changed` 那条订阅当年在原生端装载就炸的原因）。
++///
++/// **平台**：Web ✅（DOM）· RN **待查实**（宿主需登记 `url.read`；`Linking.getInitialURL` 是异步的，
++/// 要拿它当同步读得宿主先缓存一份）。
++///
++/// 见 `tools/cap_platform.mjs` —— 「哪端可用」那张表是**机器校验**的（漂了就红）。
++pub fn current_url() -> String? {
++  // ① 宿主能力优先（RN）。载荷不是字符串 ⇒ **当场报错**，别静默退化成 None。
++  match @cmd.host_capability("url") {
++    Some(cap) =>
++      match cap.read_json() {
++        Some(payload) =>
++          match url_of_payload(payload) {
++            Some(u) => return Some(u)
++            None => abort_bad_url(payload)
++          }
++        None => ()
++      }
++    None => ()
++  }
++  // ② DOM 回退（Web）
++  if @cmd.host_has_dom() {
++    let href = @dom.window().current_url()
++    if href != "" {
++      return Some(href)
++    }
++  }
++  None
++}
++
++///|
++/// 宿主报上来的 `url` 载荷 → 字符串。契约：一个 JSON 字符串，或 `{"href": "…"}`。
++///
++/// 与 `viewport_of_payload` 一样，**形状不对就报错**（不猜、不退化）。
++fn url_of_payload(payload : String) -> String? {
++  let t = payload.trim()
++  if t.length() >= 2 && t[0] == '"' && t[t.length() - 1] == '"' {
++    return Some(t[1:t.length() - 1].to_owned())
++  }
++  // `{"href":"…"}`：只认这一个键（多写少写都算作者错误）
++  let key = "\"href\""
++  match t.find(key) {
++    Some(i) => {
++      let rest = t[i + key.length():].trim_start()
++      if rest.length() > 0 && rest[0] == ':' {
++        let v = rest[1:].trim_start()
++        if v.length() >= 2 && v[0] == '"' {
++          match v[1:].find("\"") {
++            Some(j) => return Some(v[1:j + 1].to_owned())
++            None => ()
++          }
++        }
++      }
++      None
++    }
++    None => None
++  }
++}
++///|
++/// 宿主报上来的 `url` 载荷看不懂时**当场报错**（不猜、不退化）—— 与 `abort_bad_viewport` 同一条取舍。
++fn abort_bad_url(payload : String) -> Unit {
++  abort("宿主登记的 url.read 返回了看不懂的载荷：" + payload + "。契约：JSON 字符串或 {href: ...}，见 sub.current_url 的注释。")
++}
++
++///|
  /// Subscribe to `requestAnimationFrame` ticks.
  ///
  /// The handler receives the browser timestamp for each frame while the
@@ -375,7 +453,7 @@
  pub fn on_animation_frame(msg : @cmd.Emit[Double]) -> Sub {
    custom_sub(
      "on_animation_frame",
-@@ -392,6 +607,12 @@
+@@ -392,6 +685,12 @@
  /// Subscribe to document `keydown` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -388,7 +466,7 @@
  pub fn on_key_down(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_down", Local, Keydown(msg), builtin_sub_loader)
  }
-@@ -400,6 +621,10 @@
+@@ -400,6 +699,10 @@
  /// Subscribe to document `keyup` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -399,7 +477,7 @@
  pub fn on_key_up(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_up", Local, Keyup(msg), builtin_sub_loader)
  }
-@@ -409,6 +634,13 @@
+@@ -409,6 +712,13 @@
  ///
  /// The handler receives `true` when the document is hidden, and `false`
  /// when it becomes visible again.
@@ -413,7 +491,7 @@
  pub fn on_visibility_change(msg : @cmd.Emit[Bool]) -> Sub {
    custom_sub(
      "on_visibility_change",
-@@ -422,6 +654,12 @@
+@@ -422,6 +732,12 @@
  /// Subscribe to document `mousemove` events.
  ///
  /// The handler receives a normalized `Mouse` value from `@common`.
@@ -426,7 +504,7 @@
  pub fn on_mouse_move(msg : @cmd.Emit[Mouse]) -> Sub {
    custom_sub("on_mouse_move", Local, MouseMove(msg), builtin_sub_loader)
  }
-@@ -432,6 +670,19 @@
+@@ -432,6 +748,19 @@
  /// This reports page-level scrolling on `window`, not scrolling of an inner
  /// element. The handler receives the current scroll offset and document scroll
  /// size as a `Scroll` value.
@@ -446,7 +524,7 @@
  pub fn on_scroll(msg : @cmd.Emit[Scroll]) -> Sub {
    custom_sub("on_scroll", Local, Scroll(msg), builtin_sub_loader)
  }
-@@ -442,6 +693,20 @@
+@@ -442,6 +771,20 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.
@@ -467,7 +545,7 @@
  pub fn on_url_changed(msg : @cmd.Emit[@url.Url]) -> Sub {
    custom_sub("on_url_changed", Global, UrlChanged(msg), builtin_sub_loader)
  }
-@@ -452,6 +717,15 @@
+@@ -452,6 +795,15 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.

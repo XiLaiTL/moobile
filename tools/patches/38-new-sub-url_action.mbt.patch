@@ -1,0 +1,101 @@
+--- /dev/null
++++ b/sub/url_action.mbt
+@@ -0,0 +1,98 @@
++// vendor/rabbita/sub/url_action.mbt —— 「动作型」能力的库侧入口：**让宿主去做一件事**。
++//
++// ## 为什么放在 `sub/` 而不是 `DESIGN-ROUTER §6.5` 里写的 `cmd/`
++//
++// 那个清单是按"形状属于能力通道"写的（`HostCapability::invoke` 也落在 `cmd/` ✓）。
++// 但**实现**要用 `@dom`（Web 那条路），而 `cmd/moon.pkg` 没有 import `dom`：
++// 从 `cmd` 加这条依赖，等于给"能力通道的底层包"再背一个 DOM 包；而 `sub` **本来就 import 了
++// `dom` + `cmd` + `url`**，且它的职责正是"运行时与宿主之间那层"（订阅、视口、可见性都在这儿）。
++// ⇒ **换包不比改依赖面更划算**：形状在 `cmd`，入口在 `sub`。
++//
++// ## 三个动作（§6.5 的裁定）
++//
++// ① **先问宿主动作**（`url.push` / `url.replace`）—— RN 侧将来由宿主登记，库不知道 RN 的存在；
++// ② **有 DOM 就自己来**（`@dom.window().push_url`），**并且自己补一次本地回声**；
++// ③ **两头都没有 ⇒ `abort`** —— 与 `on_scroll` 同一条取舍：宁可在开发期炸一次，
++//    也不要上线后"点了没反应"（用户点一个链接什么都不发生，比红屏更难查）。
++//
++// ## ⚠️ 回声为什么必须由库补（实测，不是设计偏好）
++//
++// `history.pushState` / `replaceState` **不产生 popstate** ⇒ `on_url_changed` **不会推**
++// （2026-10-07 真浏览器实测，`examples/apps/route-spike/drive.mjs`：pushState 之后计数 0）。
++// 也就是说"我自己推完，我的 Model 怎么知道"是**每个调用方都会踩**的同一个坑。
++// 库里补一次 ⇒ 应用侧只需处理"路由变了"这一件事。
++//
++// ## ⚠️⚠️ 回声必须走**与 popstate 同一个入口**（`inject_url_changed`）
++//
++// 应用侧只会写**一套**解析（"我收到一个 URL"）。若回声另造一条"递字符串"的路，
++// 就会出现两种载荷形状 ⇒ 应用得写两套解析，而两套迟早分叉。
++// 所以这里走的是 `scheduler.inject_url_changed(@dom.window().current_url())` ——
++// **与 `sub.mbt` 里 popstate 那条监听器一字不差的同一个入口**（同为 `@url.parse` 的输入）。
++// ⇒ "我推的"与"用户按返回"在应用眼里**完全同形**。
++//
++// 见 `docs/design/DESIGN-ROUTER.md` §6.5 与 `tools/cap_platform.mjs` 的 `ACTIONS` 表
++// （**动作必须登记**：未声明的动作 = 判据能看见的缺口）。
++
++///|
++/// `url.push` / `url.replace` 的公共实现。
++///
++/// `dom_action`：DOM 那条路上具体怎么推（`pushState` 还是 `replaceState`）。
++fn url_action(action : String, url : String, dom_action : (String) -> Unit) -> @cmd.Cmd {
++  @cmd.custom_cmd(fn(sched) {
++    // ① 宿主动作优先（RN 侧将来登记；`cap.invoke` 不是函数 ⇒ `None` = **没实现**）
++    let mut done = false
++    match @cmd.host_capability("url") {
++      Some(cap) =>
++        match cap.invoke(action, url) {
++          Some(_) => done = true
++          // ⚠️ `None` 是"宿主没登记这个动作"，**不是**"实现坏了" ——
++          //    后者由宿主回包的形状在`能力自己的契约`里判（见 `HostCapability::invoke` 的注释）。
++          None => ()
++        }
++      None => ()
++    }
++    // ② 有 DOM 就自己来（Web 老行为），**并补回声**
++    if not(done) && @cmd.host_has_dom() {
++      dom_action(url)
++      done = true
++    }
++    if done {
++      // 回声：与 popstate **同一个入口**（见文件头）——
++      // `inject_url_changed` 的入参就是地址栏那一串，与 popstate 监听器传给它的东西同形。
++      // 回声：与 popstate **同一个入口**（见文件头）——
++      // `inject_url_changed` 的入参就是地址栏那一串，与 popstate 监听器传给它的东西同形。
++      //
++      // 证伪读数（2026-10-07，做完已改回）：把**这一行**注释掉 ⇒ `drive.mjs` 的 `①′` 变成
++      // `url_changed=0` 而**地址栏仍然变**（`/#/s/from-cmd`）—— 即"push 成功"与"应用知道"是两件事，
++      // 而这一行正是后者**唯一**的原因（现场就是 `pushState` 不产生 popstate）。
++      sched.add(sched.inject_url_changed(@dom.window().current_url()))
++    } else {
++      // ③ 两头都没有：不静默失败
++      abort(
++        "url." +
++        action +
++        "：宿主没登记这个动作，运行时也没有 DOM ⇒ 推不了。\n" +
++        "Web 需要 `host_has_dom()`；RN 需要宿主登记 `url` 能力的 `invoke`（见 DESIGN-ROUTER §6.5）。",
++      )
++    }
++  })
++}
++
++///|
++/// **推一条新地址进历史**（`history.pushState` 语义）：调用方点"前进到某页"时用它。
++///
++/// 与 popstate **同形的回声**由本函数补（见文件头）⇒ 调用方不必再问"我刚推的地址生效了吗"。
++///
++/// **平台**：Web ✅（DOM）· RN **待宿主登记**（未登记且无 DOM ⇒ `abort`，不静默）。
++pub fn push_url(url : String) -> @cmd.Cmd {
++  url_action("push", url, fn(u) { @dom.window().push_url(u) })
++}
++
++///|
++/// **换掉当前那条历史**（`history.replaceState` 语义）：不新增历史条目时用它
++/// （例如"同一条路由只换装饰参数"）。
++///
++/// **平台**：同 `push_url`。
++pub fn replace_url(url : String) -> @cmd.Cmd {
++  url_action("replace", url, fn(u) { @dom.window().replace_url(u) })
++}
