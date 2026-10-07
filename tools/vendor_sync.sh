@@ -231,14 +231,24 @@ PY
     PYTHONIOENCODING=utf-8 bash "$ROOT/tools/py.sh" - "$W/base" "$W/ws_pre" "$PATCHDIR" "$FORK_DIRS" "$OUR_NAME" <<'PY'
 import os,sys,subprocess,difflib,re
 base,root,pdir,dirs,ourname=sys.argv[1],sys.argv[2],sys.argv[3],set(sys.argv[4].split()),sys.argv[5]
+# ⚠️ **构建产物不进 patch 系列**（2026-10-07 实测的坑）：`pkg.generated.mbti` 是 `moon info`
+#    的产物、本仓刻意不入库（见 `gen_forwarders.ensure_mbti`），可它会躺在工作区里 ⇒
+#    `--capture` 曾把 **22 条 `.mbti`** 当成 fork 改动写进 patch 系列（还得人肉删）。
+#    判据的读数不许取决于"本机跑没跑过构建" —— 这条与 T1 那次是**同一个根因**。
+SKIP_SUFFIX=('.mbti',)
 def walk(r):
-    o={}
+    o={}; skipped=0
     for dp,dn,fn in os.walk(r):
         for f in fn:
             p=os.path.join(dp,f); k=os.path.relpath(p,r).replace(os.sep,'/')
-            if k.split('/')[0] in dirs: o[k]=p
-    return o
-b,w=walk(base),walk(root)
+            if k.split('/')[0] not in dirs: continue
+            if k.endswith(SKIP_SUFFIX):
+                skipped+=1
+                continue
+            o[k]=p
+    return o,skipped
+b,skipped_b=walk(base)
+w,skipped_w=walk(root)
 # 已有 patch 覆盖哪些路径
 covered={}
 for name in sorted(os.listdir(pdir)):
@@ -265,6 +275,9 @@ for rel in added:
     else:
         nxt+=1; name=f"{nxt:02d}-new-{rel.replace('/','-')}.patch"; mkpatch(rel,None,w[rel],name); print("  新建", name)
 print(f"  capture 完成：改动 {len(changed)} 个、新增 {len(added)} 个")
+# **正面读数**（本仓规矩：过滤/匹配类判据要证明"它确实过滤掉了东西"，否则分不清
+# "没生效"与"生效了没命中"）：这里把跳过的构建产物数目打出来。
+print(f"  跳过构建产物（*.mbti）：工作区 {skipped_w} 个、基准 {skipped_b} 个 —— 它们不进 patch 系列")
 PY
     echo "接着跑：bash tools/vendor_sync.sh --check 确认一致"
     ;;

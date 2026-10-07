@@ -29,7 +29,7 @@
 //
 // 两侧用**同一个读法**，所以 `host/` 的摊平规则在两边同时成立、不会错一边。
 
-import { spawnSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -270,8 +270,43 @@ function prune(value) {
  * @param {string} dir
  * @param {{flatten: Set<string>, ignore: Set<string>}} opts
  */
+/** 绝对路径 → 仓库相对 + 正斜杠（喂给 git 的规范形式）。 */
+function repoRel(abs) {
+  return path.relative(ROOT, abs).split(path.sep).join("/");
+}
+
+/** 被 git 忽略的文件（一次 `git check-ignore --stdin`）——**批量判定**，别逐个 spawn。
+ *
+ * ⚠️ 2026-10-07 两个实测的坑（第一版就是栽在这两处）：
+ *   ① `git ls-files -o -i --exclude-standard -- <dir>` 在 todo-app 上会返回**几十万行**
+ *      （`host/node_modules/**` 全在里面）⇒ `execSync` 直接 **ENOBUFS**；
+ *   ② 而它一抛，我第一版写的是 `catch (e) { return new Set(); }` —— **静默吞掉**，
+ *      于是"过滤没生效"表现得像"过滤生效了但没命中"。判据因此假红了一轮。
+ *      ⇒ 这里改成：失败**打出来**（不吞），并且只用一次批量查询。
+ */
+function gitIgnored(paths) {
+  if (!paths.length) return new Set();
+  try {
+    const out = execSync("git check-ignore --stdin", {
+      cwd: ROOT,
+      encoding: "utf8",
+      input: paths.join(String.fromCharCode(10)),
+    });
+    // ⚠️ 传进去、比出来的都必须是**仓库相对 + 正斜杠**：`path.join` 给的是反斜杠，
+    //    而 git 只认它自己那套路径写法 —— 喂反斜杠它会**一条都不命中**（第二版就这么假红的）
+    return new Set(out.split(String.fromCharCode(10)).filter(Boolean).map((l) => l.trim()));
+  } catch (e) {
+    // `git check-ignore` 在"一个都不忽略"时退 1（不是错）⇒ 只有别的错误才出声
+    const code = e && e.status;
+    if (code !== 1) {
+      console.log("      ! git check-ignore 失败（忽略了文件过滤会不准）：" + String(e.message).slice(0, 90));
+    }
+    return new Set();
+  }
+}
+
 function readTree(dir, opts) {
-  const out = new Map();
+  const candidates = [];      // [rel, abs] —— 先收齐，再一次性问 git"哪些被忽略"
   const walk = (d, base) => {
     for (const name of fs.readdirSync(d).sort()) {
       const abs = path.join(d, name);
@@ -282,15 +317,23 @@ function readTree(dir, opts) {
         walk(abs, opts.flatten.has(name) ? base : rel);
         continue;
       }
-      if (out.has(rel)) {
+      if (candidates.some(([r]) => r === rel)) {
         throw new Error(
           `摊平后路径撞车：${rel} —— \`host/\` 里有一个与外面同名的文件，比对会漏掉一个（先改掉这个同名）`,
         );
       }
-      out.set(rel, fs.readFileSync(abs, "utf8"));
+      candidates.push([rel, abs]);
     }
   };
   walk(dir, "");
+  // **被 git 忽略的文件不参与比对**：由来见下（demo 的 `pkg.generated.mbti` 是本机构建产物，
+  // 干净克隆里没有 ⇒ 不过滤就会"本机红、CI 绿"）。
+  const ignored = gitIgnored(candidates.map(([, abs]) => repoRel(abs)));
+  const out = new Map();
+  for (const [rel, abs] of candidates) {
+    if (ignored.has(repoRel(abs))) continue;
+    out.set(rel, fs.readFileSync(abs, "utf8"));
+  }
   return out;
 }
 
