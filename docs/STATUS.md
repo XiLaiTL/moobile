@@ -17,10 +17,10 @@
 | 东西 | registry 上的 | 工作区里的 | 差异 |
 |---|---|---|---|
 | 月亮包 `XiLaiTL/moobile` | ✅ **`0.6.0`**（**2026-10-07**；`moon publish` 回 **409 duplicate** ⇒ 已在线上；**从 registry 装下来逐个核过**：`("img","Image")` + `src → source` 改写 / `Style::transform` / `scroll_to_node` / `node_rect` / `node_scroll_top` / `node_exists` / `on_node_scroll` / `copy_text` / `open_url` **全在**） | `0.6.0` | **已对齐** ✅ |
-| 宿主包 `moobile-host`（npm） | `0.5.0`（2026-10-04 发布，核过） | **`0.6.0`（已抬版；`publish.sh --dry-run` **打包形态门 10/10**；⏳ 待发 —— 本机 npm token 已失效 `E401`）** | ⏳ **待发** |
+| 宿主包 `moobile-host`（npm） | ✅ **`0.6.0`**（**2026-10-07 发布**，2026-10-07 复核：`npm view moobile-host version --registry=https://registry.npmjs.org/` ⇒ `0.6.0`、`dist-tags.latest = 0.6.0`） | `0.6.0` | **已对齐** ✅ |
 | **契约版本** | 月亮包 `2` / 宿主包 `2` | 两边都是 `2` | 待宿主包发完再终判 |
 
-> ⚠️ **发完宿主包要做的两件事**（别漏）：① `bash npm/moobile-host/publish.sh <6位OTP>`（npm 回 202 是**异步受理**，
+> ⚠️ **发完宿主包要做的两件事**（✅ 2026-10-07 已做）：① `bash npm/moobile-host/publish.sh <6位OTP>`（npm 回 202 是**异步受理**，
 > 约 6 分钟才可见 —— **别拿"刚发完查不到"当"没发出去"**）；② 复核 `npm view moobile-host version --registry=https://registry.npmjs.org/`。
 > 站点那边（`skillpress` 的实例模板）钉的是 `moobile-host: ^0.6.0` —— ⚠️ **0.x 的 `^` 只到下一个 minor**，
 > 所以 npm 上没有 0.6.0 时，新用户 `npm install` 会拿不到宿主（图片那条通道会报"宿主没有注册组件 Image"）。
