@@ -79,7 +79,57 @@
  }
  
  ///|
-@@ -155,28 +218,72 @@
+@@ -95,6 +158,12 @@
+       Some({ unload, update_tagger, })
+     }
+     Keydown(cmd) => {
++      // ⚠️ **捕获阶段**（2026-10-07 实测逼出来的）：非捕获时，**焦点在输入框里**的事件到不了文档
++      //    —— RNW 的 `TextInput` 会把 keydown 拦住（站点实测：搜索框里打字之后按 Esc，
++      //    `on_key_down` **一次都不推**，而浮层关不掉）。捕获阶段先于目标上的处理器，
++      //    所以"浮层里有输入框"这种最常见的形态才成立。
++      //    代价照写：捕获意味着**应用侧拿不到"别人 stopPropagation"这个信号**了 —— 对
++      //    "文档级快捷键"来说这正是想要的语义（快捷键不该被一个输入框吃掉）。
+       let tagger = @ref.Ref(cmd)
+       let listener : @dom.Listener = event => {
+         scheduler.add(
+@@ -102,15 +171,13 @@
+         )
+       }
+       let unload = _ => {
+-        @dom.document()
+-        .as_event_target()
+-        .remove_event_listener("keydown", listener)
++        @dom.document().as_event_target().remove_event_listener_with_options("keydown", listener, capture=true)
+       }
+       let update_tagger = self => {
+         guard self is BuiltinSub::Keydown(new_cmd) else { return }
+         tagger.val = new_cmd
+       }
+-      @dom.document().as_event_target().add_event_listener("keydown", listener)
++      @dom.document().as_event_target().add_event_listener_with_options("keydown", listener, capture=true)
+       Some({ unload, update_tagger, })
+     }
+     Keyup(cmd) => {
+@@ -121,15 +188,14 @@
+         )
+       }
+       let unload = _ => {
+-        @dom.document()
+-        .as_event_target()
+-        .remove_event_listener("keyup", listener)
++        @dom.document().as_event_target().remove_event_listener_with_options("keyup", listener, capture=true)
+       }
+       let update_tagger = self => {
+         guard self is BuiltinSub::Keyup(new_cmd) else { return }
+         tagger.val = new_cmd
+       }
+-      @dom.document().as_event_target().add_event_listener("keyup", listener)
++      // 同 `Keydown`：走捕获阶段（理由见那里）
++      @dom.document().as_event_target().add_event_listener_with_options("keyup", listener, capture=true)
+       Some({ unload, update_tagger, })
+     }
+     MouseMove(cmd) => {
+@@ -155,28 +221,72 @@
      }
      Resize(cmd) => {
        let mut tagger = cmd
@@ -168,7 +218,7 @@
        let mut tagger = cmd
        let listener : @dom.Listener = event => {
          ignore(event)
-@@ -192,6 +299,87 @@
+@@ -192,6 +302,87 @@
          tagger = new_cmd
        }
        @dom.window().as_event_target().add_event_listener("scroll", listener)
@@ -256,7 +306,7 @@
        Some({ unload, update_tagger, })
      }
      UrlChanged(cmd) => {
-@@ -207,27 +395,50 @@
+@@ -207,27 +398,50 @@
          }
        })
  
@@ -320,7 +370,7 @@
          let next = try! @url.parse(href)
          let request = if curr.protocol == next.protocol &&
            curr.host == next.host &&
-@@ -250,22 +461,40 @@
+@@ -250,22 +464,40 @@
      }
      VisibilityChange(cmd) => {
        let mut tagger = cmd
@@ -373,7 +423,7 @@
      }
      _ => None
    }
-@@ -362,6 +591,10 @@
+@@ -362,6 +594,10 @@
  
  ///|
  /// Repeatedly enqueue `cmd` every `ms` milliseconds.
@@ -384,7 +434,7 @@
  pub fn every(ms : Int, cmd : @cmd.Cmd) -> Sub {
    custom_sub("every(\{ms})", Local, Every(ms, cmd), builtin_sub_loader)
  }
-@@ -370,15 +603,158 @@
+@@ -370,15 +606,158 @@
  /// Subscribe to window resize events.
  ///
  /// The handler receives the latest viewport width and height.
@@ -543,7 +593,7 @@
  pub fn on_animation_frame(msg : @cmd.Emit[Double]) -> Sub {
    custom_sub(
      "on_animation_frame",
-@@ -392,6 +768,12 @@
+@@ -392,6 +771,12 @@
  /// Subscribe to document `keydown` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -556,7 +606,7 @@
  pub fn on_key_down(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_down", Local, Keydown(msg), builtin_sub_loader)
  }
-@@ -400,6 +782,10 @@
+@@ -400,6 +785,10 @@
  /// Subscribe to document `keyup` events.
  ///
  /// The handler receives a normalized `Keyboard` value from `@common`.
@@ -567,7 +617,7 @@
  pub fn on_key_up(msg : @cmd.Emit[Keyboard]) -> Sub {
    custom_sub("on_key_up", Local, Keyup(msg), builtin_sub_loader)
  }
-@@ -409,6 +795,13 @@
+@@ -409,6 +798,13 @@
  ///
  /// The handler receives `true` when the document is hidden, and `false`
  /// when it becomes visible again.
@@ -581,7 +631,7 @@
  pub fn on_visibility_change(msg : @cmd.Emit[Bool]) -> Sub {
    custom_sub(
      "on_visibility_change",
-@@ -422,6 +815,12 @@
+@@ -422,6 +818,12 @@
  /// Subscribe to document `mousemove` events.
  ///
  /// The handler receives a normalized `Mouse` value from `@common`.
@@ -594,7 +644,7 @@
  pub fn on_mouse_move(msg : @cmd.Emit[Mouse]) -> Sub {
    custom_sub("on_mouse_move", Local, MouseMove(msg), builtin_sub_loader)
  }
-@@ -432,8 +831,51 @@
+@@ -432,8 +834,51 @@
  /// This reports page-level scrolling on `window`, not scrolling of an inner
  /// element. The handler receives the current scroll offset and document scroll
  /// size as a `Scroll` value.
@@ -646,7 +696,7 @@
  }
  
  ///|
-@@ -442,6 +884,20 @@
+@@ -442,6 +887,20 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.
@@ -667,7 +717,7 @@
  pub fn on_url_changed(msg : @cmd.Emit[@url.Url]) -> Sub {
    custom_sub("on_url_changed", Global, UrlChanged(msg), builtin_sub_loader)
  }
-@@ -452,6 +908,15 @@
+@@ -452,6 +911,15 @@
  /// This is an app-scoped subscription. It is only active when returned from
  /// the root cell's `subscriptions` callback; if a non-root cell returns it,
  /// the subscription is ignored.

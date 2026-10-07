@@ -8,6 +8,6 @@
 
 ///|
 // 转发 XiLaiTL/moobile/vendor/rabbita/sub 的公开面。
-pub using @vendor {type NodeRect, type RunningSub, type Scope, type Sub, type SubLoader, batch, current_url, current_viewport, custom_sub, every, node_rect, node_scroll_top}
-pub using @vendor {none, on_animation_frame, on_key_down, on_key_up, on_mouse_move, on_node_scroll, on_resize, on_scroll, on_url_changed, on_url_request, on_visibility_change, push_url}
-pub using @vendor {replace_url, scroll_to_node}
+pub using @vendor {type NodeRect, type RunningSub, type Scope, type Sub, type SubLoader, batch, current_url, current_viewport, custom_sub, every, node_exists, node_rect}
+pub using @vendor {node_scroll_top, none, on_animation_frame, on_key_down, on_key_up, on_mouse_move, on_node_scroll, on_resize, on_scroll, on_url_changed, on_url_request, on_visibility_change}
+pub using @vendor {push_url, replace_url, scroll_to_node}

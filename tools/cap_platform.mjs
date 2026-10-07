@@ -74,6 +74,7 @@ const PUBLIC_API = {
     // ② 它只有"滚"、没有"量"；③ 它不经能力通道（RN 无 DOM ⇒ 抛），而这组走 `node` 能力的 `invoke`。
     // ⚠️ `push` / `load` / `reload` 那几个 op 才是真没实现（落 `_ => raise Unhandled`）。
     scroll_to_node: { rn: 'host-cap', note: '**动作**：`node` 能力的 `invoke("scrollTo", {"node":"…","block":"start|center|end|nearest"})`，回包 `{"ok":bool,"why":""}`（`ok:false` = 宿主自己找不到那个节点，与"没实现"（回 null）分开）→ 没有宿主登记时**有 DOM 就自己来**（`getElementById` + `scrollIntoView`）；**两头都没有 ⇒ abort**。Web ✅（node-spike 真 Chrome 实测）· RN 待宿主登记' },
+    node_exists: { rn: 'web-only', note: '**问"现在在不在"而不报错**（`node_rect` 找不到会 abort，那是对的；但"还没渲染出来"是正常过程，不能用报错表达）。用途：站点跨页跳锚点时**等新页面挂上**（切页与渲染之间隔着一次 React 提交）。⚠️ 判词是"**能确认它现在就在吗**"：RN（宿主没登记 `node` 能力）**恒 false** ⇒ 依赖它的重试会走到"超时后报错"那条路 —— 刻意如此，恒假会让调用方**明着失败**而不是静默不滚' },
     node_rect: { rn: 'host-cap', note: '读一次（同步）节点矩形，**视口坐标系**：`invoke("measure", {"node":"…"})` 回 `{"x","y","width","height"}` → 问不到回退 DOM（`getBoundingClientRect`）→ 两端都没有 ⇒ **None**（不猜、不给全 0）。⚠️ 节点**不在 DOM 里**会 abort（那是 bug，不是"这个平台没有"）⇒ 不能在 `initial` 里调' },
     node_scroll_top: { rn: 'host-cap', note: '读一次（同步）某个具名节点的 `scrollTop`：`invoke("scrollTop", {"node":"…"})` 回 `{"value":Double}` → 回退 DOM（`element.scrollTop`）→ 否则 **None**。用途：站点正文栏那种**自己滚**的容器 —— `on_scroll` 报的是**文档级**滚动，语义不同。⚠️ **只有一次性读，订阅还没做**' },
     on_url_request: { rn: 'host-cap', note: '同 on_url_changed（注入器）；同源判断的基准 URL 走 Context::get_origin —— 原来读 window.location.href，RN 上没有 location 会抛。Web 侧：**没有任何调用点**（代码里只有 trait 声明与各处 impl；13 组真动作里计数恒为 0）⇒ 想用它做深链入口，得自己接一条桥' },
@@ -154,7 +155,11 @@ const DOM_INVENTORY = {
     'window.add_event_listener': { cls: 'guard', rnFails: 'ok', note: 'popstate 受 host_has_dom 保护；scroll 那一支在 RN 上会先 abort（也走不到）；resize 已改走宿主能力' },
     'document': { cls: 'todo', rnFails: 'throw', note: '接收者本身；RN 上 `document` 未定义 → ReferenceError' },
     'document.hidden': { cls: 'host-cap', rnFails: 'ok', note: 'on_visibility_change（RN → AppState）—— 走宿主能力，不碰 document' },
-    'document.add_event_listener': { cls: 'todo', rnFails: 'throw', note: 'visibilitychange=已接宿主能力；keydown/keyup/mousemove=Web-only（会抛）' },
+    // ⚠️ keydown/keyup 从 2026-10-07 起走 **捕获阶段**（`add_event_listener_with_options(capture=true)`）——
+    //    站点实测：非捕获时"焦点在输入框里"的事件**到不了文档**（RNW 的 TextInput 会拦住它），
+    //    症状是"搜索框里打完字按 Esc，浮层关不掉"。其余用途仍是非捕获。
+    'document.add_event_listener_with_options': { cls: 'todo', rnFails: 'throw', note: '两处：① keydown/keyup 走**捕获阶段**（见上一条的账）；② 节点滚动订阅的 scroll（受 host_has_dom 保护）。RN 上没有 document ⇒ 会抛' },
+    'document.remove_event_listener_with_options': { cls: 'todo', rnFails: 'throw', note: '同上，退订那一侧（幂等；RN 上同样会抛，但那时压根没订上）' },
     'document.query_selector': { cls: 'web-only', rnFails: 'throw', note: '滚动位置助手里的 query_selector("html")' },
     // 节点寻址（2026-10-07，`sub/node.mbt`）：按 `Attrs::id(...)` 写下的名字找节点。
     // RN 上**不会走到这里** —— 先问 `host_has_dom()`，为假就带着说明 abort（不是静默 no-op）。
