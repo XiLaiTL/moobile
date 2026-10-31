@@ -98,6 +98,14 @@ jobs:
         working-directory: ${{ env.SITE_DIR }}
         run: npm ci --no-audit --no-fund
 
+      # ⚠️ 新跑者上 `~/.moon/registry/index` 是空的 —— 而 `moon build` 遇到空索引**不会自己去拉**，
+      #    它先打一行 "you may need to run `moon update`"，然后把每个依赖都报成
+      #    "module was not found in the registry"（看起来像"包没发布"，其实只是索引没同步）。
+      #    2026-10-31 本地把 `~/.moon/registry/index` 挪走复现过，四个依赖的报错一字不差；
+      #    `moon update`（Registry index cloned successfully）之后同一条命令通过。
+      - name: 同步 registry 索引（新跑者上没有它）
+        run: moon update
+
       # ⚠️ `press` 不是纯 Node：它**转发**到引擎的 MoonBit CLI（`launcher/skillpress.mjs` →
       #    `<引擎>/_build/js/debug/build/cmd/skillpress/skillpress.js`）。那份产物**不进 git**
       #    （`_build/` 全在 gitignore 里），所以新克隆必须先自己编一次。
