@@ -106,16 +106,16 @@ jobs:
       - name: 同步 registry 索引（新跑者上没有它）
         run: moon update
 
-      # ⚠️ `press` 不是纯 Node：它**转发**到引擎的 MoonBit CLI（`launcher/skillpress.mjs` →
-      #    `<引擎>/_build/js/debug/build/cmd/skillpress/skillpress.js`）。那份产物**不进 git**
-      #    （`_build/` 全在 gitignore 里），所以新克隆必须先自己编一次。
-      #    本机看不出来，是因为那个文件早就躺在 `skillpress/_build/` 里了 ——
+      # ⚠️ `press` 不是纯 Node：它**转发**到引擎的 MoonBit CLI。那份产物**不进 git**
+      #    （`_build/` 全在 gitignore 里），所以新克隆必须先自己编一次 ——
       #    2026-10-31 第一次推上去就红在这：`✗ 这份包还没编出 CLI`。
-      #    命令就是引擎启动器自己写的那条（`moon -C <引擎> build cmd/skillpress --target js`）。
-      #    ⚠️ 必须用 `-C` 站在**引擎根**上编：工作区成员编出来的路径会多一层
-      #    `build/<作者>/<模块>/`，而启动器找的是平铺那条（它两个都认，但只有这条是"独立模块"形状）。
-      - name: 编引擎 CLI（press 的实现在这里，包里不带）
-        run: moon -C skillpress build cmd/skillpress --target js
+      #    修法不是在引擎根上另编一份（`moon -C skillpress build …`）：
+      #    实例的 `moon.work` 把引擎当成员，所以**在实例里 `moon build` 本来就会把 CLI 编出来**
+      #    （路径多一层 `build/XiLaiTL/skillpress/` —— 引擎启动器两个形状都找、并取最新的那份）。
+      #    而且只有走这条，`moon.mod` 里那条替上游擦屁股的 `moonbitlang/parser` 钉版才生效。
+      - name: 构建工作区（同时把 press 要的引擎 CLI 编出来）
+        working-directory: ${{ env.SITE_DIR }}
+        run: moon build --target js
 
       # 两步分开，红了就能一眼看出是"内容印不出来"还是"产物打不出来"。
       - name: 印内容（skills/** → content/ + md/ + llms.txt）
