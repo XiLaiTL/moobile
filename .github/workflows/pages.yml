@@ -1,0 +1,136 @@
+# 站点发布 —— 把 `skills/**` 印成静态站，发到 GitHub Pages
+#
+# 为什么走 Actions 而不把 `dist/` 提交进仓库：
+#   `dist/` 是**产物**（`skills/skillpress/scripts/.skillpress/.gitignore` 里就拦着它）。
+#   提交一次就等于多一份真相，从此"站上是哪一版"要人去对。这里每次从 `skills/**` 重新
+#   `press` → `build`，站点与 skill 永远同源（这正是 skillpress 那条主张：删掉站点不丢任何东西）。
+#
+# ⚠️ 为什么会去检出**第二个仓库**（这是本工作流唯一不显然的一步）：
+#   `skills/skillpress/scripts/.skillpress/` 只是**接线**；程序（引擎 `tools/press.mjs`、界面包
+#   `shell/`、语法资产）在**兄弟仓** `XiLaiTL/skillpress`，而"兄弟"这件事被两处写死：
+#     · `package.json` 的 `SKILLPRESS_ENGINE` 默认值 `../../../../../skillpress`
+#     · `moon.work` 的成员 `../../../../../skillpress`
+#   从实例目录往上 five 层才是工作区根 ⇒ 两个仓必须平铺在**同一个工作区根**下
+#   （`<workspace>/moobile/` 与 `<workspace>/skillpress/`）。所以下面两个 checkout 都带 `path:`，
+#   而不是检出到默认的仓库根 —— 默认布局下那串 `../` 会指到工作区外面去，报的是
+#   "找不到 skillpress"，很容易被当成"引擎没发布"。
+#
+# ⚠️ 前置（一次性，**只能人做**）：仓库 Settings → Pages → Source 选 **GitHub Actions**。
+#   不选的话 `deploy` 那一步会以 404 失败；`GITHUB_TOKEN` 没有 admin 权限，替不了你点这一下。
+#
+# 站点是**整站客户端渲染 + hash 路由**（`#/s/<slug>/`），产物里没有一条以 `/` 开头的资源路径
+#   （`index.html` 引的是 `./bundle.js`）⇒ 直接坐在 `/moobile/` 这个子路径下就能跑：
+#   不需要 basePath，也不需要 404 回退规则。这也是"扔进任何静态服务器就能跑"那句话的兑现。
+
+name: site
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      # 内容源变了 ⇒ 站点该变
+      - "skills/**"
+      # 宿主变了 ⇒ 能力注册表是构建期生成的，产物跟着变
+      - "npm/moobile-host/**"
+      # 流水线本身
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只跑一份；但**不取消**进行中的那一次 —— 发布被打断会留下半套产物
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # 引擎钉在**这个 SHA** 上，不用 `main`：
+  #   程序仓还在动，跟着 `main` 意味着"内容仓的某次 push"可能因为引擎变了而产出不同站点，
+  #   而这次 push 根本没碰内容 ⇒ 归因不了。要升级引擎就改这一行，让它成为一次**看得见**的改动。
+  #   （与 `moon.mod` 里钉 `XiLaiTL/moobile@0.6.0` 是同一条规矩。）
+  SKILLPRESS_REF: 2152d8f4bd284ed65d1ddb9572256f60ab6cc424
+  SITE_DIR: moobile/skills/skillpress/scripts/.skillpress
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出内容仓（moobile）
+        uses: actions/checkout@v4
+        with:
+          path: moobile
+
+      - name: 检出程序仓（skillpress）—— 必须是兄弟目录
+        uses: actions/checkout@v4
+        with:
+          repository: XiLaiTL/skillpress
+          ref: ${{ env.SKILLPRESS_REF }}
+          path: skillpress
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: 工具链版本（读数要对得上本机 DEV.md 那一版）
+        run: |
+          moon version
+          node --version
+
+      # `npm ci` 而不是 `npm install`：锁文件就是这次产物的输入之一。
+      # ⚠️ `moobile-host` 是 `file:` 依赖（吃本仓 `npm/moobile-host` 的源码，不吃 registry），
+      #    它的相对路径按实例目录算 —— 所以这一步只有在上面"两个仓平铺"的布局下才解得开。
+      - name: 装依赖（锁文件为准）
+        working-directory: ${{ env.SITE_DIR }}
+        run: npm ci --no-audit --no-fund
+
+      # 两步分开，红了就能一眼看出是"内容印不出来"还是"产物打不出来"。
+      - name: 印内容（skills/** → content/ + md/ + llms.txt）
+        working-directory: ${{ env.SITE_DIR }}
+        run: npm run press
+
+      - name: 打包（moon build → 宿主 → esbuild → dist/）
+        working-directory: ${{ env.SITE_DIR }}
+        run: npm run build
+
+      # 产物自检：只信"看不见的产物"最容易把"生成好了但没进去"当成已完成。
+      # 少一份就红，并且把缺谁说出来。
+      - name: 产物自检
+        working-directory: ${{ env.SITE_DIR }}
+        run: |
+          set -e
+          test -f dist/index.html || { echo "::error::dist/index.html 不见了"; exit 1; }
+          test -f dist/bundle.js  || { echo "::error::dist/bundle.js 不见了（esbuild 那步没产出）"; exit 1; }
+          test -f dist/llms.txt   || { echo "::error::dist/llms.txt 不见了（Agent 出口少一半）"; exit 1; }
+          test -d dist/md         || { echo "::error::dist/md 不见了（每页原文没拷进去）"; exit 1; }
+          echo "dist 大小：$(du -sh dist | cut -f1)"
+          echo "原文页数：$(find dist/md -name '*.md' | wc -l)"
+          echo "bundle：$(du -h dist/bundle.js | cut -f1)"
+          {
+            echo "### 站点产物"
+            echo '```'
+            echo "bundle $(du -h dist/bundle.js | cut -f1) · 原文 $(find dist/md -name '*.md' | wc -l) 页 · 共 $(du -sh dist | cut -f1)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.SITE_DIR }}/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -10,31 +10,18 @@
 ///| 首页（来自 `skills/skillpress/WEBSITE.md`）。
 pub fn home() -> @shell.Home {
   {
-    title: "skillpress —— 把一堆 skill 印成一个站点",
+    title: "moobile —— 用 MoonBit 写一次 UI，跑 Android / iOS / Web",
     lede: [
-      @shell.P([@shell.Bold("只解决一件事"), @shell.Txt("：把仓库里那批 skill（"), @shell.Code("skills/<名字>/SKILL.md"), @shell.Txt(" 与它的 "), @shell.Code("references/"), @shell.Txt("）印成一个能读的 站点 —— 顶栏是首页的分栏，"), @shell.Bold("书架"), @shell.Txt("是那批 skill，点进去就是"), @shell.Bold("文档区"), @shell.Txt("。 下面三条都在这份仓库的根上跑，而"), @shell.Bold("程序是它旁边的兄弟"), @shell.Txt("（"), @shell.Code("../skillpress/"), @shell.Txt("，它自己是一个 git 仓库）：")]),
-      @shell.Code("bash", "node ../skillpress/bin/skillpress.mjs check      # 门：skill 自己（G1–G8）\nnode ../skillpress/bin/skillpress.mjs press      # 内容源 → 站点内容包\nnode ../skillpress/bin/skillpress.mjs verify     # 判据：真 Chrome 无头，自起静态服务", [("node", 6), (" ../skillpress/bin/skillpress.mjs check      ", 0), ("# 门：skill 自己（G1–G8）", 3), ("\n", 0), ("node", 6), (" ../skillpress/bin/skillpress.mjs press      ", 0), ("# 内容源 → 站点内容包", 3), ("\n", 0), ("node", 6), (" ../skillpress/bin/skillpress.mjs verify     ", 0), ("# 判据：真 Chrome 无头，自起静态服务", 3)]),
-      @shell.Quote([@shell.Txt("三个根别混："), @shell.Bold("程序"), @shell.Txt("在旁边的 "), @shell.Code("../skillpress/"), @shell.Txt("（引擎 + 门 + 语法资产）； "), @shell.Bold("内容"), @shell.Txt("是 "), @shell.Code("skills/**"), @shell.Txt(" —— 站点的"), @shell.Bold("唯一内容源"), @shell.Txt("；"), @shell.Bold("站点实例"), @shell.Txt("在 "), @shell.Code("skills/skillpress/scripts/.skillpress/"), @shell.Txt("（一个\""), @shell.Bold("用"), @shell.Txt("程序\"的 MoonBit 工程： 界面在程序包里，这里只接线）。整套形状见 "), @shell.Code("skills/skillpress/references/layout.md"), @shell.Txt("。 中间那条最容易漏："), @shell.Bold("改了任何内容源就必须重跑 `press`"), @shell.Txt("，否则站点还是旧内容 —— "), @shell.Code("press --check"), @shell.Txt(" 会红，并指出"), @shell.Bold("第一处差异"), @shell.Txt("。")]),
+      @shell.P([@shell.Txt("moobile 是 "), @shell.Link("rabbita", "https://github.com/moonbit-community/rabbita", true), @shell.Txt("（MoonBit 的 TEA 声明式 UI 框架） 的 "), @shell.Bold("React 渲染后端"), @shell.Txt("："), @shell.Code("Model"), @shell.Txt(" / "), @shell.Code("Msg"), @shell.Txt(" / "), @shell.Code("update"), @shell.Txt(" / "), @shell.Code("view"), @shell.Txt(" 与 "), @shell.Code("@html"), @shell.Txt(" DSL 都不变，只把最后一跳从 \"操作 DOM\"换成\"产出 React 元素\"——同一份 MoonBit 代码，经 React Native 上 Android / iOS， 经 react-native-web 上浏览器。布局、排版、文字引擎交给 React / RN，moobile 不自己实现渲染。")]),
+      @shell.P([@shell.Txt("已实测 Web、Android 真机、Electron 真窗口；iOS 的宿主工程能生成，但还没实测。")]),
+      @shell.P([@shell.Txt("这站是那批 skill 的"), @shell.Bold("人读侧"), @shell.Txt("：机器读 "), @shell.Code("md/**"), @shell.Txt(" 原文与 "), @shell.Code("llms.txt"), @shell.Txt("，人读这里，两边出自同一次解析 —— 所以不用在两份文档之间对哪份是新的，改内容只改内容源。")]),
+      @shell.P([@shell.Bold("第一次来"), @shell.Txt("，点顶栏那栏「从零起一个应用」，或直接在左边书架里点第一份 —— 它从 TEA 四件套 一路讲到接上 Expo 宿主跑起来。其余五份按下面这张表选。")]),
+      @shell.Table([[@shell.Txt("你要做的事")], [@shell.Txt("读哪一份")]], [[[@shell.Txt("新建应用、加页面、改视图与样式、接宿主")], [@shell.Code("moobile-app-development")]], [[@shell.Txt("加一个库里没有的组件（写宿主侧 React 实现 + 注册）")], [@shell.Code("moobile-custom-component")]], [[@shell.Txt("用现成的第三方 React / RN 组件库（antd 这类，走 "), @shell.Code("libgen"), @shell.Txt("）")], [@shell.Code("moobile-react-library")]], [[@shell.Txt("把老的 rabbita 项目搬过来（判据是「报告零遗漏」）")], [@shell.Code("moobile-migrate-from-rabbita")]], [[@shell.Txt("改 moobile 本体：库、宿主包、生成器、发版")], [@shell.Code("moobile-library-development")]], [[@shell.Txt("「编过了、界面对，但行为或外观不对」")], [@shell.Code("moobile-pitfalls")]]]),
+      @shell.P([@shell.Txt("每份的主文档都会指到它的 "), @shell.Code("references/"), @shell.Txt(" —— 那才是深水区，按需读，不用一次读完。")]),
+      @shell.P([@shell.Txt("另外两条给读者的："), @shell.Bold("搜索"), @shell.Txt(" "), @shell.Code("⌘K"), @shell.Txt("（Windows 上 "), @shell.Code("Ctrl+K"), @shell.Txt("），命中分「整页 / 某一节」； 每份 skill 的"), @shell.Bold("原文"), @shell.Txt("在 "), @shell.Code("/md/..."), @shell.Txt("，给 agent 的整站索引在 "), @shell.Code("/llms.txt"), @shell.Txt("。")]),
     ],
     sections: [
-      { title: [@shell.Txt("一、站点的形状")], link: "", nav: ([] : Array[@shell.NavItem]), blocks: [
-        @shell.P([@shell.Txt("顶栏分两段：左边是"), @shell.Bold("首页 + 首页的每个 `##`"), @shell.Txt("（点一下换一栏正文），右边一条「文档 / SKILL」切进"), @shell.Bold("书架"), @shell.Txt("； 书架的内容源就是 "), @shell.Code("skills/**"), @shell.Txt("，左侧那棵树是一份 skill → 它的 "), @shell.Code("references/"), @shell.Txt("、"), @shell.Code("scripts/"), @shell.Txt("。")]),
-        @shell.P([@shell.Txt("渲染"), @shell.Bold("在构建期就算完了"), @shell.Txt("：产物是一份 MoonBit 文件 （"), @shell.Code("skills/skillpress/scripts/.skillpress/content/content.generated.mbt"), @shell.Txt("），运行期只做显示。 所以\"站点到底变没变\"是"), @shell.Bold("能查的"), @shell.Txt(" —— 那份产物可 diff、可 "), @shell.Code("--check"), @shell.Txt("，不必靠眼睛看。")]),
-      ] },
-      { title: [@shell.Txt("二、书架上有什么")], link: "", nav: ([] : Array[@shell.NavItem]), blocks: [
-        @shell.P([@shell.Txt("七份 skill 里"), @shell.Bold("六份"), @shell.Txt("上桌，"), @shell.Code("skillpress"), @shell.Txt(" 自己那份"), @shell.Bold("不上"), @shell.Txt(" —— 它是这套工具自己的说明书 （讲怎么写一份 skill、怎么跑那几道门），读者是"), @shell.Bold("改内容的人"), @shell.Txt("，不是来看站点的人。")]),
-        @shell.P([@shell.Txt("不上桌这件事写在仓库根的 "), @shell.Code("skillpress.ignore.md"), @shell.Txt(" 里，"), @shell.Bold("每条都必须带理由"), @shell.Txt("（没写理由就红）： 忽略是\"把东西藏起来\"的机制，它坏掉的样子是"), @shell.Bold("不报错"), @shell.Txt("的 —— 所以每次跑门或生成， 都会把\"跳过了几份 + 逐条理由\"打出来。")]),
-      ] },
-      { title: [@shell.Txt("从哪一份开始")], link: "moobile-app-development", nav: ([] : Array[@shell.NavItem]), blocks: [
-        @shell.Quote([@shell.Txt("这一栏是"), @shell.Bold("纯链接节"), @shell.Txt("（标题本身是一个链接）：点它不会换一栏正文，而是"), @shell.Bold("直接渲染那个目标页"), @shell.Txt("。 目标是书架上的 "), @shell.Code("moobile-app-development"), @shell.Txt(" —— 六份里该先读的那一份。")]),
-      ] },
-      { title: [@shell.Txt("四、去哪看")], link: "", nav: [{ label: "moobile-app-development", key: "moobile-app-development" }, { label: "moobile-custom-component", key: "moobile-custom-component" }, { label: "moobile-library-development", key: "moobile-library-development" }, { label: "moobile-pitfalls", key: "moobile-pitfalls" }], blocks: [
-        @shell.Ul([(0, "", [@shell.Link("moobile-app-development", "moobile-app-development", true), @shell.Code("../moobile-app-development/SKILL.md")]), (0, "", [@shell.Link("moobile-custom-component", "moobile-custom-component", true), @shell.Code("../moobile-custom-component/SKILL.md")]), (0, "", [@shell.Link("moobile-library-development", "moobile-library-development", true), @shell.Code("../moobile-library-development/SKILL.md")]), (0, "", [@shell.Link("moobile-pitfalls", "moobile-pitfalls", true), @shell.Code("../moobile-pitfalls/SKILL.md")])]),
-        @shell.P([@shell.Txt("上面这个列表每一项"), @shell.Bold("整条是一个链接"), @shell.Txt("、目标都是已收录的页 ⇒ 它就是这一栏的"), @shell.Bold("下拉菜单"), @shell.Txt(" （鼠标悬停出来，触摸点一下展开）。两处特判（纯链接节 / 下拉菜单）的判据写在 "), @shell.Code("skills/skillpress/references/site-pipeline.md"), @shell.Txt(" 里。")]),
-      ] },
-      { title: [@shell.Txt("五、门与判据")], link: "", nav: ([] : Array[@shell.NavItem]), blocks: [
-        @shell.P([@shell.Txt("站点的每一处形状都有判据盯着，而不是\"看着对\"："), @shell.Code("check"), @shell.Txt(" 管 skill 自己 （G1–G8：frontmatter / 体量 / 行尾 / 路径 / 脚本 / 禁语 / 指纹），"), @shell.Code("verify"), @shell.Txt(" 管"), @shell.Bold("渲染出来的真页面"), @shell.Txt(" （22 条：顶栏、书架、点进子页、代码块与内容源逐字一致、吸顶、控制台无 error）。")]),
-        @shell.Quote([@shell.Txt("门存在的唯一理由："), @shell.Bold("一个说谎的 skill 比没有 skill 更糟"), @shell.Txt("。顺序永远是 "), @shell.Bold("先改事实的家"), @shell.Txt("（moobile 的 "), @shell.Code("docs/**"), @shell.Txt("），"), @shell.Bold("再改投影"), @shell.Txt("。")]),
+      { title: [@shell.Txt("从零起一个应用")], link: "moobile-app-development", nav: ([] : Array[@shell.NavItem]), blocks: [
       ] },
     ],
   }
@@ -935,7 +922,7 @@ pub fn footer() -> @shell.Footer {
   {
     license: "Apache-2.0",
     generated_at: "",   // 由宿主构建脚本注入（内容包必须逐字节可复现）
-    root_fingerprint: "32f0c0dacb2edf69725ab8e52bcc633a4c300978e7f62c2b8afeb8fdda660cb1",
+    root_fingerprint: "65b79a9ecb83d22d27e2972f631a1e0c961e6fb4fc63f6894fc2b821ab5af5c5",
   }
 }
 

@@ -2,8 +2,9 @@
 
 > 给 Agent 的整站索引：每一份 skill 一段，`原文` 就是它的路径（逐字节等于内容源那份文件）。
 
-## 首页（skillpress —— 把一堆 skill 印成一个站点）
+## 首页（moobile —— 用 MoonBit 写一次 UI，跑 Android / iOS / Web）
 - 原文: skills/skillpress/WEBSITE.md
+- 这个站的页面（每个 `##` 一页，正文就在上面那份原文里）：从零起一个应用
 
 ## moobile 应用开发：从零一个应用、加一个页面 (moobile-app-development)
 - 用 moobile 写应用侧代码（不改库）的入口：TEA 四件套 + 单导出 app()、首帧入口、@html DSL…

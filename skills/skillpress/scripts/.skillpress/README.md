@@ -56,9 +56,32 @@ node verify.mjs      # 判据：**委托**给程序那份（真 Chrome 无头 + 
    判据在程序那边：`tools/acceptance.sh` 的 A2 量"`app.mbt` ≤20 行 + `moon.mod` 直接依赖 + 没有界面副本"。
    ⚠️ 但"吃本地源码"要靠上面的 `moon.work`（**未发布**时才需要）；包一发到 registry，那份工作区文件就可以删。
 2. `verify.mjs` 在**找不到程序**时会 **SKIP**（本目录可以被单独拿走）；真门在程序那边。
-3. 打的是 **dev 模式** bundle（约 6 MB，大头是 react-native-web）；上生产要换 `NODE_ENV=production` + `minify`。
-4. **锚点 / 目录 / 搜索还没做**（语法树已经在手上）；**窄屏没做折叠菜单**。
+3. `npm run build` 打的是 **prod 档**（`NODE_ENV=production` + `minify`，bundle 约 840 KB）；
+   要读 React 的报错/警告才用 `npm run build:dev`（dev 档约 6 MB，大头是 react-native-web）。
+4. **搜索（⌘K / Ctrl+K）与本页目录已经做了**；**窄屏还没做折叠菜单**。
 5. 产物（`node_modules/`、`_build/`、`dist/`、`moobile.js`）都在 `.gitignore` 里；
    只有 `content/content.generated.mbt` **要进仓库**（本工程得能独立编译）。
 6. 本目录同时是 moobile 脚手架模板的**真源**（`moon.mod` 里那句注释）：给模板加"依赖 skillpress"
    这件事还没做 —— 模板目前生成的工程不会有 `shell` 那三层接线。
+
+## 部署到 GitHub Pages
+
+流水线在内容仓的 [`.github/workflows/pages.yml`](../../../../.github/workflows/pages.yml)：
+push 到 `main`（碰 `skills/**`、`npm/moobile-host/**` 或 workflow 自己）就从零 `npm ci` → `press`
+→ `build`，把 `dist/` 整个发上去。线上地址 <https://xilaitl.github.io/moobile/>。
+
+**一次性前置（只能人做）**：仓库 Settings → Pages → Source 选 **GitHub Actions**。
+不选的话 `deploy` 那步会 404；`GITHUB_TOKEN` 没有 admin 权限，替不了这一下。
+
+三件事写在工作流注释里、这里再点一遍：
+
+- **它检出两个仓**（内容仓 `moobile/` + 程序仓 `skillpress/`），必须平铺在同一个工作区根下 ——
+  `moon.work` 成员与 `SKILLPRESS_ENGINE` 默认值都是 `../../../../../skillpress`（"兄弟仓"）。
+  检出到默认的仓库根，那串 `../` 会指到工作区外面。
+- **`dist/` 不进仓库**（它是产物）：提交一次就等于多一份真相，从此"站上是哪一版"要人去对。
+- **子路径能跑**：产物里没有以 `/` 开头的资源路径（`index.html` 引 `./bundle.js`）+ hash 路由
+  ⇒ 坐在 `/moobile/` 下不需要 basePath，也不需要 404 回退。
+
+`moobile-host` 是 `file:` 依赖（吃本仓 `npm/moobile-host` 源码，不吃 registry），那条相对路径
+**按本目录算**（`../../../../npm/moobile-host`）—— 它曾经多写了一层 `../`，指向不存在的
+`interest/npm/`，表现是"新克隆 `npm ci` 直接 ENOENT"。

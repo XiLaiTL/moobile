@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "esbuild": "^0.28.2",
-    "moobile-host": "file:../../../../../npm/moobile-host",
+    "moobile-host": "file:../../../../npm/moobile-host",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native-web": "^0.21.2"
