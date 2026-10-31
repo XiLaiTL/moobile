@@ -25,13 +25,4 @@ import {
   // ⚠️ 未发布时靠 `moon.work` 指向**本地源码**（两个仓库是兄弟：`interest/skillpress`）；
   //    发布之后这条依赖从 registry 解析，工作区那个文件就可以删掉。
   "XiLaiTL/skillpress@0.1.0",
-  // ⚠️ 下面这条是**替上游擦屁股**，本工程并不直接用 parser：
-  //    引擎的依赖 `mizchi/markdown@0.8.3` 钉了 `moonbitlang/parser@0.3.18`，而 0.3.1x 的
-  //    manifest 要求 `moonbitlang/x@0.4.39` —— **这个版本在 registry 里根本不存在**
-  //    （x 的 0.4.x 只到 0.4.38，然后直接跳到 0.4.46）。
-  //    · 2026-09 那代 moon（本机 0.1.20260920）解析时放宽到了 0.5.5，所以能过；
-  //    · 2026-10-28 那代（GitHub runner 上的 latest）照字面去找 0.4.39 ⇒
-  //      `Failed to resolve registry dependency 'moonbitlang/x' …: version '0.4.39' was not found`。
-  //    钉到 0.3.19（它要 x@0.5.1，存在）让两代都能解析。上游修好之后这条可以删。
-  "moonbitlang/parser@0.3.19",
 }

@@ -106,16 +106,34 @@ jobs:
       - name: 同步 registry 索引（新跑者上没有它）
         run: moon update
 
+      # ⚠️ 上游坏 pin 的补丁 —— 只作用在 CI 里那份**引擎副本**上。
+      #
+      #   引擎钉的 `mizchi/markdown@0.8.3` 会拉进 `moonbitlang/parser@0.3.18`，而它的 manifest
+      #   要 `moonbitlang/x@0.4.39` —— **registry 里没有这个版本**（x 的 0.4.x 到 0.4.38 就断了，
+      #   下一个是 0.4.46）。所以这条依赖链在上游就是坏的：
+      #     · 2026-09 那代 moon（本机 0.1.20260920）解析时放宽了，一直没暴露；
+      #     · runner 上的 latest（0.1.20261028）照字面找 0.4.39 ⇒
+      #       `Failed to resolve registry dependency 'moonbitlang/x' …: version '0.4.39' was not found`。
+      #   抬到 `markdown@0.8.4`（它要 `parser@0.4.5` → `x@0.5.1`，都存在）就通了。
+      #
+      #   ⚠️ **为什么不改引擎仓**：这套新依赖本机那代工具链读不了
+      #   （`moonbitlang/async` 的新 `moon.pkg` 里有 `max_concurrent_tests`，老 moon 直接
+      #   `Failed when discovering packages`）⇒ 改了会把本地开发一起搞挂。
+      #   引擎仓哪天自己抬上去了，这条 sed 会自然失效，留一条 grep 断言防止它静默。
+      - name: 补上游那条坏 pin（只改 CI 里那份引擎副本）
+        run: |
+          set -e
+          sed -i 's#"mizchi/markdown@0.8.3"#"mizchi/markdown@0.8.4"#' skillpress/moon.mod
+          grep -q 'mizchi/markdown@0.8.4' skillpress/moon.mod
+
       # ⚠️ `press` 不是纯 Node：它**转发**到引擎的 MoonBit CLI。那份产物**不进 git**
       #    （`_build/` 全在 gitignore 里），所以新克隆必须先自己编一次 ——
-      #    2026-10-31 第一次推上去就红在这：`✗ 这份包还没编出 CLI`。
-      #    修法不是在引擎根上另编一份（`moon -C skillpress build …`）：
-      #    实例的 `moon.work` 把引擎当成员，所以**在实例里 `moon build` 本来就会把 CLI 编出来**
-      #    （路径多一层 `build/XiLaiTL/skillpress/` —— 引擎启动器两个形状都找、并取最新的那份）。
-      #    而且只有走这条，`moon.mod` 里那条替上游擦屁股的 `moonbitlang/parser` 钉版才生效。
-      - name: 构建工作区（同时把 press 要的引擎 CLI 编出来）
-        working-directory: ${{ env.SITE_DIR }}
-        run: moon build --target js
+      #    第一次推上去就红在这：`✗ 这份包还没编出 CLI`。
+      #    ⚠️ 必须在**引擎根**上编（`moon -C skillpress …`）：`press` 只在引擎目录的
+      #    `_build/js/debug/build/cmd/skillpress/` 下找它；在实例里 `moon build`（workspace 成员）
+      #    会把产物写进**实例**的 `_build/…/XiLaiTL/skillpress/`，press 那边看不见。
+      - name: 编引擎 CLI（press 的实现在这里，包里不带）
+        run: moon -C skillpress build cmd/skillpress --target js
 
       # 两步分开，红了就能一眼看出是"内容印不出来"还是"产物打不出来"。
       - name: 印内容（skills/** → content/ + md/ + llms.txt）
