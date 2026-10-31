@@ -94,9 +94,15 @@ jobs:
       #    本机 `npm ci` 放得过去，CI 直接 `EUSAGE: Invalid: lock file's moobile-host@0.5.0
       #    does not satisfy moobile-host@0.6.0`。—— 这就是"本机绿、CI 红"的又一例。
       #    ⇒ 动了依赖之后：`npx npm@10 install --package-lock-only` 再提交（npm 9 仍能装）。
-      - name: 装依赖（锁文件为准）
+      # ⚠️⚠️ `--install-links` 不能省：npm 10 在 Linux 上把 `file:` 依赖装成**符号链接**
+      #    （`node_modules/moobile-host -> …/npm/moobile-host`），于是 esbuild 顺着真实路径去找
+      #    `react`，从 `npm/moobile-host` 那里根本看不见实例的 `node_modules`，报 4 个
+      #    `Could not resolve "react"`。本机 npm 9 是**拷贝**，所以本地永远复现不出来
+      #    （2026-10-31 在本机用 `npx npm@10 ci` 复现过：装成 `lrwxrwxrwx`，esbuild 同样 4 个错；
+      #    加 `--install-links` 后变成实体目录，产物 sha 与本地那版完全一致）。
+      - name: 装依赖（锁文件为准；`file:` 依赖装成实体目录）
         working-directory: ${{ env.SITE_DIR }}
-        run: npm ci --no-audit --no-fund
+        run: npm ci --install-links --no-audit --no-fund
 
       # ⚠️ 新跑者上 `~/.moon/registry/index` 是空的 —— 而 `moon build` 遇到空索引**不会自己去拉**，
       #    它先打一行 "you may need to run `moon update`"，然后把每个依赖都报成
