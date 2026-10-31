@@ -88,6 +88,12 @@ jobs:
       # `npm ci` 而不是 `npm install`：锁文件就是这次产物的输入之一。
       # ⚠️ `moobile-host` 是 `file:` 依赖（吃本仓 `npm/moobile-host` 的源码，不吃 registry），
       #    它的相对路径按实例目录算 —— 所以这一步只有在上面"两个仓平铺"的布局下才解得开。
+      # ⚠️⚠️ 锁文件必须用 **npm 10** 写（Node 20 自带的那代）：
+      #    2026-10-31 实测，用本机 npm 9 写出来的 lock 会把 `file:` 依赖记成
+      #    `{"version": "0.5.0"}` 那种**旧形状**（还是宿主包 0.5.0 时代的版本号），
+      #    本机 `npm ci` 放得过去，CI 直接 `EUSAGE: Invalid: lock file's moobile-host@0.5.0
+      #    does not satisfy moobile-host@0.6.0`。—— 这就是"本机绿、CI 红"的又一例。
+      #    ⇒ 动了依赖之后：`npx npm@10 install --package-lock-only` 再提交（npm 9 仍能装）。
       - name: 装依赖（锁文件为准）
         working-directory: ${{ env.SITE_DIR }}
         run: npm ci --no-audit --no-fund
